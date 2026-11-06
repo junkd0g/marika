@@ -16,7 +16,7 @@ private actor IDEEvents {
     }
     private var env: [String: String] {
         var environment = ProcessInfo.processInfo.environment
-        environment["PATH"] = "/opt/homebrew/bin:/usr/bin:/bin:" + ideTools.path
+        environment["PATH"] = ideTools.path + ":/opt/homebrew/bin:/usr/local/bin:" + (environment["PATH"] ?? "/usr/bin:/bin")
         return environment
     }
     @Test func framedMessagesHandleUnicodeAndArbitraryChunks() throws {

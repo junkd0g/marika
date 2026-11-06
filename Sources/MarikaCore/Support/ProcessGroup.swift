@@ -30,8 +30,13 @@ public final class ProcessGroup: @unchecked Sendable {
         posix_spawn_file_actions_adddup2(&actions, stderr.fileHandleForWriting.fileDescriptor, STDERR_FILENO)
         posix_spawn_file_actions_addclose(&actions, stdout.fileHandleForReading.fileDescriptor)
         posix_spawn_file_actions_addclose(&actions, stderr.fileHandleForReading.fileDescriptor)
-        let arguments = ["/bin/zsh", "-l", "-c", command].map { strdup($0) } + [nil]
-        let variables = environment.sorted { $0.key < $1.key }.map { strdup($0.key + "=" + $0.value) } + [nil]
+        let commandArguments: [String] = ["/bin/zsh", "-l", "-c", command]
+        let arguments: [UnsafeMutablePointer<CChar>?] = commandArguments.map { value in
+            value.withCString { Darwin.strdup($0) }
+        } + [nil]
+        let variables: [UnsafeMutablePointer<CChar>?] = environment.sorted { $0.key < $1.key }.map { key, value in
+            (key + "=" + value).withCString { Darwin.strdup($0) }
+        } + [nil]
         defer { arguments.forEach { free($0) }; variables.forEach { free($0) } }
         var child: pid_t = 0
         let result = arguments.withUnsafeBufferPointer { argv in
