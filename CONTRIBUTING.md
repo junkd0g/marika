@@ -11,7 +11,7 @@ Install macOS 15 or later and full Xcode 26.3 or newer, then run:
 git clone https://github.com/junkd0g/marika.git
 cd marika
 export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
-swift test
+swift test --no-parallel
 scripts/build-app.sh debug
 open build/Marika.app
 ```
@@ -19,6 +19,10 @@ open build/Marika.app
 The normal test suite uses local fixtures and temporary projects. It does not send prompts
 to an AI provider. `scripts/smoke.sh` is separate: it uses an installed, signed-in agent and
 can consume your plan usage. Run it only when you intend to test the live integration.
+
+Install Go 1.24 or newer for the Go test-runner fixtures. CI selects Go explicitly and runs
+test cases serially because many cases launch child processes. Concurrency-focused cases
+still exercise their own concurrent operations.
 
 The app also runs with `swift run Marika`. A bundled build is preferable for checking icons,
 signing, Keychain access and the browser helper. The build script uses a local Apple Development
@@ -36,7 +40,7 @@ content, and make agent mutations explicit and reviewable. Add tests for protoco
 storage, concurrency and destructive operations. Check visual changes in both light and dark
 appearance at compact and wide window sizes.
 
-Before submitting, run `swift test` and `scripts/build-app.sh release`. Describe the user-visible
+Before submitting, run `swift test --no-parallel` and `scripts/build-app.sh release`. Describe the user-visible
 change and the checks you ran. Never include credentials, private source code, saved chats,
 personal configuration or raw recordings in a pull request. Make protocol fixtures synthetic
 or remove identifying content first.
