@@ -81,7 +81,7 @@ struct ProjectCodeView: View {
                                          findRequest: editor.findRequest, focusRequest: editor.editorFocusRequest,
                                          shouldFocus: editor.focusEditorOnSelection,
                                          style: settings.style,
-                                         onEditorAction: performEditorAction,
+                                         onEditorAction: { action in performEditorAction(action) },
                                          ide: ide,
                                          diagnostics: ide?.diagnostics[doc.path] ?? [],
                                          breakpoints: ide?.breakpoints[doc.path] ?? [],
@@ -256,7 +256,7 @@ struct ProjectCodeView: View {
             Menu {
                 if let document = editor.selectedDocument {
                     if document.isEditable, ide != nil {
-                        EditorCommands(action: performEditorAction)
+                        EditorCommands(action: { action in performEditorAction(action) })
                         Divider()
                     }
                     Button("Copy Relative Path") {

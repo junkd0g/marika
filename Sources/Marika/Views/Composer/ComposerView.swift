@@ -91,7 +91,7 @@ struct ComposerView: View {
                 text: $session.draft, placeholder: placeholder,
                 isActive: conversationIsVisible,
                 focusToken: [session.id, model.composerFocusRequest],
-                onSubmit: submit, onPasteImage: addImage(data:), onKey: handleKey
+                onSubmit: { submit() }, onPasteImage: { data in addImage(data: data) }, onKey: { key in handleKey(key) }
             )
             .fixedSize(horizontal: false, vertical: true)
 

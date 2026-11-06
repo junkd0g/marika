@@ -157,7 +157,7 @@ struct ProjectBrowserView: View {
                 Toggle("Allow agents on local previews", isOn: $browser.allowsLocalAgentAccess)
                 if let url = browser.selectedPage?.url, !url.isFileURL, !BrowserAddress.isLocal(url) {
                     Toggle("Allow agents on \(url.host ?? "this site")", isOn: Binding(
-                        get: { browser.allowedOrigins.contains(BrowserAddress.origin(url)) }, set: browser.allowCurrentSite))
+                        get: { browser.allowedOrigins.contains(BrowserAddress.origin(url)) }, set: { value in browser.allowCurrentSite(value) }))
                 }
                 Divider()
                 Text("Website content is shared only when an agent uses a browser tool or you attach feedback.")
