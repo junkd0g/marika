@@ -1,0 +1,86 @@
+[
+ {
+  "wire": "/bin/zsh -lc pwd",
+  "typed": "pwd"
+ },
+ {
+  "wire": "/bin/zsh -lc 'ls -la'",
+  "typed": "ls -la"
+ },
+ {
+  "wire": "/bin/zsh -lc 'git status'",
+  "typed": "git status"
+ },
+ {
+  "wire": "/bin/zsh -lc \"grep -rn \\\"first\\\" . --include='*.txt'\"",
+  "typed": "grep -rn \"first\" . --include='*.txt'"
+ },
+ {
+  "wire": "/bin/zsh -lc \"echo \\\"it's\\\"\"",
+  "typed": "echo \"it's\""
+ },
+ {
+  "wire": "/bin/zsh -lc 'test ! -f '\"'x' && echo none\"",
+  "typed": "test ! -f 'x' && echo none"
+ },
+ {
+  "wire": "/bin/zsh -lc '[ ! -d \"$HOME\" ] || echo yes'",
+  "typed": "[ ! -d \"$HOME\" ] || echo yes"
+ },
+ {
+  "wire": "/bin/zsh -lc 'echo \"$HOME'\"'s\\\"\"",
+  "typed": "echo \"$HOME's\""
+ },
+ {
+  "wire": "/bin/zsh -lc 'echo `pwd`'",
+  "typed": "echo `pwd`"
+ },
+ {
+  "wire": "/bin/zsh -lc \"cat <<'EOF'\nhello\nEOF\"",
+  "typed": "cat <<'EOF'\nhello\nEOF"
+ },
+ {
+  "wire": "/bin/zsh -lc 'for f in *.txt; do echo \"$f\"; done'",
+  "typed": "for f in *.txt; do echo \"$f\"; done"
+ },
+ {
+  "wire": "/bin/zsh -lc \"sed -n '1,5p' \\\"notes.txt\\\"\"",
+  "typed": "sed -n '1,5p' \"notes.txt\""
+ },
+ {
+  "wire": "/bin/zsh -lc \"awk '{print \"'$1}'\"' notes.txt\"",
+  "typed": "awk '{print $1}' notes.txt"
+ },
+ {
+  "wire": "/bin/zsh -lc \"git log --format='%h %s' -n 1\"",
+  "typed": "git log --format='%h %s' -n 1"
+ },
+ {
+  "wire": "/bin/zsh -lc 'echo hi | tr a-z A-Z'",
+  "typed": "echo hi | tr a-z A-Z"
+ },
+ {
+  "wire": "/bin/zsh -lc \"echo 'x\"'!'\"'\"",
+  "typed": "echo 'x!'"
+ },
+ {
+  "wire": "/bin/zsh -lc 'echo \"wow!\" '\"'y'\"",
+  "typed": "echo \"wow!\" 'y'"
+ },
+ {
+  "wire": "/bin/zsh -lc \"printf '%s\\\\n' \\\"\"'$(pwd)\"'",
+  "typed": "printf '%s\\n' \"$(pwd)\""
+ },
+ {
+  "wire": "/bin/zsh -lc \"echo 'back\\\\slash'\"",
+  "typed": "echo 'back\\slash'"
+ },
+ {
+  "wire": "/bin/zsh -lc \"echo \\\"tab\\\\there\\\"\"",
+  "typed": "echo \"tab\\there\""
+ },
+ {
+  "wire": "/bin/zsh -lc \"sed -i '' 's/a/b/' /dev/null; echo 'don'\\\\''t'\"",
+  "typed": "sed -i '' 's/a/b/' /dev/null; echo 'don'\\''t'"
+ }
+]

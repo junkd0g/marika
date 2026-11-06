@@ -1,0 +1,46 @@
+# Contributing to Marika
+
+Marika is a native macOS app written in Swift. Small, focused pull requests are welcome.
+For a larger change, open an issue describing the problem and proposed behavior first.
+
+## Development
+
+Install macOS 15 or later and full Xcode, then run:
+
+```sh
+git clone https://github.com/junkd0g/marika.git
+cd marika
+export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
+swift test
+scripts/build-app.sh debug
+open build/Marika.app
+```
+
+The normal test suite uses local fixtures and temporary projects. It does not send prompts
+to an AI provider. `scripts/smoke.sh` is separate: it uses an installed, signed-in agent and
+can consume your plan usage. Run it only when you intend to test the live integration.
+
+The app also runs with `swift run Marika`. A bundled build is preferable for checking icons,
+signing, Keychain access and the browser helper. The build script uses a local Apple Development
+identity when available and otherwise signs ad hoc. No signing identity is needed to contribute.
+
+## Structure
+
+- `Sources/MarikaCore`: agent protocols, storage, filesystem operations and testable services.
+- `Sources/Marika`: SwiftUI screens, AppKit controls and application state.
+- `Sources/MarikaBrowserMCP`: the local browser and agent-tool bridge.
+- `Tests/MarikaCoreTests`: unit and protocol integration tests, including synthetic servers.
+
+Use the existing Swift style. Keep blocking work out of the main actor, preserve unsaved editor
+content, and make agent mutations explicit and reviewable. Add tests for protocol handling,
+storage, concurrency and destructive operations. Check visual changes in both light and dark
+appearance at compact and wide window sizes.
+
+Before submitting, run `swift test` and `scripts/build-app.sh release`. Describe the user-visible
+change and the checks you ran. Never include credentials, private source code, saved chats,
+personal configuration or raw recordings in a pull request. Make protocol fixtures synthetic
+or remove identifying content first.
+
+Contributions are provided under the repository's [MIT license](LICENSE). Third-party components
+retain their own licenses in [Resources/ThirdPartyNotices.txt](Resources/ThirdPartyNotices.txt)
+and [Resources/EditorToolNotices.txt](Resources/EditorToolNotices.txt).

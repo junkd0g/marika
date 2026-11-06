@@ -1,0 +1,15 @@
+.build/
+.swiftpm/
+build/
+*.xcodeproj
+xcuserdata/
+DerivedData/
+.DS_Store
+.tools/
+.env
+.env.*
+!.env.example
+*.p12
+*.pfx
+*.keychain-db
+.marika/

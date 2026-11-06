@@ -1,0 +1,38 @@
+name: macOS checks
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-and-build:
+    runs-on: macos-15
+    timeout-minutes: 20
+    env:
+      DEVELOPER_DIR: /Applications/Xcode.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Test core and regression cases
+        run: swift test
+      - name: Verify build-check exit codes
+        shell: zsh -e {0}
+        run: |
+          scripts/check.sh
+          if scripts/check.sh --marika-invalid-option; then
+            echo 'check.sh incorrectly accepted a failed build' >&2
+            exit 1
+          fi
+      - name: Build and verify app bundle
+        run: |
+          scripts/build-app.sh release
+          codesign --verify --deep --strict build/Marika.app

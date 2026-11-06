@@ -1,0 +1,274 @@
+import MarikaCore
+import SwiftUI
+
+struct ProjectAgentsView: View {
+    @Environment(AppModel.self) private var model
+    let project: Project
+    @State private var filter: TaskFilter = .all
+
+    private enum TaskFilter: String, CaseIterable {
+        case all = "All", active = "Active", finished = "Finished"
+    }
+
+    private var activeCount: Int { tasks.filter { model.controllers[$0.id]?.isBusy == true }.count }
+    private var visibleTasks: [SessionMeta] {
+        tasks.filter { task in
+            switch filter {
+            case .all: true
+            case .active: model.controllers[task.id]?.isBusy == true
+            case .finished: model.controllers[task.id]?.isBusy != true
+            }
+        }
+    }
+
+    private var tasks: [SessionMeta] {
+        model.sessions(in: project).filter { $0.agentTask != nil || model.controllers[$0.id]?.isBusy == true }
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 20) { heading.fixedSize(); Spacer(minLength: 0); filters }
+                VStack(alignment: .leading, spacing: 12) { heading; filters }
+            }
+            .padding(24)
+            if tasks.isEmpty {
+                ContentUnavailableView {
+                    Label("Delegate a task", systemImage: "person.2")
+                } description: {
+                    Text("Give Claude or Codex a task and follow its progress here.")
+                } actions: {
+                    Button("New Agent") { model.agentLaunchProjectID = project.id }
+                        .buttonStyle(.borderedProminent)
+                }
+            } else if visibleTasks.isEmpty {
+                ContentUnavailableView("No \(filter.rawValue.lowercased()) agents", systemImage: "person.2",
+                    description: Text("Choose All to see every agent in this project."))
+            } else {
+                ScrollView {
+                    LazyVStack(spacing: 0) {
+                        ForEach(visibleTasks) { meta in
+                            AgentTaskCard(meta: meta, controller: model.controllers[meta.id])
+                            if meta.id != visibleTasks.last?.id { Divider().padding(.leading, 60) }
+                        }
+                    }
+                    .background(Theme.panel, in: RoundedRectangle(cornerRadius: 10))
+                    .overlay { RoundedRectangle(cornerRadius: 10).strokeBorder(Theme.hairline) }
+                    .padding(.horizontal, 24).padding(.bottom, 24)
+                }
+            }
+            Divider()
+            HStack(spacing: 7) {
+                Image(systemName: "folder")
+                Text(tasks.contains(where: { $0.agentTask?.workspace != nil }) ? "Review isolated changes before applying" : "Agents use this project's files")
+                Spacer()
+                Text(project.name).lineLimit(1).truncationMode(.middle)
+            }
+            .font(.system(size: 11)).foregroundStyle(.secondary)
+            .padding(.horizontal, 16).padding(.vertical, 10)
+        }
+        .background(Theme.canvas)
+        .task(id: tasks.map(\.id)) {
+            for task in tasks { await model.open(task.id) }
+        }
+    }
+    private var heading: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text("Agents").font(.system(size: 20, weight: .semibold))
+            Button("Review plans and results") { model.showExperience("Artifacts", project: project) }.buttonStyle(.link).font(.caption)
+            Text("\(activeCount) active · \(tasks.count) in this project")
+                .font(.system(size: 12)).foregroundStyle(.secondary)
+        }
+    }
+    private var filters: some View {
+        Picker("Show agents", selection: $filter) {
+            ForEach(TaskFilter.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+        }.pickerStyle(.segmented).labelsHidden().frame(width: 210).controlSize(.small)
+    }
+
+}
+
+private struct AgentTaskCard: View {
+    @Environment(AppModel.self) private var model
+    let meta: SessionMeta
+    let controller: SessionController?
+
+    private var latestOutcome: TurnSummary.Outcome? {
+        controller?.items.reversed().prefix { item in
+            if case .user = item.content { false } else { true }
+        }.compactMap { item in
+            if case .turnEnd(let summary) = item.content { summary.outcome } else { nil }
+        }.first
+    }
+
+    private var lastError: String? {
+        guard let last = controller?.items.last, case .notice(let notice) = last.content, notice.level == .error else { return nil }
+        return notice.text
+    }
+
+    private var state: String {
+        switch controller?.phase ?? .idle {
+        case .running: "Working"
+        case .waitingForUser: "Needs approval"
+        case .idle:
+            lastError != nil || latestOutcome == .failed ? "Failed" : latestOutcome == .completed ? "Completed" : latestOutcome == .interrupted ? "Stopped" : "Idle"
+        }
+    }
+
+    private var stateColor: Color {
+        if lastError != nil || latestOutcome == .failed { return .red }
+        if controller?.phase == .waitingForUser { return Theme.attention }
+        if controller?.phase == .running { return .accentColor }
+        if latestOutcome == .completed { return .green }
+        return .secondary
+    }
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: meta.agent == .claude ? "sparkle" : "chevron.left.forwardslash.chevron.right")
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(Color.accentColor).frame(width: 30, height: 30)
+                .background(Theme.surface, in: RoundedRectangle(cornerRadius: 7))
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text(controller?.meta.title ?? meta.title)
+                        .font(.system(size: 13, weight: .semibold)).lineLimit(1)
+                    Spacer(minLength: 8)
+                    HStack(spacing: 5) {
+                        if controller?.phase == .running { ProgressView().controlSize(.mini) }
+                        else { Circle().fill(stateColor).frame(width: 5, height: 5) }
+                        Text(state).font(.system(size: 11))
+                    }
+                    .foregroundStyle(stateColor)
+                }
+                if let text = lastError ?? controller?.activity ?? meta.agentTask?.prompt {
+                    Text(text).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(2)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                HStack(spacing: 8) {
+                    Text(meta.agent.shortName + " · " + (meta.agentTask?.workspace == nil ? "Shared files" : "Isolated worktree"))
+                        .font(.system(size: 11)).foregroundStyle(.secondary)
+                        .lineLimit(1).truncationMode(.middle)
+                    if meta.agentTask?.parentSessionID != nil {
+                        Image(systemName: "arrow.triangle.branch").foregroundStyle(.tertiary)
+                            .help("Started from a chat")
+                    }
+                    Spacer(minLength: 4)
+                    if let workspace = meta.agentTask?.workspace {
+                        if workspace.status == .ready || workspace.status == .reviewed {
+                            Button(workspace.status == .reviewed ? "Review complete" : "Review Changes") { Task { await model.openAgentReview(meta.id) } }
+                                .disabled(controller?.isBusy == true)
+                        } else {
+                            Text(workspace.status == .applied ? "Applied" : "Discarded").font(.system(size: 11)).foregroundStyle(.secondary)
+                        }
+                    }
+                    if controller?.isBusy == true {
+                        Button("Stop", role: .destructive) { controller?.interrupt() }
+                    }
+                    Button(controller?.phase == .waitingForUser ? "Review Approval" : "Open Chat") {
+                        model.openAgentChat(meta.id)
+                    }
+                }
+                .controlSize(.small)
+            }
+        }
+        .padding(16)
+    }
+}
+
+struct LaunchAgentView: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.dismiss) private var dismiss
+    let project: Project
+    @State private var agent: AgentKind = .claude
+    @State private var selectedModel = ""
+    @State private var mode: ApprovalMode = .ask
+    @State private var prompt = ""
+    @State private var includeFile = false
+    @State private var isolated = true
+    @State private var isGitProject: Bool?
+    @State private var isLaunching = false
+    @State private var error: String?
+    @FocusState private var taskFocused: Bool
+
+    private var selectedFile: String? { model.editors[project.id]?.selectedDocument?.path }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 5) {
+                Text("New agent").font(.system(size: 20, weight: .semibold))
+                Text("A new agent will work in \(project.name) with its own chat.")
+                    .font(.system(size: 12)).foregroundStyle(.secondary)
+            }
+            Picker("Agent", selection: $agent) {
+                ForEach(AgentKind.allCases) { Text($0.shortName).tag($0) }
+            }
+            .pickerStyle(.segmented)
+            HStack(spacing: 18) {
+                Picker("Model", selection: $selectedModel) {
+                    Text("Default").tag("")
+                    ForEach(model.capabilities[agent]?.models.filter { $0.id != "default" } ?? []) { Text($0.name).tag($0.id) }
+                }
+                Picker("Permissions", selection: $mode) {
+                    ForEach([ApprovalMode.ask, .acceptEdits, .plan, .auto]) { Text($0.title(for: agent)).tag($0) }
+                }
+            }
+            VStack(alignment: .leading, spacing: 7) {
+                Text("Task").font(.system(size: 12, weight: .medium))
+                TextEditor(text: $prompt).font(.system(size: 13)).focused($taskFocused)
+                    .scrollContentBackground(.hidden).padding(8)
+                    .frame(height: 130).background(Theme.canvas, in: RoundedRectangle(cornerRadius: 8))
+                    .overlay { RoundedRectangle(cornerRadius: 8).strokeBorder(Theme.hairline) }
+                    .overlay(alignment: .topLeading) {
+                        if prompt.isEmpty {
+                            Text("For example: review the UI and fix the file navigation.")
+                                .font(.system(size: 13)).foregroundStyle(.tertiary).padding(13).allowsHitTesting(false)
+                        }
+                    }
+                    .accessibilityLabel("Agent task")
+            }
+            if let selectedFile {
+                Toggle("Include selected file: \(selectedFile)", isOn: $includeFile)
+                    .font(.system(size: 11)).lineLimit(1).truncationMode(.middle)
+                    .help("\(selectedFile)\nThe agent will read the saved file in the project.")
+            }
+            Toggle("Use an isolated Git worktree", isOn: $isolated)
+                .font(.system(size: 12))
+                .disabled(isGitProject == false)
+                .help("Git projects get a separate checkout. Review and apply changes from the Agents panel. Other folders use their existing files.")
+            if isGitProject == false {
+                Text("This folder has no Git repository, so agents use the project files.")
+                    .font(.system(size: 11)).foregroundStyle(.secondary)
+            }
+            if let error { Text(error).font(.system(size: 12)).foregroundStyle(Theme.attention) }
+            AgentStatusLine(agent: agent)
+            HStack {
+                Text("Other agents can keep working.").font(.system(size: 11)).foregroundStyle(.secondary)
+                Spacer()
+                Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
+                Button(isLaunching ? "Launching…" : "Launch Agent", action: launch)
+                    .buttonStyle(.borderedProminent).keyboardShortcut(.return, modifiers: .command)
+                    .disabled(isLaunching || prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+        }
+        .padding(24).frame(width: 590)
+        .onAppear { agent = model.workspace.preferences.defaultAgent; taskFocused = true }
+        .task { isGitProject = await Git(environment: model.gitEnvironment).snapshot(at: project.url).isRepository }
+        .onChange(of: agent) { _, _ in selectedModel = "" }
+    }
+
+    private func launch() {
+        isLaunching = true
+        error = nil
+        var task = prompt
+        if includeFile, let selectedFile { task += "\n\nStart with this project file: \(selectedFile)" }
+        Task {
+            do {
+                _ = try await model.launchAgent(in: project, agent: agent,
+                    settings: AgentSettings(model: selectedModel.isEmpty ? nil : selectedModel, mode: mode), prompt: task, isolated: isolated)
+                model.showAgents(for: project)
+                dismiss()
+            } catch { self.error = error.localizedDescription; isLaunching = false }
+        }
+    }
+}

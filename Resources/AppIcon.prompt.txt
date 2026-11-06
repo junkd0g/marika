@@ -1,0 +1,3 @@
+Selected design: option 1, Rounded. A white rounded-square tile with a charcoal uppercase M using the bold rounded macOS system typeface. Center optically and match the proportions of build/IconOptions/1-rounded.png. Use a subtle edge with no drop shadow, gradient, illustration, serif, or three-dimensional lettering.
+
+Production: typeset with CoreText in scripts/make-icon.swift, exported as a font-independent SVG and macOS ICNS. The final icon uses native typography, not image generation.
