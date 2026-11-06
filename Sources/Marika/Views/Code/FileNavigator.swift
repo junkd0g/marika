@@ -56,7 +56,7 @@ struct FileNavigator: View {
                 .foregroundStyle(.secondary).lineLimit(1).padding(.horizontal, 12).padding(.bottom, 9)
             Divider()
             ScrollViewReader { proxy in
-                List(selection: Binding(get: { editor.navigatorSelection }, set: selectInNavigator)) {
+                List(selection: Binding(get: { editor.navigatorSelection }, set: { value in selectInNavigator(value) })) {
                     if query.isEmpty {
                         ForEach(editor.visibleEntries) { row in
                             treeRow(row).tag(row.id).id(row.id)

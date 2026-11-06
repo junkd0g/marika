@@ -5,7 +5,7 @@ For a larger change, open an issue describing the problem and proposed behavior 
 
 ## Development
 
-Install macOS 15 or later and full Xcode, then run:
+Install macOS 15 or later and full Xcode 26.3 or newer, then run:
 
 ```sh
 git clone https://github.com/junkd0g/marika.git

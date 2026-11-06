@@ -221,7 +221,7 @@ what each mode really does.
 
 ## Run it
 
-You need macOS 15 or later, Xcode, and at least one agent. Marika finds Codex inside the ChatGPT
+You need macOS 15 or later, Xcode 26.3 or newer to build, and at least one agent. Marika finds Codex inside the ChatGPT
 desktop app, so you only need this if you have neither:
 
 ```bash
