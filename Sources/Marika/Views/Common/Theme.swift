@@ -17,7 +17,7 @@ enum Theme {
     static let panel = Color(nsColor: .controlBackgroundColor)
     static let chrome = Color(nsColor: .windowBackgroundColor)
 
-    static let appIcon: NSImage? = {
+    @MainActor static let appIcon: NSImage? = {
         if let bundled = Bundle.main.url(forResource: "AppIcon", withExtension: "icns") {
             return NSImage(contentsOf: bundled)
         }

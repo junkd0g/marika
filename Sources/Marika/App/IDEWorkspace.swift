@@ -99,67 +99,96 @@ struct IDEResult: Identifiable {
     func perform(_ action: String) {
         guard let document = editor.selectedDocument, document.isEditable else { return }
         showsPanel = true; panel = "Code"; message = ""; results = []
-        Task {
-            do {
-                let server = try await service(for: document)
-                try await server.synchronize(path: document.path, text: document.text)
-                let position = SourcePosition(line: document.line - 1, character: document.column - 1)
-                let revision = document.revision
-                let response: JSONValue
-                switch action {
-                case "Unfold": document.foldedRanges = []; return
-                case "Fold":
-                    let value = try await server.request("textDocument/foldingRange", params: ["textDocument": ["uri": .string(await server.uri(document.path))]])
-                    let ranges = (value.array ?? []).filter { ($0["startLine"]?.int ?? 0) <= position.line && ($0["endLine"]?.int ?? 0) >= position.line }
-                    guard let range = ranges.min(by: { ($0["endLine"]?.int ?? 0) - ($0["startLine"]?.int ?? 0) < ($1["endLine"]?.int ?? 0) - ($1["startLine"]?.int ?? 0) }),
-                          let start = range["startLine"]?.int, let end = range["endLine"]?.int, end > start,
-                          let lower = try? SourcePosition.offset(SourcePosition(line: start + 1, character: 0).json, in: document.text),
-                          let upper = try? SourcePosition.offset(SourcePosition(line: end, character: 0).json, in: document.text) else { message = "No foldable block at the cursor."; return }
-                    document.foldedRanges.append(NSRange(location: lower, length: upper - lower)); return
-                case "Format": try await format(document); message = "Formatted. Save the file to write these edits."; return
-                case "Rename":
-                    guard !renameText.isEmpty else { message = "Enter the new symbol name."; return }
-                    response = try await server.request("textDocument/rename", path: document.path, position: position, extra: ["newName": .string(renameText)])
-                    guard document.revision == revision else { throw AgentError.launchFailed("The source changed. Request the refactoring again.") }
-                    try await prepare(response, service: server); return
-                case "Refactor", "Organize imports":
-                    let offset = try SourcePosition.offset(position.json, in: document.text)
-                    let end = SourcePosition.at(offset: offset + document.selectionLength, in: document.text)
-                    let range: JSONValue = ["start": position.json, "end": end.json]
-                    let extra: [String: JSONValue] = ["range": range, "context": ["diagnostics": .array(diagnostics[document.path] ?? []), "only": action == "Organize imports" ? ["source.organizeImports"] : ["quickfix", "refactor"]]]
-                    response = try await server.request("textDocument/codeAction", path: document.path, position: position, extra: extra)
-                    results = (response.array ?? []).map { IDEResult(title: $0["title"]?.string ?? "Code action", edit: $0, sourceID: document.id, sourceRevision: revision) }; return
-                case "Completions":
-                    response = try await server.request("textDocument/completion", path: document.path, position: position)
-                    results = (response.array ?? response["items"]?.array ?? []).prefix(100).map { item in
-                        var copy = item
-                        if item["textEdit"] == nil, var fields = item.object {
-                            fields["textEdit"] = ["range": ["start": position.json, "end": position.json], "newText": item["insertText"] ?? item["label"] ?? ""]
-                            copy = .object(fields)
-                        }
-                        return IDEResult(title: item["label"]?.string ?? "Completion", detail: item["detail"]?.string ?? "", path: document.path, edit: copy, sourceID: document.id, sourceRevision: revision)
-                    }; return
-                case "Hover", "Signature":
-                    response = try await server.request(action == "Hover" ? "textDocument/hover" : "textDocument/signatureHelp", path: document.path, position: position)
-                    let content = response["contents"]
-                    message = content?.string ?? content?["value"]?.string ?? content?.array?.map { $0.string ?? $0["value"]?.string ?? "" }.joined(separator: "\n") ?? response["signatures"]?.array?.map { $0["label"]?.string ?? "" }.joined(separator: "\n") ?? "No information at this position."
-                    return
-                case "Symbols": response = try await server.request("textDocument/documentSymbol", path: document.path, position: position)
-                default:
-                    response = try await server.request(action == "References" ? "textDocument/references" : "textDocument/definition", path: document.path, position: position, extra: ["context": ["includeDeclaration": true]])
-                }
-                @MainActor func add(_ value: JSONValue) async {
-                    let uri = value["uri"]?.string ?? value["targetUri"]?.string ?? value["location"]?["uri"]?.string
-                    let path = uri == nil ? document.path : await server.localPath(uri!)
-                    let range = value["selectionRange"] ?? value["targetSelectionRange"] ?? value["range"] ?? value["location"]?["range"]
-                    results.append(IDEResult(title: value["name"]?.string ?? path ?? "Location", detail: path ?? "", path: path,
-                        line: (range?["start"]?["line"]?.int ?? 0) + 1, column: (range?["start"]?["character"]?.int ?? 0) + 1))
-                    for child in value["children"]?.array ?? [] { await add(child) }
-                }
-                for item in response.array ?? (response.isNull ? [] : [response]) { await add(item) }
-                if results.isEmpty { message = "No results at this position." }
-            } catch { message = error.localizedDescription }
+        Task { await perform(action, in: document) }
+    }
+    private func perform(_ action: String, in document: CodeDocument) async {
+        do {
+            let server = try await service(for: document)
+            try await server.synchronize(path: document.path, text: document.text)
+            let position = SourcePosition(line: document.line - 1, character: document.column - 1)
+            let revision = document.revision
+            let response: JSONValue
+            switch action {
+            case "Unfold": document.foldedRanges = []; return
+            case "Fold":
+                try await fold(document, server: server, position: position); return
+            case "Format": try await format(document); message = "Formatted. Save the file to write these edits."; return
+            case "Rename":
+                guard !renameText.isEmpty else { message = "Enter the new symbol name."; return }
+                response = try await server.request("textDocument/rename", path: document.path, position: position, extra: ["newName": .string(renameText)])
+                guard document.revision == revision else { throw AgentError.launchFailed("The source changed. Request the refactoring again.") }
+                try await prepare(response, service: server); return
+            case "Refactor", "Organize imports":
+                let offset = try SourcePosition.offset(position.json, in: document.text)
+                let end = SourcePosition.at(offset: offset + document.selectionLength, in: document.text)
+                let range: JSONValue = ["start": position.json, "end": end.json]
+                let kinds: JSONValue = action == "Organize imports" ? ["source.organizeImports"] : ["quickfix", "refactor"]
+                let context: JSONValue = ["diagnostics": .array(diagnostics[document.path] ?? []), "only": kinds]
+                let extra: [String: JSONValue] = ["range": range, "context": context]
+                response = try await server.request("textDocument/codeAction", path: document.path, position: position, extra: extra)
+                results = (response.array ?? []).map { IDEResult(title: $0["title"]?.string ?? "Code action", edit: $0, sourceID: document.id, sourceRevision: revision) }; return
+            case "Completions":
+                response = try await server.request("textDocument/completion", path: document.path, position: position)
+                results = (response.array ?? response["items"]?.array ?? []).prefix(100).map { item in
+                    var copy = item
+                    if item["textEdit"] == nil, var fields = item.object {
+                        fields["textEdit"] = ["range": ["start": position.json, "end": position.json], "newText": item["insertText"] ?? item["label"] ?? ""]
+                        copy = .object(fields)
+                    }
+                    return IDEResult(title: item["label"]?.string ?? "Completion", detail: item["detail"]?.string ?? "", path: document.path, edit: copy, sourceID: document.id, sourceRevision: revision)
+                }; return
+            case "Hover", "Signature":
+                response = try await server.request(action == "Hover" ? "textDocument/hover" : "textDocument/signatureHelp", path: document.path, position: position)
+                message = information(from: response)
+                return
+            case "Symbols": response = try await server.request("textDocument/documentSymbol", path: document.path, position: position)
+            default:
+                response = try await server.request(action == "References" ? "textDocument/references" : "textDocument/definition", path: document.path, position: position, extra: ["context": ["includeDeclaration": true]])
+            }
+            let items: [JSONValue] = response.array ?? (response.isNull ? [] : [response])
+            for item in items { await appendLocation(item, document: document, server: server) }
+            if results.isEmpty { message = "No results at this position." }
+        } catch { message = error.localizedDescription }
+    }
+
+    private func fold(_ document: CodeDocument, server: LanguageService, position: SourcePosition) async throws {
+        let uri = await server.uri(document.path)
+        let value = try await server.request("textDocument/foldingRange", params: ["textDocument": ["uri": .string(uri)]])
+        var best: (start: Int, end: Int)?
+        for item in value.array ?? [] {
+            guard let start = item["startLine"]?.int, let end = item["endLine"]?.int,
+                  start <= position.line, end >= position.line, end > start else { continue }
+            if best == nil || end - start < best!.end - best!.start { best = (start, end) }
         }
+        guard let best,
+              let lower = try? SourcePosition.offset(SourcePosition(line: best.start + 1, character: 0).json, in: document.text),
+              let upper = try? SourcePosition.offset(SourcePosition(line: best.end, character: 0).json, in: document.text) else {
+            message = "No foldable block at the cursor."; return
+        }
+        document.foldedRanges.append(NSRange(location: lower, length: upper - lower))
+    }
+
+    private func information(from response: JSONValue) -> String {
+        if let text = response["contents"]?.string { return text }
+        if let text = response["contents"]?["value"]?.string { return text }
+        if let items = response["contents"]?.array {
+            return items.map { $0.string ?? $0["value"]?.string ?? "" }.joined(separator: "\n")
+        }
+        if let signatures = response["signatures"]?.array {
+            return signatures.map { $0["label"]?.string ?? "" }.joined(separator: "\n")
+        }
+        return "No information at this position."
+    }
+
+    private func appendLocation(_ value: JSONValue, document: CodeDocument, server: LanguageService) async {
+        let uri = value["uri"]?.string ?? value["targetUri"]?.string ?? value["location"]?["uri"]?.string
+        let path: String?
+        if let uri { path = await server.localPath(uri) } else { path = document.path }
+        let range = value["selectionRange"] ?? value["targetSelectionRange"] ?? value["range"] ?? value["location"]?["range"]
+        let line = (range?["start"]?["line"]?.int ?? 0) + 1
+        let column = (range?["start"]?["character"]?.int ?? 0) + 1
+        results.append(IDEResult(title: value["name"]?.string ?? path ?? "Location", detail: path ?? "", path: path, line: line, column: column))
+        for child in value["children"]?.array ?? [] { await appendLocation(child, document: document, server: server) }
     }
     func select(_ result: IDEResult) {
         Task {

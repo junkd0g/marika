@@ -526,7 +526,9 @@ final class CodeEditingTextView: NSTextView {
     }
     private func restoreText(_ text: String, ranges: [NSRange]) {
         let previous = string, selection = selectedRanges.map(\.rangeValue)
-        undoManager?.registerUndo(withTarget: self) { target in target.restoreText(previous, ranges: selection) }
+        undoManager?.registerUndo(withTarget: self) { target in
+            MainActor.assumeIsolated { target.restoreText(previous, ranges: selection) }
+        }
         string = text; selectedRanges = ranges.map(NSValue.init(range:)); didChangeText()
     }
     func applyAssistanceText(_ text: String, selection: NSRange, action: String) {

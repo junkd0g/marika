@@ -30,16 +30,7 @@ struct IDEDrawer: View {
                 if ide.problemCount == 0 { Text("No diagnostics reported").foregroundStyle(.secondary).padding(14) }
                 ForEach(ide.diagnostics.keys.sorted(), id: \.self) { path in
                     ForEach(Array((ide.diagnostics[path] ?? []).enumerated()), id: \.offset) { _, item in
-                        Button {
-                            Task { await ide.editor.open(path); ide.editor.reveal(line: (item["range"]?["start"]?["line"]?.int ?? 0) + 1, column: (item["range"]?["start"]?["character"]?.int ?? 0) + 1) }
-                        } label: {
-                            HStack(alignment: .top, spacing: 10) {
-                                Image(systemName: item["severity"]?.int == 1 ? "xmark.circle.fill" : "exclamationmark.triangle.fill").foregroundStyle(item["severity"]?.int == 1 ? .red : .orange)
-                                Text(item["message"]?.string ?? "Diagnostic").multilineTextAlignment(.leading)
-                                Spacer()
-                                Text(path + ":" + String((item["range"]?["start"]?["line"]?.int ?? 0) + 1)).foregroundStyle(.secondary).lineLimit(1)
-                            }.font(.system(size: 11)).padding(.horizontal, 12)
-                        }.buttonStyle(.plain)
+                        IDEDiagnosticRow(item: item, path: path, editor: ide.editor)
                     }
                 }
             }.padding(.vertical, 8)
@@ -140,5 +131,27 @@ struct IDEDrawer: View {
                 }.frame(minWidth: 170)
             }
         }
+    }
+}
+
+private struct IDEDiagnosticRow: View {
+    let item: JSONValue
+    let path: String
+    let editor: CodeWorkspace
+    private var line: Int { (item["range"]?["start"]?["line"]?.int ?? 0) + 1 }
+    private var column: Int { (item["range"]?["start"]?["character"]?.int ?? 0) + 1 }
+    private var isError: Bool { item["severity"]?.int == 1 }
+    var body: some View {
+        Button {
+            Task { await editor.navigate(to: path, line: line, column: column) }
+        } label: {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: isError ? "xmark.circle.fill" : "exclamationmark.triangle.fill")
+                    .foregroundStyle(isError ? Color.red : Color.orange)
+                Text(item["message"]?.string ?? "Diagnostic").multilineTextAlignment(.leading)
+                Spacer()
+                Text(path + ":" + String(line)).foregroundStyle(.secondary).lineLimit(1)
+            }.font(.system(size: 11)).padding(.horizontal, 12)
+        }.buttonStyle(.plain)
     }
 }
