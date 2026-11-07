@@ -12,90 +12,119 @@ struct WorkspaceHeader: View {
 
     var body: some View {
         GeometryReader { geometry in
-            HStack(spacing: 8) {
-                Button { model.showsProjectSidebar.toggle() } label: { Image(systemName: "sidebar.left") }
-                    .buttonStyle(.plain).foregroundStyle(.secondary)
-                    .accessibilityLabel(model.showsProjectSidebar ? "Hide projects" : "Show projects")
-                    .help(model.showsProjectSidebar ? "Hide projects" : "Show projects")
-                navigation
-                Menu {
-                    Section("Open a tab") {
-                        ForEach(ProjectPanel.allCases, id: \.self) { panel in
-                            Button { select(panel) } label: {
-                                Label(panel.title, systemImage: openTabs.contains(panel) ? "checkmark" : panel.symbol)
+            VStack(spacing: 0) {
+                HStack(spacing: 8) {
+                    Button { model.showsProjectSidebar.toggle() } label: { Image(systemName: "sidebar.left") }
+                        .buttonStyle(.plain).foregroundStyle(.secondary)
+                        .accessibilityLabel(model.showsProjectSidebar ? "Hide projects" : "Show projects")
+                        .help(model.showsProjectSidebar ? "Hide projects" : "Show projects")
+                    navigation
+                    if geometry.size.width >= 620 {
+                        Button { model.showsCommandPalette = true } label: { Image(systemName: "command") }
+                            .buttonStyle(.plain).help("Command palette (⌘K)")
+                    }
+                    Menu {
+                        ForEach(ProjectPanel.allCases.filter { $0 != selection }, id: \.self) { panel in
+                            Button("Split with " + panel.title) { model.setSplit(panel) }
+                        }
+                        if model.layout(for: project.id).secondary != nil {
+                            Divider()
+                            Button(model.layout(for: project.id).stacked ? "Side by Side" : "Stack Vertically") {
+                                let saved = model.layout(for: project.id)
+                                model.setSplit(saved.secondary, stacked: !saved.stacked)
                             }
+                            Button("Close Split") { model.setSplit(nil) }
                         }
-                    }
-                } label: { Image(systemName: "plus").frame(width: 20, height: 26) }
-                    .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
-                    .help("Open a project tab").accessibilityLabel("Open project tab")
-                    #if DEBUG
-                        .background(DebugViewMarker(name: "workspace-open-tab"))
-                    #endif
-                if geometry.size.width >= 620 {
-                    Button { model.showsCommandPalette = true } label: { Image(systemName: "command") }
-                        .buttonStyle(.plain).help("Command palette (⌘K)")
-                }
-                Menu {
-                    ForEach(ProjectPanel.allCases.filter { $0 != selection }, id: \.self) { panel in
-                        Button("Split with " + panel.title) { model.setSplit(panel) }
-                    }
-                    if model.layout(for: project.id).secondary != nil {
                         Divider()
-                        Button(model.layout(for: project.id).stacked ? "Side by Side" : "Stack Vertically") {
-                            let saved = model.layout(for: project.id)
-                            model.setSplit(saved.secondary, stacked: !saved.stacked)
+                        Button("Changes…") { model.switchPanel(.changes) }
+                        Button(model.showsInspector ? "Hide Change Inspector" : "Show Change Inspector") { model.showsInspector.toggle() }
+                        Button("Checkpoints…") { model.showExperience("Recovery", project: project) }
+                        Button("Runtime Debugging…") { model.showExperience("Debug", project: project) }
+                        Button("Plans and Artifacts…") { model.showExperience("Artifacts", project: project) }
+                        Button("Terminal…") { model.openTerminal() }
+                        Button("MCP Servers…") { model.openProjectSettings(project, section: "MCP") }
+                        Button("Project Settings…") { model.openProjectSettings(project) }
+                        Divider()
+                        Button("Search Project…") { model.showsProjectSearch = true }
+                        Button("Preview Settings and Logs…") { model.openPreviewSettings(for: project) }
+                        Menu("Repositories") { repositoryActions }
+                        Button(model.previews[project.id]?.isActive == true ? "Stop Preview" : "Run Preview") {
+                            let preview = model.preview(for: project)
+                            if preview.isActive { preview.stop() } else { model.runPreview(for: project) }
                         }
-                        Button("Close Split") { model.setSplit(nil) }
+                        Button("Command Palette…") { model.showsCommandPalette = true }
+                    } label: { Image(systemName: "rectangle.split.2x1") }
+                    .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().help("Split workspace and tools")
+                    if geometry.size.width >= 540 { Menu { repositoryActions } label: { Image(systemName: "folder.badge.plus") }
+                        .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().help("Repositories · " + project.editorURL.lastPathComponent)
                     }
-                    Divider()
-                    Button("Changes…") { model.switchPanel(.changes) }
-                    Button(model.showsInspector ? "Hide Change Inspector" : "Show Change Inspector") { model.showsInspector.toggle() }
-                    Button("Checkpoints…") { model.showExperience("Recovery", project: project) }
-                    Button("Runtime Debugging…") { model.showExperience("Debug", project: project) }
-                    Button("Plans and Artifacts…") { model.showExperience("Artifacts", project: project) }
-                    Button("Terminal…") { model.openTerminal() }
-                    Button("MCP Servers…") { model.openProjectSettings(project, section: "MCP") }
-                    Button("Project Settings…") { model.openProjectSettings(project) }
-                    Divider()
-                    Button("Search Project…") { model.showsProjectSearch = true }
-                    Button("Preview Settings and Logs…") { model.openPreviewSettings(for: project) }
-                    Menu("Repositories") { repositoryActions }
-                    Button(model.previews[project.id]?.isActive == true ? "Stop Preview" : "Run Preview") {
+                    if geometry.size.width >= 460 { Button {
                         let preview = model.preview(for: project)
                         if preview.isActive { preview.stop() } else { model.runPreview(for: project) }
+                    } label: { Image(systemName: model.previews[project.id]?.isActive == true ? "stop.circle" : "play.circle") }
+                        .buttonStyle(.plain).help("Run or stop preview (⇧⌘R)")
                     }
-                    Button("Command Palette…") { model.showsCommandPalette = true }
-                } label: { Image(systemName: "rectangle.split.2x1") }
-                .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().help("Split workspace and tools")
-                if geometry.size.width >= 540 { Menu { repositoryActions } label: { Image(systemName: "folder.badge.plus") }
-                    .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().help("Repositories · " + project.editorURL.lastPathComponent)
+                    if selection == .conversation, geometry.size.width >= 540 {
+                        Button { model.showsInspector.toggle() } label: { Image(systemName: "sidebar.right") }
+                            .buttonStyle(.plain).foregroundStyle(.secondary)
+                            .accessibilityLabel("Toggle changes").help("Show or hide changes (⌥⌘I)")
+                    }
+                    Button(action: launchAgent) {
+                        if geometry.size.width >= 530 { Label("New Agent", systemImage: "person.badge.plus") }
+                        else { Image(systemName: "person.badge.plus") }
+                    }
+                    .controlSize(.small)
+                    .fixedSize()
+                    .accessibilityLabel("New Agent")
+                    .help("Launch an agent in \(project.name) (⇧⌘N)")
                 }
-                if geometry.size.width >= 460 { Button {
-                    let preview = model.preview(for: project)
-                    if preview.isActive { preview.stop() } else { model.runPreview(for: project) }
-                } label: { Image(systemName: model.previews[project.id]?.isActive == true ? "stop.circle" : "play.circle") }
-                    .buttonStyle(.plain).help("Run or stop preview (⇧⌘R)")
-                }
-                if selection == .conversation, geometry.size.width >= 540 {
-                    Button { model.showsInspector.toggle() } label: { Image(systemName: "sidebar.right") }
-                        .buttonStyle(.plain).foregroundStyle(.secondary)
-                        .accessibilityLabel("Toggle changes").help("Show or hide changes (⌥⌘I)")
-                }
-                Button(action: launchAgent) {
-                    if geometry.size.width >= 530 { Label("New Agent", systemImage: "plus") }
-                    else { Image(systemName: "plus") }
-                }
-                .controlSize(.small)
-                .fixedSize()
-                .accessibilityLabel("New Agent")
-                .help("Launch an agent in \(project.name) (⇧⌘N)")
+                .padding(.horizontal, 16)
+                .frame(width: geometry.size.width, height: 42)
+                viewShortcuts(width: geometry.size.width)
             }
-            .padding(.horizontal, 16)
-            .frame(width: geometry.size.width, height: geometry.size.height)
         }
-        .frame(height: 42)
+        .frame(height: 76)
         .background(Theme.canvas)
+    }
+
+    private static let shortcutOrder: [ProjectPanel] = [.code, .stats, .browser, .agents, .changes, .terminal, .pipelines, .api]
+
+    private func viewShortcuts(width: CGFloat) -> some View {
+        let count = width >= 900 ? 8 : width >= 740 ? 6 : width >= 540 ? 4 : width >= 430 ? 3 : 2
+        let direct = Array(Self.shortcutOrder.prefix(count))
+        let remaining = Array(Self.shortcutOrder.dropFirst(count))
+        return HStack(spacing: 6) {
+            Text("Views").font(.system(size: 11, weight: .medium)).foregroundStyle(.secondary).padding(.trailing, 3)
+            ForEach(direct, id: \.self) { tab in
+                Button { select(tab) } label: {
+                    Label(tab.title, systemImage: tab.symbol).font(.system(size: 11.5, weight: .medium))
+                }
+                .buttonStyle(.bordered).controlSize(.small).fixedSize()
+                .help("\(openTabs.contains(tab) ? "Switch to" : "Open") \(tab.title) tab (⌘\(tab.shortcut))")
+                .accessibilityLabel("Show " + tab.title)
+                #if DEBUG
+                    .background(DebugViewMarker(name: "workspace-open-" + tab.rawValue.lowercased()))
+                #endif
+            }
+            if !remaining.isEmpty {
+                Menu(width < 370 ? "More" : "More views") {
+                    ForEach(remaining, id: \.self) { tab in
+                        Button { select(tab) } label: { Label(tab.title, systemImage: tab.symbol) }
+                    }
+                }
+                .font(.system(size: 11.5)).controlSize(.small).fixedSize()
+                .help("Open or switch to another project view").accessibilityLabel("More project views")
+                #if DEBUG
+                    .background(DebugViewMarker(name: "workspace-more-views"))
+                #endif
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 16).frame(width: width, height: 34, alignment: .leading)
+        .background(Theme.panel)
+        #if DEBUG
+            .background(DebugViewMarker(name: "workspace-view-shortcuts"))
+        #endif
     }
 
     @ViewBuilder private var repositoryActions: some View {
@@ -111,14 +140,19 @@ struct WorkspaceHeader: View {
     private var openTabs: [ProjectPanel] { model.layout(for: project.id).openTabs }
 
     private var navigation: some View {
-        let strip = ScrollViewReader { scroll in
-            ScrollView(.horizontal) {
-                HStack(spacing: 4) {
-                    ForEach(openTabs, id: \.self) { tab in tabButton(tab).id(tab) }
-                }.padding(.vertical, 3)
+        let strip = HStack(spacing: 4) {
+            tabButton(.conversation).fixedSize(horizontal: true, vertical: false)
+            ScrollViewReader { scroll in
+                ScrollView(.horizontal) {
+                    HStack(spacing: 4) {
+                        ForEach(openTabs.filter { $0 != .conversation }, id: \.self) { tab in tabButton(tab).id(tab) }
+                    }.padding(.vertical, 3)
+                }
+                .scrollIndicators(.hidden)
+                .onChange(of: selection, initial: true) { _, tab in
+                    if tab != .conversation { scroll.scrollTo(tab, anchor: .center) }
+                }
             }
-            .scrollIndicators(.hidden)
-            .onChange(of: selection, initial: true) { _, tab in scroll.scrollTo(tab, anchor: .center) }
         }
         .frame(minWidth: 0, maxWidth: .infinity)
         #if DEBUG

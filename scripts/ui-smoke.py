@@ -65,6 +65,8 @@ assert [layout["tab"] for layout in layouts] == ["Conversation", "Agents", "Conv
 for layout in layouts:
     tabs, composer, content = layout["tabs"], layout["composer"], layout["content"]
     assert tabs["x"] >= 0 and tabs["x"] + tabs["width"] <= layout["windowWidth"] + 1, "Project tabs are clipped"
+    if layout["tab"] != "Conversation":
+        assert content["x"] + content["width"] >= layout["windowWidth"] - 1, "The chat inspector still reserves space in another tool"
     if composer:
         assert composer["height"] >= 30, "Multiline draft is clipped after switching tabs"
         used = layout["composerUsedHeight"]
@@ -75,4 +77,6 @@ for layout in layouts:
         assert composer["x"] + composer["width"] <= content["x"] + content["width"] + 1, "Composer spills into Changes panel"
     else:
         assert not layout["composerFocused"], "Hidden composer retains keyboard focus"
+saved = json.loads((data / "workspace.json").read_text())
+assert saved["projects"][0]["layout"]["showsInspector"] is True, "Switching tools changed the saved chat inspector preference"
 print(f"UI smoke checks passed. Screenshots and log: {root}")

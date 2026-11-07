@@ -1426,7 +1426,26 @@
             document.text += "\nUnsaved tab test.\n"
             let draft = document.text
 
-            model.switchPanel(.code); model.switchPanel(.stats); model.switchPanel(.code)
+            main.setContentSize(NSSize(width: 900, height: 600))
+            model.showsInspector = true
+            try await pause(0.3)
+            guard let root = main.contentView, let shortcuts = marker(in: root, named: "workspace-view-shortcuts") else {
+                throw DriverError("Named project view shortcuts are missing")
+            }
+            let viewport = shortcuts.convert(shortcuts.bounds, to: nil).insetBy(dx: -1, dy: -1)
+            for name in ["workspace-open-code", "workspace-open-stats", "workspace-more-views"] {
+                guard let control = marker(in: root, named: name), viewport.contains(control.convert(control.bounds, to: nil)) else {
+                    throw DriverError("Project view control is clipped with the inspector open: " + name)
+                }
+            }
+            if let directory = step["directory"]?.string {
+                try snapshot(to: directory + "/project-views-narrow-inspector.png", title: nil)
+            }
+            try await run(["op": "clickMarker", "name": "workspace-open-code"], model)
+            try await run(["op": "clickMarker", "name": "workspace-open-stats"], model)
+            try await run(["op": "clickMarker", "name": "workspace-open-code"], model)
+            model.showsInspector = false
+            main.setContentSize(NSSize(width: 1240, height: 820))
             try await pause(0.3)
             guard model.layout(for: project.id).openTabs == [.conversation, .code, .stats] else { throw DriverError("Opening an existing tool duplicated its tab") }
             try await run(["op": "projectTabClick", "tab": "stats"], model)
@@ -1436,16 +1455,16 @@
                   model.layout(for: project.id).openTabs == [.conversation, .stats], document.text == draft, document.isModified else {
                 throw DriverError("Closing an inactive Code tab changed the selection or lost the file draft")
             }
-            model.showCode()
+            try await run(["op": "clickMarker", "name": "workspace-open-code"], model)
             try await pause(0.2)
             guard editor.selectedDocument?.id == document.id else { throw DriverError("Reopening Code lost the open editor") }
             try await run(["op": "clickMarker", "name": "workspace-close-code"], model)
             guard model.layout(for: project.id).panel == .stats else { throw DriverError("Closing the active tab did not select its neighbor") }
-            model.switchPanel(.agents)
+            try await run(["op": "clickMarker", "name": "workspace-open-agents"], model)
             try await pause(0.2)
             try await run(["op": "clickMarker", "name": "workspace-close-agents"], model)
             guard source.isBusy else { throw DriverError("Closing Agents interrupted its running agent") }
-            model.switchPanel(.browser)
+            try await run(["op": "clickMarker", "name": "workspace-open-browser"], model)
             model.setSplit(.code)
             try await pause(0.2)
             guard model.layout(for: project.id).openTabs.contains(.code) else { throw DriverError("Split tools must have a tab") }
@@ -1480,7 +1499,7 @@
                 try snapshot(to: directory + "/project-tabs-light-compact.png", title: nil)
             }
             guard await model.save() else { throw DriverError("Project tabs could not be saved") }
-            log("Project tabs: open/reuse, native select/close, split cleanup, running agent and unsaved editor preservation, ordering and per-project state passed")
+            log("Project tabs: named view shortcuts at narrow widths, open/reuse, native select/close, split cleanup, running agent and unsaved editor preservation, ordering and per-project state passed")
         }
 
         private static func editSpaceUI(name: String, color: String, editing id: UUID? = nil, model: AppModel) async throws {

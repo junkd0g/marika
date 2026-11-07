@@ -131,11 +131,15 @@ private struct ProjectWorkspaceView: View {
     let project: Project
 
     @State private var dragStart: Double?
+    @State private var inspectorPresented = false
 
     private var selectedTab: AppModel.ProjectTab { model.projectTabs[project.id] ?? .conversation }
+    private var inspectorEligible: Bool {
+        model.selectedSession?.projectID == project.id && selectedTab == .conversation && arrangement.secondary == nil
+    }
 
     var body: some View {
-        let inspectorPresented = selectedTab == .conversation && arrangement.secondary == nil && model.showsInspector
+        let shouldPresentInspector = inspectorEligible && model.showsInspector
         VStack(spacing: 0) {
             projectHeader
             Divider()
@@ -177,13 +181,18 @@ private struct ProjectWorkspaceView: View {
             #endif
         }
         .background(Theme.canvas)
-        .inspector(isPresented: Binding(
-            get: { inspectorPresented },
-            set: { if selectedTab == .conversation { model.showsInspector = $0 } })
-        ) {
+        .inspector(isPresented: $inspectorPresented) {
             if let session = model.controllers[meta.id] {
                 ChangesInspector(session: session, project: project)
                     .inspectorColumnWidth(min: 260, ideal: 360, max: 620)
+            }
+        }
+        .onChange(of: shouldPresentInspector, initial: true) { _, presented in inspectorPresented = presented }
+        .onChange(of: inspectorPresented) { _, presented in
+            if inspectorEligible {
+                if model.showsInspector != presented { model.showsInspector = presented }
+            } else if presented {
+                inspectorPresented = false
             }
         }
     }
