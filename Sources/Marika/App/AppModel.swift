@@ -433,6 +433,10 @@ final class AppModel {
     /// Re-reads what each agent's CLI reports. Runs at launch and whenever the app regains
     /// focus, which is how a sign-in finished in Terminal gets noticed.
     func refreshAgents(force: Bool = false) async {
+        #if DEBUG
+            // Documentation captures use fixture conversations, not the local CLI account.
+            if ProcessInfo.processInfo.environment["MARIKA_DEMO"] == "1" { return }
+        #endif
         guard isReady, !isRefreshingAgents else { return }
         // Switching windows shouldn't start processes every time, but a sign-in in progress should
         // be noticed quickly when the user comes back.
