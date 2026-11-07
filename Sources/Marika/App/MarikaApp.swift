@@ -14,6 +14,7 @@ struct MarikaApp: App {
                 .frame(minWidth: 900, minHeight: 600)
                 .task {
                     delegate.model = model
+                    model.configureUpdater()
                     await model.bootstrap()
                 }
                 .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
@@ -24,6 +25,12 @@ struct MarikaApp: App {
         .windowStyle(.hiddenTitleBar)
         .windowToolbarStyle(.unifiedCompact)
         .commands { MarikaCommands(model: model) }
+
+        Window("Marika Updates", id: "updates") {
+            UpdatesView().environment(model).frame(width: 620, height: 600)
+        }
+        .windowResizability(.contentSize)
+        .defaultLaunchBehavior(.suppressed)
 
         Settings {
             SettingsView()
@@ -84,17 +91,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 struct MarikaCommands: Commands {
     @Bindable var model: AppModel
     @FocusedValue(\.fileNavigator) private var fileNavigator
+    @Environment(\.openWindow) private var openWindow
 
     var body: some Commands {
+        CommandGroup(after: .appInfo) {
+            Button("Check for Updates…") {
+                openWindow(id: "updates")
+                Task { await model.updates.check() }
+            }
+            Button("Release Notes…") { openWindow(id: "updates") }
+        }
         CommandGroup(replacing: .newItem) {
             Button("Open Project…") { model.chooseProject() }
                 .keyboardShortcut("o")
+            Button("New Space…") { openWindow(id: "main"); model.showSpaceEditor() }
+                .disabled(model.workspaceLoadFailed)
             Button("Go to File…") { model.showCode(quickOpen: true) }
                 .keyboardShortcut("p")
                 .disabled(model.selectedSession == nil)
             Button("Launch Agent…") { model.showAgents(launch: true) }
                 .keyboardShortcut("n", modifiers: [.command, .shift])
-                .disabled(model.workspace.projects.isEmpty)
+                .disabled(model.spaceProjects.isEmpty)
         }
         CommandGroup(after: .newItem) {
             Button("Move to Trash…") {
@@ -105,6 +122,8 @@ struct MarikaCommands: Commands {
             Button("Command Palette…") { model.showsCommandPalette = true }.keyboardShortcut("k")
             Button("Search Project…") { model.showsProjectSearch = true }
                 .keyboardShortcut("f", modifiers: [.command, .shift]).disabled(model.selectedSession == nil)
+            Button("Search Chat History…") { openWindow(id: "main"); model.showsChatHistorySearch = true }
+                .keyboardShortcut("h", modifiers: [.command, .shift]).disabled(model.workspaceLoadFailed)
             Button("Run or Stop Preview") {
                 guard let project = model.selectedProject else { return }
                 let preview = model.preview(for: project)
@@ -133,6 +152,26 @@ struct MarikaCommands: Commands {
             .disabled(model.activeEditor?.selectedDocument?.isEditable != true)
         }
         CommandMenu("Navigate") {
+            Button("Previous Project Tab") { model.selectAdjacentProjectTab(-1) }
+                .keyboardShortcut(.tab, modifiers: [.control, .shift]).disabled(model.selectedProject == nil)
+            Button("Next Project Tab") { model.selectAdjacentProjectTab(1) }
+                .keyboardShortcut(.tab, modifiers: .control).disabled(model.selectedProject == nil)
+            Button("Close Project Tab") {
+                if let project = model.selectedProject { model.closeProjectTab(model.layout(for: project.id).panel) }
+            }.disabled(model.selectedProject.map { model.layout(for: $0.id).panel == .conversation } ?? true)
+            Divider()
+            Button("Previous Space") { model.selectAdjacentSpace(-1) }
+                .keyboardShortcut(.leftArrow, modifiers: [.control, .option]).disabled(model.workspace.spaces.count < 2)
+            Button("Next Space") { model.selectAdjacentSpace(1) }
+                .keyboardShortcut(.rightArrow, modifiers: [.control, .option]).disabled(model.workspace.spaces.count < 2)
+            Menu("Switch Space") {
+                ForEach(model.workspace.spaces) { space in
+                    Button { model.selectSpace(space.id) } label: {
+                        Label(space.name, systemImage: model.selectedSpace.id == space.id ? "checkmark" : space.symbol)
+                    }
+                }
+            }
+            Divider()
             ForEach(AppModel.ProjectTab.allCases, id: \.self) { tab in
                 Button("Show \(tab.title)") { model.switchPanel(tab) }
                     .keyboardShortcut(KeyEquivalent(Character(tab.shortcut)))
@@ -177,7 +216,7 @@ struct MarikaCommands: Commands {
             Divider()
             Button("Show Agents") { model.showAgents() }
                 .keyboardShortcut("a", modifiers: [.command, .shift])
-                .disabled(model.workspace.projects.isEmpty)
+                .disabled(model.spaceProjects.isEmpty)
             Button("Show Browser") {
                 guard let meta = model.selectedSession, let project = model.project(for: meta) else { return }
                 _ = model.browser(for: project)

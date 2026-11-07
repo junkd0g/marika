@@ -44,3 +44,5 @@ jobs:
         run: |
           scripts/build-app.sh release
           codesign --verify --deep --strict build/Marika.app
+      - name: Verify signed update packaging with temporary keys
+        run: python3 scripts/test-update-package.py

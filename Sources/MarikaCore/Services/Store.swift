@@ -53,6 +53,39 @@ public actor Store {
     public func loadTranscript(_ id: UUID) throws -> [TranscriptItem] { try read(transcriptURL(id), default: []) }
     public func saveTranscript(_ items: [TranscriptItem], for id: UUID) throws { try write(items, to: transcriptURL(id)) }
 
+    /// Search stays local and uses live buffers in preference to older saved transcripts.
+    /// Reading a backup here is deliberately read-only; browsing history must not repair files.
+    public func searchChatHistory(in workspace: Workspace, query: String, projectID: UUID? = nil,
+                                  liveTranscripts: [UUID: [TranscriptItem]] = [:], limit: Int = 200) async throws -> ChatHistoryResults {
+        guard !ChatHistorySearch.terms(query).isEmpty, limit > 0 else { return ChatHistoryResults() }
+        let limit = min(limit, 500)
+        let projects = Dictionary(workspace.projects.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        var result = ChatHistoryResults()
+        for session in workspace.sessions where projectID == nil || session.projectID == projectID {
+            try Task.checkCancellation()
+            await Task.yield()
+            guard let project = projects[session.projectID] else { continue }
+            let items: [TranscriptItem]
+            if let live = liveTranscripts[session.id] { items = live }
+            else {
+                let url = transcriptURL(session.id)
+                do { items = try decoder.decode([TranscriptItem].self, from: Data(contentsOf: url)) }
+                catch {
+                    let originalError = error
+                    do { items = try decoder.decode([TranscriptItem].self, from: Data(contentsOf: backupURL(url))) }
+                    catch {
+                        if !isMissing(originalError) || !isMissing(error) { result.unreadableConversations += 1 }
+                        continue
+                    }
+                }
+            }
+            let found = try ChatHistorySearch.matches(in: items, session: session, project: project, query: query, limit: limit)
+            result.totalMatches += found.totalMatches
+            result.matches = ChatHistorySearch.newest(result.matches + found.matches, limit: limit)
+        }
+        return result
+    }
+
     public func deleteTranscript(_ id: UUID) {
         let url = transcriptURL(id)
         try? FileManager.default.removeItem(at: url)

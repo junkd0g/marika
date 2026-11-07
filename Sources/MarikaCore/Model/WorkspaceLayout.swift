@@ -26,8 +26,9 @@ public struct EditorFileState: Codable, Equatable, Hashable, Sendable {
 }
 
 public struct ProjectLayout: Codable, Equatable, Hashable, Sendable {
-    public var panel: ProjectPanel = .conversation
-    public var secondary: ProjectPanel?
+    public var panel: ProjectPanel = .conversation { didSet { includeTab(panel) } }
+    public var secondary: ProjectPanel? { didSet { if let secondary { includeTab(secondary) } } }
+    public private(set) var openTabs: [ProjectPanel] = [.conversation]
     public var stacked = false
     public var splitFraction = 0.5
     public var showsInspector = true
@@ -41,13 +42,14 @@ public struct ProjectLayout: Codable, Equatable, Hashable, Sendable {
     public init() {}
 
     private enum CodingKeys: String, CodingKey {
-        case panel, secondary, stacked, splitFraction, showsInspector, showsNavigator, navigatorWidth
+        case panel, secondary, openTabs, stacked, splitFraction, showsInspector, showsNavigator, navigatorWidth
         case files, selectedFile, browserURLs, browserIndex, browserViewport
     }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         panel = try c.decodeIfPresent(ProjectPanel.self, forKey: .panel) ?? .conversation
         secondary = try c.decodeIfPresent(ProjectPanel.self, forKey: .secondary)
+        openTabs = try c.decodeIfPresent([ProjectPanel].self, forKey: .openTabs) ?? [.conversation]
         stacked = try c.decodeIfPresent(Bool.self, forKey: .stacked) ?? false
         splitFraction = min(0.8, max(0.2, try c.decodeIfPresent(Double.self, forKey: .splitFraction) ?? 0.5))
         showsInspector = try c.decodeIfPresent(Bool.self, forKey: .showsInspector) ?? true
@@ -59,6 +61,59 @@ public struct ProjectLayout: Codable, Equatable, Hashable, Sendable {
         browserIndex = try c.decodeIfPresent(Int.self, forKey: .browserIndex) ?? 0
         browserViewport = try c.decodeIfPresent(String.self, forKey: .browserViewport) ?? "Desktop"
         if secondary == panel { secondary = nil }
+        normalizeTabs()
+    }
+
+    public mutating func normalizeTabs() {
+        var seen: Set<ProjectPanel> = [.conversation]
+        openTabs = [.conversation] + openTabs.filter { seen.insert($0).inserted }
+        includeTab(panel)
+        if let secondary { includeTab(secondary) }
+    }
+
+    public mutating func openTab(_ tab: ProjectPanel) {
+        let previous = panel
+        let swapping = secondary == tab && tab != previous
+        panel = tab
+        if swapping { secondary = previous }
+        if secondary == panel { secondary = nil }
+    }
+
+    @discardableResult
+    public mutating func closeTab(_ tab: ProjectPanel) -> Bool {
+        guard tab != .conversation, let index = openTabs.firstIndex(of: tab) else { return false }
+        openTabs.remove(at: index)
+        if secondary == tab { secondary = nil }
+        if panel == tab {
+            let next = secondary ?? openTabs[max(0, index - 1)]
+            secondary = nil
+            panel = next
+        }
+        return true
+    }
+
+    public mutating func closeOtherTabs(keeping tab: ProjectPanel) {
+        secondary = nil
+        openTabs = tab == .conversation ? [.conversation] : [.conversation, tab]
+        panel = tab
+    }
+
+    @discardableResult
+    public mutating func moveTab(_ tab: ProjectPanel, offset: Int) -> Bool {
+        guard tab != .conversation, let index = openTabs.firstIndex(of: tab),
+              index + offset > 0, openTabs.indices.contains(index + offset) else { return false }
+        openTabs.remove(at: index)
+        openTabs.insert(tab, at: index + offset)
+        return true
+    }
+
+    public func adjacentTab(_ offset: Int) -> ProjectPanel {
+        let index = openTabs.firstIndex(of: panel) ?? 0
+        return openTabs[(index + offset % openTabs.count + openTabs.count) % openTabs.count]
+    }
+
+    private mutating func includeTab(_ tab: ProjectPanel) {
+        if !openTabs.contains(tab) { openTabs.append(tab) }
     }
 }
 

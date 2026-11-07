@@ -40,6 +40,7 @@ def step(op, **values):
 
 steps = [step("wait", seconds=1.2), step("agentsMock", seconds=0.1), step("size", width=900, height=600),
          step("draft", text=draft), step("wait", seconds=0.3), step("uiState"),
+         step("shortcut", key="4"), step("wait", seconds=0.2),
          step("projectTabClick", tab="agents"), step("wait", seconds=0.3), step("key", code=36),
          step("wait", seconds=0.3), step("state"), step("uiState"),
          step("codeOpen", path=code_path), step("wait", seconds=0.3),

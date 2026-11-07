@@ -7,6 +7,8 @@ extension AppModel {
 
     func layout(for id: UUID) -> ProjectLayout { project(id: id)?.layout ?? ProjectLayout() }
     func updateLayout(_ layout: ProjectLayout, for id: UUID) {
+        var layout = layout
+        layout.normalizeTabs()
         updateProject(id) { $0.layout = layout }
         projectTabs[id] = layout.panel
     }
@@ -23,11 +25,36 @@ extension AppModel {
     func switchPanel(_ tab: ProjectPanel) {
         guard let project = selectedProject else { return }
         var saved = layout(for: project.id)
-        let previous = projectTabs[project.id] ?? .conversation
-        if saved.secondary == tab { saved.secondary = previous }
-        saved.panel = tab
+        saved.openTab(tab)
         updateLayout(saved, for: project.id)
         selectProjectTab(tab)
+    }
+
+    func closeProjectTab(_ tab: ProjectPanel) {
+        guard let project = selectedProject else { return }
+        var saved = layout(for: project.id)
+        guard saved.closeTab(tab) else { return }
+        updateLayout(saved, for: project.id)
+        selectProjectTab(saved.panel)
+    }
+
+    func closeOtherProjectTabs(keeping tab: ProjectPanel) {
+        guard let project = selectedProject else { return }
+        var saved = layout(for: project.id)
+        saved.closeOtherTabs(keeping: tab)
+        updateLayout(saved, for: project.id)
+        selectProjectTab(saved.panel)
+    }
+
+    func moveProjectTab(_ tab: ProjectPanel, offset: Int) {
+        guard let project = selectedProject else { return }
+        var saved = layout(for: project.id)
+        if saved.moveTab(tab, offset: offset) { updateLayout(saved, for: project.id) }
+    }
+
+    func selectAdjacentProjectTab(_ offset: Int) {
+        guard let project = selectedProject else { return }
+        switchPanel(layout(for: project.id).adjacentTab(offset))
     }
     func preview(for project: Project) -> ProjectPreview {
         if let preview = previews[project.id] { return preview }

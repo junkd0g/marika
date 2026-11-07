@@ -52,7 +52,10 @@ struct RootView: View {
                     ProjectWorkspaceView(meta: meta, project: project)
                         .id(project.id)
                 } else {
-                    WelcomeView()
+                    Group {
+                        if model.workspace.projects.isEmpty && model.workspace.spaces.count == 1 { WelcomeView() }
+                        else { SpaceEmptyView() }
+                    }
                         .overlay(alignment: .topLeading) {
                             if !model.showsProjectSidebar {
                                 Button { model.showsProjectSidebar = true } label: { Image(systemName: "sidebar.left") }
@@ -96,6 +99,12 @@ struct RootView: View {
         .sheet(isPresented: $model.showsProjectSearch) {
             if let project = model.selectedProject { ProjectSearchView(project: project).environment(model) }
         }
+        .sheet(isPresented: $model.showsChatHistorySearch) {
+            ChatHistorySearchView().environment(model)
+        }
+        .sheet(isPresented: $model.showsSpaceEditor, onDismiss: { model.spaceEditorProjectID = nil }) {
+            SpaceEditorView(space: model.workspace.spaces.first { $0.id == model.editingSpaceID }).environment(model)
+        }
         .sheet(item: Binding(
             get: { model.previewProjectID.flatMap(model.project(id:)) },
             set: { if $0 == nil { model.previewProjectID = nil } }
@@ -126,6 +135,7 @@ private struct ProjectWorkspaceView: View {
     private var selectedTab: AppModel.ProjectTab { model.projectTabs[project.id] ?? .conversation }
 
     var body: some View {
+        let inspectorPresented = selectedTab == .conversation && arrangement.secondary == nil && model.showsInspector
         VStack(spacing: 0) {
             projectHeader
             Divider()
@@ -168,7 +178,7 @@ private struct ProjectWorkspaceView: View {
         }
         .background(Theme.canvas)
         .inspector(isPresented: Binding(
-            get: { selectedTab == .conversation && arrangement.secondary == nil && model.showsInspector },
+            get: { inspectorPresented },
             set: { if selectedTab == .conversation { model.showsInspector = $0 } })
         ) {
             if let session = model.controllers[meta.id] {

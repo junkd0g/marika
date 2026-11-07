@@ -25,6 +25,15 @@ at the top of the window with **Open Saved Data** and **Try Again**. Failed save
 New sessions offer starting prompts you can review before sending. Account and billing changes
 take effect after any active turn finishes, so changing settings doesn't cut off your agent.
 
+Organize projects into **spaces** in the left sidebar. The colored icons at the bottom switch
+spaces; **+** creates one. Each space remembers its last project, chat, and editor state. New
+projects belong to the current space. Right-click a project and choose **Move to Space**.
+Use a space's menu to edit its name, icon and color, change its position,
+or delete it. Deleting a space moves its projects to the space named in the confirmation;
+files and conversations are kept. Existing projects start in **Personal**. **⌃⌥← / ⌃⌥→** switch
+spaces, and **Navigate → Switch Space** and the command palette list them by name. Running
+agents keep working when you switch, with activity dots on their space icons.
+
 The chat composer has separate **model**, **reasoning effort**, and **speed** controls for Codex.
 Speed offers Standard plus the faster tiers advertised by the selected model, including Fast
 or Ultrafast when available. **Default speed** follows your Codex configuration. Each chat keeps
@@ -32,7 +41,27 @@ its own choice across restarts; changes apply to the next turn. Narrow windows w
 onto two rows so the speed selector remains accessible. Light and dark chat layouts use quiet
 project navigation, neutral message bubbles, and a rounded composer.
 
-Each project has **Chat**, **Code**, **Browser**, **Agents**, **Stats**, **Pipelines**, and **API** tabs. Chat includes a **#project** channel and direct conversations with the project's agents, with live status, unread replies and agent search. Type **@** to choose an agent, then send a message to its conversation. Drafts and attachments stay with each chat, and switching projects or tabs restores your last conversation. The outer sidebar remains project-only.
+Use **+** in a project's top bar to open **Code**, **Stats**, **Browser**, **Agents**, **Pipelines**,
+**API**, **Changes**, or **Terminal** as a tab. **Chat** stays pinned at the beginning. Opening a
+view again selects its existing tab. Each tool tab has an **×** to close it; its context menu can
+close other tabs or move it left or right. Each project remembers its open tabs, order and selected
+view across restarts. Closing a tool tab keeps unsaved editor files and running tasks available
+when you reopen it. **⌃Tab / ⌃⇧Tab** cycle through open tabs; **⌘1–9** open or select a view directly.
+
+Chat includes a **#project** channel and direct conversations with the project's agents, with live status, unread replies and agent search. Type **@** to choose an agent, then send a message to its conversation. Drafts and attachments stay with each chat, and switching projects or tabs restores your last conversation. The outer sidebar remains project-only.
+
+Use **Search chat history** in the chat header, or **⇧⌘H**, to search messages across all projects
+in a separate window overlay. Filter by project and open a result to jump to the original message,
+highlighted in its conversation. **Latest** returns to the end of the chat. Search reads saved and
+live conversations locally; it sends no messages to a provider and leaves your drafts intact.
+
+**Marika → Check for Updates…**, **Release Notes…**, and **Settings → Updates** show the installed
+version and build, release notes, and the latest published GitHub release. Checks run when you ask.
+No published release is reported separately from being up to date, and network failures remain
+visible with a retry action. Release builds configured with an appcast and public signing key offer
+**Download and Install…** through Sparkle, which verifies signed archives and feeds. Installation
+checks for working agents and unsaved or saving editor documents before allowing a restart.
+Development builds without a signing feed can check releases and open their download page.
 
 In Code, browse folders and edit multiple
 files with line numbers, language-aware syntax colours, undo, and Find (⌘F). Save with ⌘S. Unsaved
@@ -267,6 +296,51 @@ scripts/build-app.sh
 open build/Marika.app
 ```
 
+## Signed app updates
+
+Sparkle is pinned through SwiftPM and embedded, with its helper services, in the app bundle.
+Normal development builds provide version information, release notes, and GitHub release checks.
+To enable in-app installation, configure a real HTTPS appcast URL and Ed25519 public key when
+building. Archives and the appcast must be signed with the matching private key.
+
+After resolving the package, generate a release-signing key in your Keychain:
+
+```bash
+.build/artifacts/sparkle/Sparkle/bin/generate_keys --account marika-updates
+```
+
+Use the public key printed by that tool. Use a higher version and build number for each release:
+
+```bash
+MARIKA_VERSION=0.2.0 MARIKA_BUILD_NUMBER=2 \
+MARIKA_UPDATE_FEED_URL=https://github.com/junkd0g/marika/releases/latest/download/appcast.xml \
+MARIKA_UPDATE_PUBLIC_KEY='<your public key>' \
+scripts/build-app.sh release
+```
+
+For distribution to other Macs, set `MARIKA_SIGNING_IDENTITY` to a Developer ID Application
+identity and notarize the app before packaging it. The build script embeds and signs Sparkle's
+framework and helper services, preserves their entitlements, and removes local SwiftPM search
+paths from the packaged executable. Developer ID builds use hardened runtime and timestamping.
+
+Prepare a signed archive and feed locally, supplying your Markdown release notes:
+
+```bash
+python3 scripts/package-update.py \
+  --download-prefix https://github.com/junkd0g/marika/releases/download/v0.2.0/ \
+  --notes /path/to/release-notes.md
+```
+
+The command verifies the archive against the public key embedded in the app and verifies the
+signed appcast. It writes `build/update-release/Marika-0.2.0.zip` and `appcast.xml`; it does not
+publish them. Attach those files to the corresponding GitHub release and use the same notes
+as the release description. Keep the private key in Keychain; CI can instead provide its path
+with `--private-key-file`. No private signing key is embedded in the app or committed to Git.
+
+`python3 scripts/test-update-package.py` verifies the packaging flow with an inert fixture app
+and temporary keys, including mismatched-key and tampered-file rejection. CI runs this check
+after building the app.
+
 ## How it fits together
 
 ```
@@ -313,6 +387,17 @@ screenshots and a driver log in the temporary directory printed at the end.
 
 `python3 scripts/ui-codex-style.py` checks the light and dark chat layouts, speed-control
 visibility in narrow windows, and speed/effort persistence across restarts using mock agents.
+
+`python3 scripts/ui-spaces.py` checks space creation, appearance editing, scoped project lists,
+switching with active agents and unsaved drafts, space removal, and restoration after a restart.
+It uses temporary data and mock agents, and captures light and dark layouts.
+
+`python3 scripts/ui-project-tabs.py` checks opening, reusing and closing project tool tabs,
+split cleanup, per-project tab restoration, and preservation of active agents and unsaved files.
+
+`python3 scripts/ui-history-updates.py` checks cross-project message search, older-message jumps,
+draft preservation, release notes and update states. It also makes one read-only request to the
+public GitHub releases endpoint; it sends no AI prompts or conversation data.
 
 `python3 scripts/ui-recovery.py` checks deleted-file drafts, backup recovery, corrupt-data
 protection, and retrying failed transcript saves through the native app using a mock agent.

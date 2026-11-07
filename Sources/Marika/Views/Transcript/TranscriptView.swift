@@ -41,6 +41,7 @@ enum TranscriptRow: Identifiable {
 }
 
 struct TranscriptView: View {
+    @Environment(AppModel.self) private var model
     let session: SessionController
 
     /// Rows are laid out exactly rather than lazily. A lazy stack anchored to the bottom has to
@@ -51,6 +52,8 @@ struct TranscriptView: View {
     @State private var position = ScrollPosition(edge: .bottom)
     @State private var isAwayFromBottom = false
     @State private var visibleRows = TranscriptView.pageSize
+    @State private var historyWindowEnd: Int?
+    @State private var highlightedItemID: String?
     /// Whether the view tracks the end of the conversation. Only the user can turn this off, by
     /// scrolling away. SwiftUI's bottom anchor isn't enough here: when rows settle their height
     /// the scroll view can snap back to the top, and asking for `.bottom` again does nothing
@@ -67,30 +70,57 @@ struct TranscriptView: View {
     var body: some View {
         let rows = TranscriptRow.build(session.items)
         let children = Dictionary(grouping: session.items.filter { $0.parentToolID != nil }) { $0.parentToolID ?? "" }
-        let hiddenRows = max(0, rows.count - visibleRows)
+        let windowEnd = min(rows.count, historyWindowEnd ?? rows.count)
+        let windowStart = max(0, windowEnd - visibleRows)
 
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
-                if hiddenRows > 0 {
+                if windowStart > 0 {
                     Button("Show earlier messages") { visibleRows += Self.pageSize }
                         .buttonStyle(.link)
                         .font(.system(size: 12))
                         .frame(maxWidth: .infinity)
                 }
-                ForEach(rows.suffix(visibleRows)) { row in
-                    switch row {
-                    case .message(let item):
-                        MessageRow(item: item, agent: session.meta.agent)
-                    case .activity(_, let items):
-                        ActivityGroup(
-                            items: items, children: children,
-                            isLive: session.isBusy && row.id == rows.last?.id)
+                ForEach(rows[windowStart..<windowEnd]) { row in
+                    Group {
+                        switch row {
+                        case .message(let item):
+                            MessageRow(item: item, agent: session.meta.agent)
+                        case .activity(_, let items):
+                            ActivityGroup(
+                                items: items, children: children,
+                                isLive: session.isBusy && row.id == rows.last?.id)
+                        }
                     }
+                    .background {
+                        if highlightedItemID == row.id {
+                            RoundedRectangle(cornerRadius: 10).fill(Color.accentColor.opacity(0.1))
+                                .padding(.horizontal, -8).padding(.vertical, -6)
+                        }
+                    }
+                    .overlay {
+                        if highlightedItemID == row.id {
+                            RoundedRectangle(cornerRadius: 10).strokeBorder(Color.accentColor.opacity(0.45), lineWidth: 1)
+                                .padding(.horizontal, -8).padding(.vertical, -6)
+                        }
+                    }
+                    .id(row.id)
+                    #if DEBUG
+                        .background {
+                            if highlightedItemID == row.id { DebugViewMarker(name: "chat-history-target") }
+                        }
+                    #endif
                 }
-                if session.isBusy {
+                if windowEnd < rows.count {
+                    Button("Show later messages") {
+                        historyWindowEnd = min(rows.count, windowEnd + Self.pageSize)
+                        visibleRows += Self.pageSize
+                    }.buttonStyle(.link).font(.system(size: 12)).frame(maxWidth: .infinity)
+                } else if session.isBusy {
                     WorkingIndicator(session: session)
                 }
             }
+            .scrollTargetLayout()
             .frame(maxWidth: Theme.transcriptWidth)
             .frame(maxWidth: .infinity)
             .padding(.horizontal, 28)
@@ -119,7 +149,7 @@ struct TranscriptView: View {
             if case .user = session.items.last?.content { jumpToEnd() }
         }
         .overlay(alignment: .bottom) {
-            if isAwayFromBottom {
+            if isAwayFromBottom || historyWindowEnd != nil {
                 Button(action: jumpToEnd) {
                     Label("Latest", systemImage: "arrow.down")
                         .font(.system(size: 12, weight: .medium))
@@ -130,13 +160,30 @@ struct TranscriptView: View {
                 .buttonStyle(.plain)
                 .padding(.bottom, 10)
                 .transition(.opacity.combined(with: .move(edge: .bottom)))
+                #if DEBUG
+                    .background(DebugViewMarker(name: "transcript-latest"))
+                #endif
             }
         }
         .animation(.easeOut(duration: 0.15), value: isAwayFromBottom)
         .onAppear { ScrollWheelActivity.shared.start() }
+        .task(id: model.chatHistoryFocus?.requestID) {
+            guard let focus = model.chatHistoryFocus, focus.sessionID == session.id,
+                  let index = rows.firstIndex(where: { $0.id == focus.itemID }) else { return }
+            isFollowing = false
+            historyWindowEnd = min(rows.count, index + Self.pageSize / 2)
+            visibleRows = Self.pageSize
+            highlightedItemID = focus.itemID
+            await Task.yield()
+            if !Task.isCancelled { position.scrollTo(id: focus.itemID, anchor: .center) }
+        }
     }
 
     private func jumpToEnd() {
+        historyWindowEnd = nil
+        visibleRows = Self.pageSize
+        highlightedItemID = nil
+        if model.chatHistoryFocus?.sessionID == session.id { model.chatHistoryFocus = nil }
         isFollowing = true
         withAnimation(.easeOut(duration: 0.2)) { position.scrollTo(y: endOffset) }
     }

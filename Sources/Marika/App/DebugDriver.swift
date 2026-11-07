@@ -377,9 +377,33 @@
                 try await testProjectChat(step, model)
             case "markdownTest":
                 try await testMarkdown(step, model)
+            case "chatHistoryUpdatesTest":
+                try await testChatHistoryUpdates(step, model)
+            case "spacesTest":
+                try await testSpaces(step, model)
+            case "projectTabsTest":
+                try await testProjectTabs(step, model)
+            case "projectTabsState":
+                guard let project = model.selectedProject else { throw DriverError("No selected project") }
+                let layout = model.layout(for: project.id)
+                let state: [String: Any] = ["project": project.name, "selected": layout.panel.rawValue,
+                    "tabs": layout.openTabs.map(\.rawValue), "split": layout.secondary?.rawValue ?? "",
+                    "sessions": model.workspace.sessions.count]
+                log("projectTabs " + String(decoding: try JSONSerialization.data(withJSONObject: state, options: [.sortedKeys]), as: UTF8.self))
+            case "spaceCreate":
+                try await editSpaceUI(name: step["name"]?.string ?? "Work", color: step["color"]?.string ?? "teal", model: model)
+            case "spaceSwitch":
+                guard let space = model.workspace.spaces.first(where: { $0.name == step["name"]?.string }) else { throw DriverError("Space not found") }
+                try await run(["op": "clickMarker", "name": .string("space-switch-" + space.id.uuidString)], model)
+            case "spacesState":
+                let state: [String: Any] = ["selectedSpace": model.selectedSpace.name,
+                    "selectedProject": model.selectedProject?.name ?? "",
+                    "spaces": model.workspace.spaces.map(\.name), "visibleProjects": model.spaceProjects.map(\.name),
+                    "drafts": Dictionary(uniqueKeysWithValues: model.workspace.sessions.map { ($0.id.uuidString, $0.draft?.text ?? "") })]
+                log("spaces " + String(decoding: try JSONSerialization.data(withJSONObject: state, options: [.sortedKeys]), as: UTF8.self))
             case "clickMarker":
                 let name = step["name"]?.string ?? ""
-                guard let target = NSApp.windows.compactMap({ window in window.contentView.flatMap { marker(in: $0, named: name) }.map { (window, $0) } }).first else { throw DriverError("Missing UI element: " + name) }
+                guard let target = NSApp.windows.filter(\.isVisible).compactMap({ window in window.contentView.flatMap { marker(in: $0, named: name) }.map { (window, $0) } }).first else { throw DriverError("Missing UI element: " + name) }
                 try click(target.1, in: target.0)
                 try await pause(0.3)
             case "editorPopoverShot":
@@ -609,7 +633,11 @@
                 let target = window()?.attachedSheet ?? window()
                 guard let view = target?.contentView,
                       let field = textField(in: view, placeholder: step["navigator"]?.bool == true ? "Find files…" : "Go to file…")
-                else { throw DriverError("file search field not found") }
+                else {
+                    log("file search missing: window=\(target?.title ?? "none"), frame=\(target?.frame ?? .zero), navigator=\(model.activeEditor?.showsNavigator == true)")
+                    try? await run(["op": "uiState"], model)
+                    throw DriverError("file search field not found")
+                }
                 target?.makeFirstResponder(field)
                 if let input = field.currentEditor() as? NSTextView {
                     input.insertText(step["text"]?.string ?? "", replacementRange: NSRange(location: 0, length: (input.string as NSString).length))
@@ -1379,6 +1407,280 @@
             assistant.dismiss()
             view.applyAssistanceText(original, selection: NSRange(location: 0, length: 0), action: "Restore fixture")
             log("Real Go autocomplete with Tab and undo, hover docs, signatures, inline quick fixes, and stale-action protection passed")
+        }
+
+        private static func testProjectTabs(_ step: JSONValue, _ model: AppModel) async throws {
+            guard let project = model.selectedProject, let sourceID = model.selectedSessionID,
+                  let other = model.workspace.projects.first(where: { $0.id != project.id }), let main = window() else {
+                throw DriverError("Two fixture projects are required")
+            }
+            guard model.layout(for: project.id).openTabs == [.conversation] else { throw DriverError("A new project should start with Chat only") }
+            model.agentFactoryOverride = { _ in DebugTaskAgent(seconds: 60) }
+            let source = try await current(model)
+            source.send(UserInput(text: "Project tabs fixture."))
+            for _ in 0..<60 { if source.isBusy { break }; try await pause(0.05) }
+            source.draft = "Keep this chat draft when closing tools."
+            let editor = model.editor(for: project)
+            await editor.open("README.md")
+            guard let document = editor.selectedDocument else { throw DriverError("Fixture file did not open") }
+            document.text += "\nUnsaved tab test.\n"
+            let draft = document.text
+
+            model.switchPanel(.code); model.switchPanel(.stats); model.switchPanel(.code)
+            try await pause(0.3)
+            guard model.layout(for: project.id).openTabs == [.conversation, .code, .stats] else { throw DriverError("Opening an existing tool duplicated its tab") }
+            try await run(["op": "projectTabClick", "tab": "stats"], model)
+            try await pause(0.2)
+            try await run(["op": "clickMarker", "name": "workspace-close-code"], model)
+            guard model.layout(for: project.id).panel == .stats,
+                  model.layout(for: project.id).openTabs == [.conversation, .stats], document.text == draft, document.isModified else {
+                throw DriverError("Closing an inactive Code tab changed the selection or lost the file draft")
+            }
+            model.showCode()
+            try await pause(0.2)
+            guard editor.selectedDocument?.id == document.id else { throw DriverError("Reopening Code lost the open editor") }
+            try await run(["op": "clickMarker", "name": "workspace-close-code"], model)
+            guard model.layout(for: project.id).panel == .stats else { throw DriverError("Closing the active tab did not select its neighbor") }
+            model.switchPanel(.agents)
+            try await pause(0.2)
+            try await run(["op": "clickMarker", "name": "workspace-close-agents"], model)
+            guard source.isBusy else { throw DriverError("Closing Agents interrupted its running agent") }
+            model.switchPanel(.browser)
+            model.setSplit(.code)
+            try await pause(0.2)
+            guard model.layout(for: project.id).openTabs.contains(.code) else { throw DriverError("Split tools must have a tab") }
+            try await run(["op": "clickMarker", "name": "workspace-close-code"], model)
+            guard model.layout(for: project.id).panel == .browser, model.layout(for: project.id).secondary == nil else { throw DriverError("Closing a split tab left an inaccessible pane") }
+            try await run(["op": "clickMarker", "name": "workspace-close-browser"], model)
+            model.showCode()
+            model.moveProjectTab(.code, offset: -1)
+            guard model.layout(for: project.id).openTabs == [.conversation, .code, .stats] else { throw DriverError("Tab order was not updated") }
+            model.closeOtherProjectTabs(keeping: .code)
+            guard model.layout(for: project.id).openTabs == [.conversation, .code] else { throw DriverError("Close Other Tabs did not keep Chat and the chosen tab") }
+            try await pause(0.2)
+            try await run(["op": "projectTabClick", "tab": "conversation"], model)
+            try await pause(0.2)
+            guard model.selectedSessionID == sourceID, source.draft == "Keep this chat draft when closing tools." else { throw DriverError("Tool tabs changed the project's chat or draft") }
+            model.openProject(other)
+            guard model.layout(for: other.id).openTabs == [.conversation] else { throw DriverError("Projects shared their tool tabs") }
+            model.switchPanel(.browser)
+            model.openProject(project)
+            guard model.layout(for: project.id).openTabs == [.conversation, .code],
+                  editor.documents.contains(where: { $0.id == document.id && $0.text == draft && $0.isModified }), source.isBusy else { throw DriverError("Project switching lost tabs or active work") }
+            source.interrupt()
+            model.switchPanel(.stats)
+            if let directory = step["directory"]?.string {
+                NSApp.appearance = NSAppearance(named: .darkAqua)
+                main.setContentSize(NSSize(width: 1240, height: 820))
+                try await pause(0.3)
+                try snapshot(to: directory + "/project-tabs-dark.png", title: nil)
+                NSApp.appearance = NSAppearance(named: .aqua)
+                main.setContentSize(NSSize(width: 900, height: 600))
+                try await pause(0.3)
+                try snapshot(to: directory + "/project-tabs-light-compact.png", title: nil)
+            }
+            guard await model.save() else { throw DriverError("Project tabs could not be saved") }
+            log("Project tabs: open/reuse, native select/close, split cleanup, running agent and unsaved editor preservation, ordering and per-project state passed")
+        }
+
+        private static func editSpaceUI(name: String, color: String, editing id: UUID? = nil, model: AppModel) async throws {
+            guard let main = window() else { throw DriverError("No main window") }
+            if let id { model.showSpaceEditor(id); try await pause(0.3) }
+            else { try await run(["op": "clickMarker", "name": "space-create"], model) }
+            guard let sheet = main.attachedSheet, let root = sheet.contentView,
+                  let field = textField(in: root, placeholder: "Space name") else { throw DriverError("Space editor did not open") }
+            sheet.makeFirstResponder(field)
+            guard let input = field.currentEditor() as? NSTextView else { throw DriverError("Space name is not editable") }
+            input.insertText(name, replacementRange: NSRange(location: 0, length: (input.string as NSString).length))
+            try await run(["op": "clickMarker", "name": .string("space-color-" + color)], model)
+            try await run(["op": "clickMarker", "name": "space-editor-save"], model)
+            for _ in 0..<60 { if main.attachedSheet == nil { break }; try await pause(0.05) }
+            guard main.attachedSheet == nil else { throw DriverError("Space editor did not save and close") }
+        }
+
+        private static func testSpaces(_ step: JSONValue, _ model: AppModel) async throws {
+            guard let original = model.selectedProject, let source = model.selectedSession,
+                  let other = model.workspace.projects.first(where: { $0.id != original.id }),
+                  let main = window(), let root = main.contentView else { throw DriverError("Two fixture projects are required") }
+            let personal = model.selectedSpace.id, originalSessions = model.workspace.sessions.count
+            let editor = model.editor(for: original)
+            await editor.open("README.md")
+            guard let document = editor.selectedDocument else { throw DriverError("Fixture document did not open") }
+            document.text += "\nUnsent editor work.\n"
+            let edited = document.text
+            model.agentFactoryOverride = { _ in DebugTaskAgent(seconds: 60) }
+            await model.open(source.id)
+            guard let controller = model.controllers[source.id] else { throw DriverError("Fixture controller did not open") }
+            controller.send(UserInput(text: "Space-switching fixture."))
+            for _ in 0..<60 { if controller.isBusy { break }; try await pause(0.05) }
+            controller.draft = "Keep this Personal draft."
+            try await editSpaceUI(name: "Work", color: "teal", model: model)
+            guard let work = model.workspace.spaces.first(where: { $0.name == "Work" }), work.color == .teal,
+                  model.selectedSpace.id == work.id, model.selectedSessionID == nil,
+                  marker(in: root, named: "space-empty") != nil else { throw DriverError("New empty space did not become active") }
+            guard controller.isBusy, document.isModified, document.text == edited else { throw DriverError("Creating a space interrupted work") }
+            guard model.moveProject(other.id, toSpace: work.id) else { throw DriverError("Project did not move to Work") }
+            try await pause(0.2)
+            try await run(["op": "projectClick", "name": .string(other.name)], model)
+            for _ in 0..<60 { if model.selectedProject?.id == other.id { break }; try await pause(0.05) }
+            guard let otherSessionID = model.selectedSessionID, model.selectedProject?.id == other.id else {
+                throw DriverError("Moved project's row did not open its conversation")
+            }
+            await model.open(otherSessionID)
+            model.controllers[otherSessionID]?.draft = "Keep this Work draft."
+            guard model.spaceProjects.map(\.id) == [other.id],
+                  marker(in: root, named: "project-row-" + original.id.uuidString) == nil else { throw DriverError("Space leaked another space's project row") }
+            try await run(["op": "spaceSwitch", "name": "Personal"], model)
+            guard model.selectedSessionID == source.id, controller.draft == "Keep this Personal draft.",
+                  controller.isBusy, editor.documents.contains(where: { $0.id == document.id && $0.text == edited && $0.isModified })
+            else { throw DriverError("Switching spaces lost the selected chat, draft, agent, or editor buffer") }
+            try await run(["op": "spaceSwitch", "name": "Work"], model)
+            guard model.selectedProject?.id == other.id,
+                  model.selectedSessionID.flatMap({ model.controllers[$0]?.draft }) == "Keep this Work draft." else { throw DriverError("Work did not restore its own conversation") }
+            try await editSpaceUI(name: "Studio", color: "violet", editing: work.id, model: model)
+            guard model.selectedSpace.name == "Studio", model.selectedSpace.color == .violet,
+                  model.spaceProjects.map(\.id) == [other.id] else { throw DriverError("Editing space appearance changed its projects") }
+            model.reorderSpace(work.id, offset: -1)
+            guard model.workspace.spaces.first?.id == work.id, model.selectedSpace.id == work.id else { throw DriverError("Reordering changed the active space") }
+            model.reorderSpace(work.id, offset: 1)
+
+            func menuItem(_ menu: NSMenu, title: String) -> NSMenuItem? {
+                menu.delegate?.menuNeedsUpdate?(menu); menu.update()
+                for item in menu.items {
+                    if item.title == title { return item }
+                    if let submenu = item.submenu, let found = menuItem(submenu, title: title) { return found }
+                }
+                return nil
+            }
+            for (title, expected) in [("Previous Space", personal), ("Next Space", work.id)] {
+                guard let menu = NSApp.mainMenu, let item = menuItem(menu, title: title),
+                      item.keyEquivalentModifierMask == [.control, .option], let action = item.action,
+                      NSApp.sendAction(action, to: item.target, from: item) else { throw DriverError("Space navigation menu missing") }
+                try await pause(0.2)
+                guard model.selectedSpace.id == expected else { throw DriverError("Space navigation menu chose the wrong space") }
+            }
+            try await editSpaceUI(name: "Temporary", color: "rose", model: model)
+            let temporary = model.selectedSpace.id
+            model.deleteSpace(temporary, movingProjectsTo: work.id)
+            try await pause(0.2)
+            guard model.workspace.spaces.count == 2, model.selectedSpace.id == work.id,
+                  model.workspace.projects.count == 2, model.workspace.sessions.count == originalSessions,
+                  controller.isBusy else { throw DriverError("Deleting a space lost projects, chats, or running agents") }
+            controller.interrupt()
+            if let directory = step["directory"]?.string {
+                try snapshot(to: directory + "/spaces-dark.png", title: nil)
+                NSApp.appearance = NSAppearance(named: .aqua)
+                main.setContentSize(NSSize(width: 900, height: 600))
+                try await pause(0.3)
+                try snapshot(to: directory + "/spaces-light-compact.png", title: nil)
+            }
+            guard await model.save() else { throw DriverError("Spaces could not be saved") }
+            log("Spaces: native creation, editing and switching; scoped projects; menu navigation; live agent and draft preservation; reorder, delete and save passed")
+        }
+
+        private static func testChatHistoryUpdates(_ step: JSONValue, _ model: AppModel) async throws {
+            let directory = step["directory"]?.string ?? NSTemporaryDirectory()
+            try FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
+            guard let source = model.selectedSession,
+                  let target = model.workspace.sessions.first(where: { $0.projectID != source.projectID }),
+                  let rootWindow = window(), let root = rootWindow.contentView else { throw DriverError("Two fixture projects are required") }
+            await model.open(source.id)
+            model.controllers[source.id]?.draft = "Preserve this unsent project draft."
+            let items = (0..<180).map { index in
+                TranscriptItem(id: "history-\(index)", date: Date(timeIntervalSince1970: Double(1_700_000_000 + index)),
+                    content: .assistant(text: index == 1 ? "History needle: the old routing decision was to preserve drafts." : "Ordinary message \(index)."))
+            }
+            try await model.store.saveTranscript(items, for: target.id)
+            let before = model.controllers.count
+            try await run(["op": "clickMarker", "name": "chat-open-history-search"], model)
+            guard let sheet = rootWindow.attachedSheet, let content = sheet.contentView,
+                  let field = textField(in: content, placeholder: "Search all conversations…") else { throw DriverError("History search sheet missing") }
+            sheet.makeFirstResponder(field)
+            guard let input = field.currentEditor() as? NSTextView else { throw DriverError("Search field is not editable") }
+            input.insertText("history needle", replacementRange: NSRange(location: 0, length: (input.string as NSString).length))
+            for _ in 0..<100 {
+                if marker(in: content, named: "chat-history-result-history-1") != nil { break }
+                try await pause(0.05)
+            }
+            guard model.controllers.count == before,
+                  let result = marker(in: content, named: "chat-history-result-history-1") else { throw DriverError("Search did not find saved history without loading agents") }
+            try snapshot(to: directory + "/history-results.png", title: nil, sheet: true)
+            try click(result, in: sheet)
+            for _ in 0..<100 {
+                if model.selectedSessionID == target.id, marker(in: root, named: "chat-history-target") != nil { break }
+                try await pause(0.05)
+            }
+            try await pause(0.4)
+            guard model.selectedSessionID == target.id, model.chatHistoryFocus?.itemID == "history-1",
+                  model.selectedSpace.id == model.project(for: target)?.spaceID,
+                  let destination = marker(in: root, named: "chat-history-target"),
+                  let clip = destination.enclosingScrollView?.contentView else { throw DriverError("Search did not reveal the older message") }
+            let rect = destination.convert(destination.bounds, to: nil)
+            let viewport = clip.convert(clip.bounds, to: nil)
+            guard rect.intersects(viewport) else { throw DriverError("The matching message is outside the viewport: \(rect), viewport \(viewport)") }
+            guard model.controllers[source.id]?.draft == "Preserve this unsent project draft." else { throw DriverError("Search changed another chat's draft") }
+            try snapshot(to: directory + "/history-destination.png", title: nil)
+            try await run(["op": "clickMarker", "name": "transcript-latest"], model)
+            guard model.chatHistoryFocus == nil else { throw DriverError("Latest did not leave history navigation") }
+            // Verify the native menu and its shortcut binding here. The actual shifted
+            // key is also checked in the foreground app; headless NSMenu key dispatch
+            // otherwise routes a synthetic H event to the system Hide command.
+            guard let historyMenu = NSApp.mainMenu,
+                  let history = findMenuItem(historyMenu, title: "Search Chat History…"),
+                  history.keyEquivalent.lowercased() == "h", history.keyEquivalentModifierMask == [.command, .shift],
+                  let historyAction = history.action, NSApp.sendAction(historyAction, to: history.target, from: history)
+            else { throw DriverError("History menu or shortcut binding is missing") }
+            for _ in 0..<60 { if rootWindow.attachedSheet != nil { break }; try await pause(0.05) }
+            guard rootWindow.attachedSheet != nil else {
+                throw DriverError("History menu did not open search; presented=\(model.showsChatHistorySearch), window=\(rootWindow.title)")
+            }
+            try await run(["op": "key", "code": 53], model)
+            try await pause(0.2)
+
+            func findMenuItem(_ menu: NSMenu, title: String) -> NSMenuItem? {
+                menu.delegate?.menuNeedsUpdate?(menu); menu.update()
+                for item in menu.items {
+                    if item.title == title { return item }
+                    if let submenu = item.submenu, let found = findMenuItem(submenu, title: title) { return found }
+                }
+                return nil
+            }
+            guard let menu = NSApp.mainMenu, let notes = findMenuItem(menu, title: "Release Notes…"), let action = notes.action,
+                  NSApp.sendAction(action, to: notes.target, from: notes) else { throw DriverError("Release Notes menu item missing") }
+            for _ in 0..<60 {
+                if NSApp.windows.contains(where: { $0.isVisible && $0.title == "Marika Updates" && $0.contentView.flatMap { marker(in: $0, named: "app-updates") } != nil }) { break }
+                try await pause(0.05)
+            }
+            guard let updatesWindow = NSApp.windows.first(where: { $0.isVisible && $0.title == "Marika Updates" && $0.contentView.flatMap { marker(in: $0, named: "app-updates") } != nil }) else {
+                throw DriverError("Updates window did not open")
+            }
+            updatesWindow.makeKeyAndOrderFront(nil)
+            if !updatesWindow.isKeyWindow { updatesWindow.becomeKey() }
+            try await pause(0.3)
+            let release = PublishedRelease(version: ReleaseVersion("9.0.0")!, title: "UI fixture release",
+                notes: "# A newer Marika\n\n- Search messages across projects.\n- Preserve native window controls.",
+                url: URL(string: "https://github.com/junkd0g/marika/releases/tag/v9.0.0")!)
+            model.updates.releaseOverride = { release }
+            try await run(["op": "clickMarker", "name": "updates-check"], model)
+            for _ in 0..<60 { if model.updates.status == .available { break }; try await pause(0.05) }
+            guard model.updates.status == .available, model.updates.release == release else {
+                throw DriverError("Update check did not show the available release: status=\(model.updates.status.rawValue), version=\(model.updates.installedVersion), window=\(updatesWindow.title)")
+            }
+            try snapshot(to: directory + "/updates-available.png", title: "Marika Updates")
+            model.updates.releaseOverride = { nil }
+            await model.updates.check()
+            guard model.updates.status == .noReleases, model.updates.release == nil else { throw DriverError("No-release state is incorrect") }
+            model.updates.releaseOverride = { throw URLError(.notConnectedToInternet) }
+            await model.updates.check()
+            guard model.updates.status == .failed, model.updates.errorMessage != nil else { throw DriverError("Update error is hidden") }
+            try snapshot(to: directory + "/updates-error.png", title: "Marika Updates")
+            model.updates.releaseOverride = nil
+            await model.updates.check()
+            guard model.updates.status != .failed else { throw DriverError("GitHub update check failed: " + (model.updates.errorMessage ?? "unknown")) }
+            try snapshot(to: directory + "/updates-live.png", title: "Marika Updates")
+            log("GitHub release check: " + model.updates.status.rawValue)
+            updatesWindow.close()
+            log("Chat history and updates passed: cross-project local search, exact old-message jump, draft preservation, Latest, menu and shortcut binding, installed version, release notes, update states and live GitHub check")
         }
 
         private static func window() -> NSWindow? {

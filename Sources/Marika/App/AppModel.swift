@@ -8,6 +8,7 @@ import UserNotifications
 @Observable
 final class AppModel {
     typealias ProjectTab = ProjectPanel
+    let updates = AppUpdates()
 
     private(set) var workspace = Workspace()
     private(set) var controllers: [UUID: SessionController] = [:]
@@ -20,7 +21,16 @@ final class AppModel {
     private(set) var storageError: String?
     var storageRecoveryNotice: String?
 
-    var selectedSessionID: UUID?
+    var selectedSessionID: UUID? {
+        didSet {
+            if let projectID = selectedSession?.projectID { workspace.rememberProject(projectID) }
+            else { workspace.selectedProjectID = nil }
+            if oldValue != selectedSessionID { scheduleSave() }
+        }
+    }
+    var showsSpaceEditor = false
+    var editingSpaceID: UUID?
+    var spaceEditorProjectID: UUID?
     var showsProjectSidebar = true
     var showsInspector = true {
         didSet {
@@ -33,7 +43,17 @@ final class AppModel {
         }
     }
     var composerFocusRequest = UUID()
-    var projectTabs: [UUID: ProjectTab] = [:] { didSet { scheduleSave() } }
+    var projectTabs: [UUID: ProjectTab] = [:] {
+        didSet {
+            for (id, tab) in projectTabs where oldValue[id] != tab {
+                guard let index = workspace.projects.firstIndex(where: { $0.id == id }) else { continue }
+                var layout = workspace.projects[index].layout ?? ProjectLayout()
+                layout.openTab(tab)
+                workspace.projects[index].layout = layout
+            }
+            scheduleSave()
+        }
+    }
     var editors: [UUID: CodeWorkspace] = [:]
     var repositoryEditors: [UUID: [String: CodeWorkspace]] = [:]
     var ideWorkspaces: [String: IDEWorkspace] = [:]
@@ -67,6 +87,8 @@ final class AppModel {
     var reviewAgentID: UUID?
     var agentReviews: [UUID: AgentReviewWorkspace] = [:]
     var showsProjectSearch = false
+    var showsChatHistorySearch = false
+    var chatHistoryFocus: ChatHistoryFocus?
     var showsCommandPalette = false
     @ObservationIgnored var pendingPaletteAction: (() -> Void)?
     @ObservationIgnored private var launchingAgents: Set<UUID> = []
@@ -151,7 +173,7 @@ final class AppModel {
     }
 
     func showAgents(for preferredProject: Project? = nil, launch: Bool = false) {
-        guard let project = preferredProject ?? selectedSession.flatMap(project(for:)) ?? workspace.projects.first else { return }
+        guard let project = preferredProject ?? selectedSession.flatMap(project(for:)) ?? spaceProjects.first else { return }
         if selectedSession?.projectID != project.id {
             openProject(project)
         }
@@ -204,6 +226,7 @@ final class AppModel {
 
     func openAgentChat(_ id: UUID) {
         guard let meta = workspace.sessions.first(where: { $0.id == id }) else { return }
+        chatHistoryFocus = nil
         if meta.agentTask == nil { rememberProjectConversation(meta) }
         rememberChat(meta)
         selectedSessionID = id
@@ -400,9 +423,7 @@ final class AppModel {
             return
         }
         for project in workspace.projects { projectTabs[project.id] = project.layout?.panel ?? .conversation }
-        let recentProject = workspace.selectedProjectID.flatMap(project(id:))
-            ?? workspace.sessions.max { $0.updatedAt < $1.updatedAt }.flatMap { project(id: $0.projectID) }
-        if let project = recentProject ?? workspace.projects.first { openProject(project) }
+        if let project = workspace.preferredProject(in: workspace.selectedSpace.id) { openProject(project) }
         shellEnvironment = await ShellEnvironment.capture()
         isReady = true
         await refreshAgents()
@@ -503,6 +524,62 @@ final class AppModel {
 
     // MARK: Projects
 
+    var selectedSpace: ProjectSpace { workspace.selectedSpace }
+    var spaceProjects: [Project] { workspace.projects(in: selectedSpace.id) }
+
+    func selectSpace(_ id: UUID) {
+        guard workspace.activateSpace(id) else { return }
+        chatHistoryFocus = nil
+        if let project = workspace.preferredProject(in: id) { openProject(project) }
+        else { selectedSessionID = nil }
+        scheduleSave()
+    }
+
+    func selectAdjacentSpace(_ offset: Int) {
+        guard workspace.spaces.count > 1, let index = workspace.spaces.firstIndex(where: { $0.id == selectedSpace.id }) else { return }
+        let next = (index + offset % workspace.spaces.count + workspace.spaces.count) % workspace.spaces.count
+        selectSpace(workspace.spaces[next].id)
+    }
+
+    func showSpaceEditor(_ id: UUID? = nil, movingProjectID: UUID? = nil) {
+        editingSpaceID = id
+        spaceEditorProjectID = movingProjectID
+        showsSpaceEditor = true
+    }
+
+    @discardableResult
+    func saveSpace(_ id: UUID?, name: String, color: ProjectSpaceColor, symbol: String) -> Bool {
+        if let id {
+            guard workspace.editSpace(id, name: name, color: color, symbol: symbol) else { return false }
+        } else {
+            guard let space = workspace.createSpace(name: name, color: color, symbol: symbol) else { return false }
+            if let projectID = spaceEditorProjectID { workspace.moveProject(projectID, to: space.id) }
+            selectSpace(space.id)
+        }
+        scheduleSave()
+        return true
+    }
+
+    @discardableResult
+    func moveProject(_ id: UUID, toSpace spaceID: UUID) -> Bool {
+        let movingSelection = selectedProject?.id == id
+        let currentSpace = selectedSpace.id
+        guard workspace.moveProject(id, to: spaceID) else { return false }
+        if movingSelection { selectSpace(currentSpace) }
+        scheduleSave()
+        return true
+    }
+
+    func deleteSpace(_ id: UUID, movingProjectsTo destinationID: UUID) {
+        guard workspace.deleteSpace(id, movingProjectsTo: destinationID) else { return }
+        selectSpace(workspace.selectedSpace.id)
+        scheduleSave()
+    }
+
+    func reorderSpace(_ id: UUID, offset: Int) {
+        if workspace.reorderSpace(id, offset: offset) { scheduleSave() }
+    }
+
     func updateProject(_ id: UUID, _ change: (inout Project) -> Void) {
         guard let index = workspace.projects.firstIndex(where: { $0.id == id }) else { return }
         change(&workspace.projects[index])
@@ -573,7 +650,8 @@ final class AppModel {
             openProject(existing)
             return
         }
-        let project = Project(path: path)
+        var project = Project(path: path)
+        project.spaceID = selectedSpace.id
         workspace.projects.append(project)
         workspace.projects.sort { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
         newSession(in: project)
@@ -628,10 +706,12 @@ final class AppModel {
             }
             for session in sessions(in: project) { deleteSession(session.id) }
             workspace.projects.removeAll { $0.id == project.id }
+            workspace.normalizeSpaces()
             editors[project.id] = nil
             repositoryEditors[project.id] = nil
             browsers.removeValue(forKey: project.id)?.stop()
             projectTabs[project.id] = nil
+            if selectedSession == nil { selectSpace(selectedSpace.id) }
             scheduleSave()
         }
     }
@@ -665,7 +745,7 @@ final class AppModel {
     }
 
     func newSessionInCurrentProject() {
-        if let project = selectedSession.flatMap(project(for:)) ?? workspace.projects.first {
+        if let project = selectedSession.flatMap(project(for:)) ?? spaceProjects.first {
             newSession(in: project)
         } else {
             chooseProject()
@@ -781,7 +861,10 @@ final class AppModel {
         if let meta = workspace.sessions.first(where: { $0.id == id }) { browsers[meta.projectID]?.closeAgentConnection(id) }
         if let controller = controllers.removeValue(forKey: id) { controller.disconnect() }
         workspace.sessions.removeAll { $0.id == id }
-        if selectedSessionID == id { selectedSessionID = workspace.sessions.max { $0.updatedAt < $1.updatedAt }?.id }
+        if selectedSessionID == id {
+            let projectIDs = Set(spaceProjects.map(\.id))
+            selectedSessionID = workspace.sessions.filter { projectIDs.contains($0.projectID) }.max { $0.updatedAt < $1.updatedAt }?.id
+        }
         Task { await store.deleteTranscript(id) }
         scheduleSave()
     }

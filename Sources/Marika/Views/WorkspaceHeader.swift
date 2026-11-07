@@ -17,8 +17,21 @@ struct WorkspaceHeader: View {
                     .buttonStyle(.plain).foregroundStyle(.secondary)
                     .accessibilityLabel(model.showsProjectSidebar ? "Hide projects" : "Show projects")
                     .help(model.showsProjectSidebar ? "Hide projects" : "Show projects")
-                navigation(showsLabels: geometry.size.width >= 935)
-                Spacer(minLength: 4)
+                navigation
+                Menu {
+                    Section("Open a tab") {
+                        ForEach(ProjectPanel.allCases, id: \.self) { panel in
+                            Button { select(panel) } label: {
+                                Label(panel.title, systemImage: openTabs.contains(panel) ? "checkmark" : panel.symbol)
+                            }
+                        }
+                    }
+                } label: { Image(systemName: "plus").frame(width: 20, height: 26) }
+                    .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+                    .help("Open a project tab").accessibilityLabel("Open project tab")
+                    #if DEBUG
+                        .background(DebugViewMarker(name: "workspace-open-tab"))
+                    #endif
                 if geometry.size.width >= 620 {
                     Button { model.showsCommandPalette = true } label: { Image(systemName: "command") }
                         .buttonStyle(.plain).help("Command palette (⌘K)")
@@ -95,10 +108,19 @@ struct WorkspaceHeader: View {
         Button("Attach Repository…") { model.attachRepository(to: project) }
     }
 
-    private func navigation(showsLabels: Bool) -> some View {
-        let strip = tabStrip(showsLabels: showsLabels)
-        .fixedSize()
-        .padding(.vertical, 3)
+    private var openTabs: [ProjectPanel] { model.layout(for: project.id).openTabs }
+
+    private var navigation: some View {
+        let strip = ScrollViewReader { scroll in
+            ScrollView(.horizontal) {
+                HStack(spacing: 4) {
+                    ForEach(openTabs, id: \.self) { tab in tabButton(tab).id(tab) }
+                }.padding(.vertical, 3)
+            }
+            .scrollIndicators(.hidden)
+            .onChange(of: selection, initial: true) { _, tab in scroll.scrollTo(tab, anchor: .center) }
+        }
+        .frame(minWidth: 0, maxWidth: .infinity)
         #if DEBUG
             return strip.background(DebugViewMarker(name: "workspace-tabs"))
         #else
@@ -106,44 +128,49 @@ struct WorkspaceHeader: View {
         #endif
     }
 
-    private func tabStrip(showsLabels: Bool) -> some View {
-        HStack(spacing: 2) {
-            ForEach(AppModel.ProjectTab.allCases.filter { ![.changes, .terminal].contains($0) || $0 == selection }, id: \.self) { tab in
-                tabButton(tab, showsLabel: showsLabels)
-            }
-        }
-    }
-
-    private func tabButton(_ tab: AppModel.ProjectTab, showsLabel: Bool) -> some View {
+    private func tabButton(_ tab: AppModel.ProjectTab) -> some View {
         let selected = selection == tab
-        let button = Button { select(tab) } label: {
-            HStack(spacing: 6) {
-                Image(systemName: tab.symbol)
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(selected ? Theme.ink : Color.secondary)
-                if showsLabel {
+        let button = HStack(spacing: 4) {
+            Button { select(tab) } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: tab.symbol).font(.system(size: 12, weight: .medium))
                     Text(tab.title).font(.system(size: 11.5, weight: selected ? .semibold : .medium))
-                        .foregroundStyle(selected ? .primary : .secondary)
+                    if tab == .agents, activeAgents > 0 {
+                        Text(String(activeAgents)).font(.system(size: 9, weight: .semibold)).monospacedDigit()
+                            .padding(.horizontal, 4).padding(.vertical, 1).background(Theme.selection, in: Capsule())
+                    }
                 }
-                if tab == .agents, activeAgents > 0 {
-                    Text(String(activeAgents)).font(.system(size: 9, weight: .semibold)).monospacedDigit()
-                        .foregroundStyle(Theme.ink)
-                        .padding(.horizontal, 4).padding(.vertical, 1)
-                        .background(Theme.selection, in: Capsule())
+                .foregroundStyle(selected ? Theme.ink : .secondary)
+                .frame(height: 30).contentShape(Rectangle())
+            }
+            .buttonStyle(.plain).help("\(tab.title) (⌘\(tab.shortcut))").accessibilityLabel(tab.title + " tab")
+            .accessibilityAddTraits(selected ? [.isSelected] : [])
+            if tab != .conversation {
+                Button { model.closeProjectTab(tab) } label: {
+                    Image(systemName: "xmark").font(.system(size: 8, weight: .semibold))
+                        .frame(width: 20, height: 24).contentShape(Rectangle())
                 }
+                .buttonStyle(.plain).foregroundStyle(.secondary)
+                .opacity(selected || hovered == tab ? 1 : 0.5)
+                .help("Close \(tab.title) tab").accessibilityLabel("Close \(tab.title) tab")
+                #if DEBUG
+                    .background(DebugViewMarker(name: "workspace-close-" + tab.rawValue.lowercased()))
+                #endif
             }
-            .padding(.horizontal, showsLabel ? 9 : 5)
-            .frame(height: 28)
-            .background {
-                RoundedRectangle(cornerRadius: 7)
-                    .fill(selected ? Theme.selection : hovered == tab ? Theme.surface : .clear)
-            }
-            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .padding(.leading, 10).padding(.trailing, tab == .conversation ? 10 : 4)
+        .background(RoundedRectangle(cornerRadius: 7).fill(selected ? Theme.selection : hovered == tab ? Theme.surface : .clear))
+        .overlay { RoundedRectangle(cornerRadius: 7).strokeBorder(selected ? Theme.hairline : .clear) }
         .onHover { hovered = $0 ? tab : nil }
-        .help("\(tab.title) (⌘\(tab.shortcut))").accessibilityLabel(tab.title)
-        .accessibilityAddTraits(selected ? [.isSelected] : [])
+        .contextMenu {
+            Button("Close Tab") { model.closeProjectTab(tab) }.disabled(tab == .conversation)
+            Button("Close Other Tabs") { model.closeOtherProjectTabs(keeping: tab) }.disabled(openTabs.count < 2)
+            Divider()
+            Button("Move Tab Left") { model.moveProjectTab(tab, offset: -1) }
+                .disabled(tab == .conversation || openTabs.firstIndex(of: tab) == 1)
+            Button("Move Tab Right") { model.moveProjectTab(tab, offset: 1) }
+                .disabled(tab == .conversation || openTabs.last == tab)
+        }
         #if DEBUG
             return button.background(DebugViewMarker(name: "workspace-tab-" + tab.rawValue.lowercased()))
         #else

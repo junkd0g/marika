@@ -240,6 +240,11 @@ struct ProjectChatView: View {
                 destinationMenu
             }
             Spacer(minLength: 0)
+            Button { model.showsChatHistorySearch = true } label: { Image(systemName: "text.magnifyingglass") }
+                .buttonStyle(.plain).help("Search chat history (⇧⌘H)").accessibilityLabel("Search chat history")
+                #if DEBUG
+                    .background(DebugViewMarker(name: "chat-open-history-search"))
+                #endif
             Button { showsJobs.toggle() } label: { Image(systemName: showsJobs ? "bubble.left.and.bubble.right" : "calendar.badge.clock") }
                 .buttonStyle(.plain).help(showsJobs ? "Return to chat" : "Scheduled jobs")
                 #if DEBUG

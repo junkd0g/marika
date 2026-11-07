@@ -116,6 +116,11 @@ struct CommandPaletteView: View {
     }
     private var actions: [Action] {
         var result = [Action(id: "open", title: "Open Project…", symbol: "folder.badge.plus", shortcut: "⌘O", run: model.chooseProject)]
+        result.append(Action(id: "chat-history", title: "Search Chat History…", symbol: "text.magnifyingglass", shortcut: "⇧⌘H", run: { model.showsChatHistorySearch = true }))
+        result.append(Action(id: "new-space", title: "New Space…", symbol: "square.stack.3d.up", shortcut: "", run: { model.showSpaceEditor() }))
+        result += model.workspace.spaces.map { space in
+            Action(id: "space-" + space.id.uuidString, title: "Switch to space: " + space.name, symbol: space.symbol, shortcut: "", run: { model.selectSpace(space.id) })
+        }
         if let project = model.selectedProject {
             result += [
                 Action(id: "files", title: "Go to File…", symbol: "doc.text.magnifyingglass", shortcut: "⌘P", run: { model.showCode(quickOpen: true) }),

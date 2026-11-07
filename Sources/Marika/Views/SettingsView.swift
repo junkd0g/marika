@@ -10,6 +10,8 @@ struct SettingsView: View {
                 .tabItem { Label("General", systemImage: "gearshape") }
             EditorSettingsView()
                 .tabItem { Label("Editor", systemImage: "textformat.size") }
+            UpdatesView().frame(height: 480)
+                .tabItem { Label("Updates", systemImage: "arrow.down.app") }
         }
         .frame(width: 540)
     }

@@ -4,6 +4,7 @@ public struct Project: Codable, Equatable, Hashable, Sendable, Identifiable {
     public var id: UUID
     public var path: String
     public var name: String
+    public var spaceID: UUID?
     /// Legacy filenames, retained for decoding older workspaces. Trust now requires matching digests.
     public var acceptedConfigFiles: [String]?
     public var acceptedConfigDigests: [String: String]?
@@ -36,6 +37,7 @@ public struct Project: Codable, Equatable, Hashable, Sendable, Identifiable {
         self.id = id
         self.path = path
         self.name = name ?? URL(fileURLWithPath: path).lastPathComponent
+        self.spaceID = ProjectSpace.personalID
     }
 
     public var url: URL { URL(fileURLWithPath: path) }
@@ -125,11 +127,17 @@ public struct Workspace: Codable, Equatable, Sendable {
     public var sessions: [SessionMeta]
     public var preferences: Preferences
     public var selectedProjectID: UUID?
+    public var spaces: [ProjectSpace]
+    public var selectedSpaceID: UUID?
 
-    public init(projects: [Project] = [], sessions: [SessionMeta] = [], preferences: Preferences = Preferences()) {
+    public init(projects: [Project] = [], sessions: [SessionMeta] = [], preferences: Preferences = Preferences(),
+                spaces: [ProjectSpace] = [.personal], selectedSpaceID: UUID? = nil) {
         self.projects = projects
         self.sessions = sessions
         self.preferences = preferences
+        self.spaces = spaces
+        self.selectedSpaceID = selectedSpaceID
+        normalizeSpaces()
     }
 
     public init(from decoder: Decoder) throws {
@@ -138,6 +146,9 @@ public struct Workspace: Codable, Equatable, Sendable {
         sessions = try container.decodeIfPresent([SessionMeta].self, forKey: .sessions) ?? []
         preferences = try container.decodeIfPresent(Preferences.self, forKey: .preferences) ?? Preferences()
         selectedProjectID = try container.decodeIfPresent(UUID.self, forKey: .selectedProjectID)
+        spaces = try container.decodeIfPresent([ProjectSpace].self, forKey: .spaces) ?? [.personal]
+        selectedSpaceID = try container.decodeIfPresent(UUID.self, forKey: .selectedSpaceID)
+        normalizeSpaces()
     }
 
     public func conversation(for projectID: UUID) -> SessionMeta? {

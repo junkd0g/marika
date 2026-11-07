@@ -4,25 +4,42 @@ import SwiftUI
 struct SidebarView: View {
     @Environment(AppModel.self) private var model
     @State private var searchText = ""
+    @State private var pendingSpaceDeletion: ProjectSpace?
 
     private var visibleProjects: [Project] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        return model.workspace.projects.filter {
+        return model.spaceProjects.filter {
             query.isEmpty || $0.name.localizedStandardContains(query) || $0.path.localizedStandardContains(query)
         }
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 10) {
+                Image(systemName: model.selectedSpace.symbol).font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(model.selectedSpace.color.tint).frame(width: 30, height: 30)
+                    .background(model.selectedSpace.color.tint.opacity(0.13), in: RoundedRectangle(cornerRadius: 9))
+                Text(model.selectedSpace.name).font(.system(size: 14, weight: .semibold)).lineLimit(1)
+                Spacer(minLength: 0)
+                Menu {
+                    SpaceMenuActions(space: model.selectedSpace) { pendingSpaceDeletion = $0 }
+                } label: { Image(systemName: "ellipsis").frame(width: 20, height: 22) }
+                    .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+                    .accessibilityLabel("Space options")
+            }
+            .padding(.horizontal, 16).padding(.top, 16).padding(.bottom, 10)
+            .background(LinearGradient(colors: [model.selectedSpace.color.tint.opacity(0.08), .clear], startPoint: .topLeading, endPoint: .bottomTrailing))
+
             VStack(spacing: 2) {
                 sidebarAction("New chat", symbol: "square.and.pencil") { model.newSessionInCurrentProject() }
                 sidebarAction("Search project", symbol: "magnifyingglass") { model.showsProjectSearch = true }
                     .disabled(model.selectedProject == nil)
             }
-            .padding(.horizontal, 10).padding(.top, 10).padding(.bottom, 22)
+            .padding(.horizontal, 10).padding(.bottom, 20)
 
             HStack {
                 Text("Projects").font(.system(size: 11, weight: .medium)).foregroundStyle(.secondary)
+                Text(String(model.spaceProjects.count)).font(.system(size: 10)).foregroundStyle(.tertiary).monospacedDigit()
                 Spacer()
                 Button { model.chooseProject() } label: { Image(systemName: "plus").frame(width: 20, height: 20) }
                     .buttonStyle(.plain).foregroundStyle(.secondary).help("Open a project (⌘O)")
@@ -52,22 +69,41 @@ struct SidebarView: View {
                                 Button("Open Project") { model.openProject(project) }
                                 Button("Show Agents") { model.openProject(project, tab: .agents) }
                                 Button("Launch Agent…") { model.showAgents(for: project, launch: true) }
+                                Menu("Move to Space") {
+                                    ForEach(model.workspace.spaces.filter { $0.id != project.spaceID }) { space in
+                                        Button { model.moveProject(project.id, toSpace: space.id) } label: { Label(space.name, systemImage: space.symbol) }
+                                    }
+                                    Divider()
+                                    Button("New Space…") { model.showSpaceEditor(movingProjectID: project.id) }
+                                }
                                 Divider()
                                 Button("Reveal in Finder") { model.revealProject(project) }
                                 Button("Remove from Marika", role: .destructive) { model.removeProject(project) }
                             }
                     }
                     if model.isReady, visibleProjects.isEmpty {
-                        Text(model.workspace.projects.isEmpty ? "Open a folder to get started." : "No matching projects")
+                        Text(model.spaceProjects.isEmpty ? "No projects in this space yet." : "No matching projects")
                             .font(.system(size: 12)).foregroundStyle(.secondary)
                             .padding(.horizontal, 10).padding(.top, 16)
                     }
                 }
                 .padding(.horizontal, 10).padding(.bottom, 12)
             }
+            SpaceSwitcher { pendingSpaceDeletion = $0 }
             UsageFooter()
         }
         .background(Theme.sidebar)
+        .onChange(of: model.selectedSpace.id) { _, _ in searchText = "" }
+        .confirmationDialog("Delete “\(pendingSpaceDeletion?.name ?? "")”?", isPresented: Binding(
+            get: { pendingSpaceDeletion != nil }, set: { if !$0 { pendingSpaceDeletion = nil } }
+        ), titleVisibility: .visible, presenting: pendingSpaceDeletion) { space in
+            if let destination = model.workspace.spaces.first(where: { $0.id != space.id }) {
+                Button("Delete Space", role: .destructive) { model.deleteSpace(space.id, movingProjectsTo: destination.id) }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: { space in
+            Text("Its projects will move to “\(model.workspace.spaces.first(where: { $0.id != space.id })?.name ?? "another space")”. Your files and conversations are kept.")
+        }
     }
 
     private func sidebarAction(_ title: String, symbol: String, action: @escaping () -> Void) -> some View {
@@ -77,6 +113,90 @@ struct SidebarView: View {
                 .padding(.horizontal, 10).padding(.vertical, 9).contentShape(Rectangle())
         }
         .buttonStyle(.plain).foregroundStyle(Theme.ink)
+    }
+}
+
+private struct SpaceMenuActions: View {
+    @Environment(AppModel.self) private var model
+    let space: ProjectSpace
+    let requestDeletion: (ProjectSpace) -> Void
+
+    var body: some View {
+        Button("Edit Space…") { model.showSpaceEditor(space.id) }
+        Button("New Space…") { model.showSpaceEditor() }
+        Divider()
+        Button("Move Left") { model.reorderSpace(space.id, offset: -1) }
+            .disabled(model.workspace.spaces.first?.id == space.id)
+        Button("Move Right") { model.reorderSpace(space.id, offset: 1) }
+            .disabled(model.workspace.spaces.last?.id == space.id)
+        Divider()
+        Button("Delete Space…", role: .destructive) { requestDeletion(space) }
+            .disabled(model.workspace.spaces.count < 2)
+    }
+}
+
+private struct SpaceSwitcher: View {
+    @Environment(AppModel.self) private var model
+    let requestDeletion: (ProjectSpace) -> Void
+
+    var body: some View {
+        HStack(spacing: 6) {
+            ScrollViewReader { scroll in
+                ScrollView(.horizontal) {
+                    HStack(spacing: 7) {
+                        ForEach(model.workspace.spaces) { space in
+                            SpaceSwitchButton(space: space, requestDeletion: requestDeletion).id(space.id)
+                        }
+                    }.padding(.vertical, 6).padding(.horizontal, 2)
+                }.scrollIndicators(.hidden)
+                    .onChange(of: model.selectedSpace.id, initial: true) { _, id in scroll.scrollTo(id, anchor: .center) }
+            }
+            Button { model.showSpaceEditor() } label: { Image(systemName: "plus").frame(width: 28, height: 32) }
+                .buttonStyle(.plain).foregroundStyle(.secondary).help("New space")
+                .accessibilityLabel("New space")
+                #if DEBUG
+                    .background(DebugViewMarker(name: "space-create"))
+                #endif
+        }
+        .frame(height: 48).padding(.horizontal, 14).padding(.vertical, 4)
+        .overlay(alignment: .top) { Divider().padding(.horizontal, 16) }
+    }
+}
+
+private struct SpaceSwitchButton: View {
+    @Environment(AppModel.self) private var model
+    let space: ProjectSpace
+    let requestDeletion: (ProjectSpace) -> Void
+
+    private var selected: Bool { model.selectedSpace.id == space.id }
+    private var working: [SessionController] {
+        let ids = Set(model.workspace.projects(in: space.id).map(\.id))
+        return model.controllers.values.filter { ids.contains($0.meta.projectID) && $0.isBusy }
+    }
+
+    private var icon: some View {
+        Image(systemName: space.symbol).font(.system(size: 14, weight: .medium))
+            .foregroundStyle(selected ? space.color.tint : .secondary)
+            .frame(width: 34, height: 34)
+            .background(selected ? space.color.tint.opacity(0.16) : .clear, in: RoundedRectangle(cornerRadius: 10))
+            .overlay { RoundedRectangle(cornerRadius: 10).strokeBorder(space.color.tint.opacity(selected ? 0.35 : 0), lineWidth: 1) }
+            .overlay(alignment: .topTrailing) {
+                if !working.isEmpty {
+                    Circle().fill(working.contains { $0.phase == .waitingForUser } ? Theme.attention : .green)
+                        .frame(width: 6, height: 6).overlay { Circle().strokeBorder(Theme.sidebar, lineWidth: 1) }
+                }
+            }
+    }
+
+    var body: some View {
+        Button { model.selectSpace(space.id) } label: { icon }
+        .buttonStyle(.plain).accessibilityLabel(space.name + " space")
+        .accessibilityAddTraits(selected ? [.isSelected] : [])
+        .help(space.name + " · \(model.workspace.projects(in: space.id).count) projects" + (working.isEmpty ? "" : " · \(working.count) agents active"))
+        .contextMenu { SpaceMenuActions(space: space, requestDeletion: requestDeletion) }
+        #if DEBUG
+            .background(DebugViewMarker(name: "space-switch-" + space.id.uuidString))
+        #endif
     }
 }
 
