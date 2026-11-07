@@ -613,3 +613,47 @@ struct CodexProtocolTests {
         #expect(CodexTranslator.displayCommand("/bin/zsh -lc pwd") == "pwd")
     }
 }
+
+extension CodexProtocolTests {
+    @Test func speedChangesReachNewTurnsAndDefaultClearsAnEarlierOverride() async throws {
+        let harness = try makeHarness(extra: ["FAKE_SCRIPT": "quiet"])
+        let session = harness.controller
+        var settings = session.meta.settings
+        settings.serviceTier = "fast"
+        settings.effort = "high"
+        session.update(settings: settings)
+        session.send(UserInput(text: "first"))
+        try await waitUntil { session.turnEnds.count == 1 }
+        #expect(try harness.request("thread/start")["params"]?["serviceTier"]?.string == "priority")
+        #expect(try harness.request("turn/start")["params"]?["serviceTier"]?.string == "priority")
+        for (index, tier) in ["ultrafast", "default", ""].enumerated() {
+            settings.serviceTier = tier.isEmpty ? nil : tier
+            session.update(settings: settings)
+            try await Task.sleep(for: .milliseconds(20))
+            session.send(UserInput(text: "next"))
+            try await waitUntil { session.turnEnds.count == index + 2 }
+            let turn = try #require(try harness.sent().last { $0["method"]?.string == "turn/start" })
+            #expect(turn["params"]?["serviceTier"]?.string == (tier.isEmpty ? "default" : tier))
+            #expect(turn["params"]?["effort"]?.string == "high")
+        }
+        await session.shutdown()
+    }
+
+    @Test func defaultSpeedResolvesTheUsersConfigAndAppliesWhenResuming() async throws {
+        let harness = try makeHarness(conversationID: "thr_1", extra: ["FAKE_SCRIPT": "quiet", "FAKE_CONFIG": #"{"service_tier":"fast"}"#])
+        let session = harness.controller
+        session.send(UserInput(text: "continue"))
+        try await waitUntil { !session.turnEnds.isEmpty }
+        #expect(try harness.request("thread/resume")["params"]?["serviceTier"]?.string == "priority")
+        #expect(try harness.request("turn/start")["params"]?["serviceTier"]?.string == "priority")
+        var settings = session.meta.settings
+        settings.serviceTier = "default"
+        session.update(settings: settings)
+        try await Task.sleep(for: .milliseconds(20))
+        session.send(UserInput(text: "standard"))
+        try await waitUntil { session.turnEnds.count == 2 }
+        let turn = try #require(try harness.sent().last { $0["method"]?.string == "turn/start" })
+        #expect(turn["params"]?["serviceTier"]?.string == "default")
+        await session.shutdown()
+    }
+}

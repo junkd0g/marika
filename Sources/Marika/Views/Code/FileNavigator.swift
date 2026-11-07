@@ -1,6 +1,17 @@
 import MarikaCore
 import SwiftUI
 
+private struct FileNavigatorFocusKey: FocusedValueKey {
+    typealias Value = CodeWorkspace
+}
+
+extension FocusedValues {
+    var fileNavigator: CodeWorkspace? {
+        get { self[FileNavigatorFocusKey.self] }
+        set { self[FileNavigatorFocusKey.self] = newValue }
+    }
+}
+
 enum FileVisuals {
     static func symbol(_ path: String) -> String {
         switch (path as NSString).pathExtension.lowercased() {
@@ -22,6 +33,7 @@ enum FileVisuals {
 
 struct FileNavigator: View {
     @Bindable var editor: CodeWorkspace
+    var isActive = true
     @State private var matches: [String] = []
     @FocusState private var listFocused: Bool
 
@@ -55,49 +67,7 @@ struct FileNavigator: View {
             Text(editor.root.lastPathComponent).font(.system(size: 11, weight: .medium))
                 .foregroundStyle(.secondary).lineLimit(1).padding(.horizontal, 12).padding(.bottom, 9)
             Divider()
-            ScrollViewReader { proxy in
-                List(selection: Binding(get: { editor.navigatorSelection }, set: { value in selectInNavigator(value) })) {
-                    if query.isEmpty {
-                        ForEach(editor.visibleEntries) { row in
-                            treeRow(row).tag(row.id).id(row.id)
-                        }
-                    } else {
-                        ForEach(matches, id: \.self) { path in
-                            Button { Task { await editor.open(path) } } label: {
-                                VStack(alignment: .leading, spacing: 3) {
-                                    Label((path as NSString).lastPathComponent, systemImage: FileVisuals.symbol(path))
-                                        .font(.system(size: 12)).lineLimit(1)
-                                    Text((path as NSString).deletingLastPathComponent)
-                                        .font(.system(size: 10.5)).foregroundStyle(.secondary)
-                                        .lineLimit(1).truncationMode(.middle)
-                                }
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(.vertical, 2).contentShape(Rectangle())
-                            }
-                            .buttonStyle(.plain).tag(path).id(path)
-                        }
-                    }
-                }
-                .listStyle(.sidebar)
-                .scrollContentBackground(.hidden)
-                .focused($listFocused)
-                .onChange(of: editor.selectedDocumentID) { _, _ in
-                    if let path = editor.selectedDocument?.path { proxy.scrollTo(path, anchor: .center) }
-                }
-                .onChange(of: editor.navigatorFocusRequest) { _, _ in listFocused = true }
-                .onKeyPress(.return) { activateSelection(); return .handled }
-                .onKeyPress(.rightArrow) { expandSelection(); return .handled }
-                .onKeyPress(.leftArrow) { collapseSelection(); return .handled }
-                .overlay {
-                    if query.isEmpty, editor.visibleEntries.isEmpty {
-                        Text(editor.loadingDirectories.contains("") ? "Loading files…" : "This folder is empty")
-                            .font(.system(size: 12)).foregroundStyle(.secondary)
-                    } else if !query.isEmpty, matches.isEmpty {
-                        Text(editor.isIndexing ? "Finding files…" : "No matching files")
-                            .font(.system(size: 12)).foregroundStyle(.secondary)
-                    }
-                }
-            }
+            ScrollViewReader { proxy in navigatorList(proxy) }
             HStack {
                 if editor.isIndexing { ProgressView().controlSize(.mini) }
                 Text(query.isEmpty ? "⌘P to jump to any file" : "\(matches.count) matches")
@@ -117,6 +87,72 @@ struct FileNavigator: View {
         }
     }
 
+    private func navigatorList(_ proxy: ScrollViewProxy) -> some View {
+        List(selection: Binding(get: { editor.navigatorSelection }, set: { value in selectInNavigator(value) })) {
+            if query.isEmpty {
+                ForEach(editor.visibleEntries) { row in
+                    treeRow(row).tag(row.id).id(row.id)
+                }
+            } else {
+                ForEach(matches, id: \.self) { path in
+                    searchRow(path).tag(path).id(path)
+                }
+            }
+        }
+        .listStyle(.sidebar)
+        .scrollContentBackground(.hidden)
+        .focused($listFocused)
+        .focusedValue(\.fileNavigator, isActive ? editor : nil)
+        .onChange(of: editor.selectedDocumentID) { _, _ in
+            if let path = editor.selectedDocument?.path { proxy.scrollTo(path, anchor: .center) }
+        }
+        .task(id: "\(editor.navigatorFocusRequest)|\(isActive)") {
+            guard isActive, editor.navigatorFocusRequest > 0, !editor.focusEditorOnSelection else { return }
+            listFocused = false
+            await Task.yield()
+            if !Task.isCancelled { listFocused = true }
+        }
+        .onChange(of: editor.editorFocusRequest) { _, _ in
+            if editor.focusEditorOnSelection { listFocused = false }
+        }
+        .onChange(of: isActive) { _, active in if !active { listFocused = false } }
+        .onDeleteCommand { requestTrashSelection() }
+        .onKeyPress(.delete, phases: .down) { key in
+            guard isActive, listFocused, editor.supportsTrash, editor.navigatorSelection != nil,
+                  key.modifiers.intersection([.control, .option, .shift]).isEmpty else { return .ignored }
+            requestTrashSelection()
+            return .handled
+        }
+        .onKeyPress(.return) { activateSelection(); return .handled }
+        .onKeyPress(.rightArrow) { expandSelection(); return .handled }
+        .onKeyPress(.leftArrow) { collapseSelection(); return .handled }
+        .overlay {
+            if query.isEmpty, editor.visibleEntries.isEmpty {
+                Text(editor.loadingDirectories.contains("") ? "Loading files…" : "This folder is empty")
+                    .font(.system(size: 12)).foregroundStyle(.secondary)
+            } else if !query.isEmpty, matches.isEmpty {
+                Text(editor.isIndexing ? "Finding files…" : "No matching files")
+                    .font(.system(size: 12)).foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private func searchRow(_ path: String) -> some View {
+        let name = (path as NSString).lastPathComponent
+        let parent = (path as NSString).deletingLastPathComponent
+        return Button { Task { await editor.open(path) } } label: {
+            VStack(alignment: .leading, spacing: 3) {
+                Label(name, systemImage: FileVisuals.symbol(path)).font(.system(size: 12)).lineLimit(1)
+                Text(parent).font(.system(size: 10.5)).foregroundStyle(.secondary)
+                    .lineLimit(1).truncationMode(.middle)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.vertical, 2).contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .contextMenu { trashAction(path) }
+    }
+
     private func treeRow(_ row: CodeWorkspace.NavigatorEntry) -> some View {
         Button {
             if row.entry.isDirectory { Task { await editor.toggleDirectory(row.id) } }
@@ -125,6 +161,21 @@ struct FileNavigator: View {
             treeRowLabel(row)
         }
         .buttonStyle(.plain).help(row.id)
+        .contextMenu { trashAction(row.id) }
+    }
+
+    private func trashAction(_ path: String) -> some View {
+        Button(role: .destructive) { editor.pendingTrashPath = path } label: {
+            Label("Move to Trash…", systemImage: "trash")
+        }
+        .disabled(!editor.supportsTrash || editor.trashingPath != nil)
+        .help("Delete or ⌘Delete when the Files list is focused. Unsaved edits are kept open.")
+    }
+
+    private func requestTrashSelection() {
+        guard isActive, listFocused, editor.supportsTrash, editor.trashingPath == nil,
+              let path = editor.navigatorSelection else { return }
+        editor.pendingTrashPath = path
     }
 
     private func treeRowLabel(_ row: CodeWorkspace.NavigatorEntry) -> some View {

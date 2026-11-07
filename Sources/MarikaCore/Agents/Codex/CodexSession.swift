@@ -23,6 +23,7 @@ public actor CodexSession: AgentSession {
     private struct Profile {
         var model: String?
         var effort: String?
+        var serviceTier: String?
         var models: [ModelOption] = []
         var sandbox = CodexMode.SandboxSettings()
 
@@ -188,6 +189,7 @@ public actor CodexSession: AgentSession {
             let model = settings.model ?? profile.defaultModel
             if let model { params["model"] = .string(model) }
             if let effort = resolvedEffort(for: model) { params["effort"] = .string(effort) }
+            if isNewTurn { params["serviceTier"] = .string(resolvedServiceTier(for: model)) }
 
             let result = try await connection.request("turn/start", .object(params), timeout: requestTimeout)
             if target == nil, mainTurnID == nil, let turn = result["turn"]?["id"]?.string, !finishedTurns.contains(turn) {
@@ -206,12 +208,18 @@ public actor CodexSession: AgentSession {
         settings.effort ?? profile.effort ?? profile.models.first { $0.id == model }?.defaultEffort
     }
 
+    private func resolvedServiceTier(for model: String?) -> String {
+        // Like model and effort, tier overrides stick. A concrete default clears an earlier Fast choice.
+        ServiceTierOption.requestValue(settings.serviceTier ?? profile.serviceTier
+            ?? profile.models.first { $0.id == model }?.defaultServiceTier ?? "default")
+    }
+
     /// The conversation is only worth saving once a turn exists: a thread with no turn has no
     /// history on disk, so it can't be resumed.
     private func reportConversation(id: String) {
         guard reportedConversationID != id else { return }
         reportedConversationID = id
-        sink.yield(.conversationStarted(id: id, model: settings.model))
+        sink.yield(.conversationStarted(id: id, model: settings.model ?? profile.defaultModel))
     }
 
     /// Commands the app-server offers directly. Returns true when the input was one of them.
@@ -291,6 +299,7 @@ public actor CodexSession: AgentSession {
         {
             profile.model = values["model"]?.string
             profile.effort = values["model_reasoning_effort"]?.string
+            profile.serviceTier = values["service_tier"]?.string
             let sandbox = values["sandbox_workspace_write"]
             profile.sandbox = CodexMode.SandboxSettings(
                 networkAccess: sandbox?["network_access"]?.bool ?? false,
@@ -317,6 +326,7 @@ public actor CodexSession: AgentSession {
             "sandbox": "read-only",
         ]
         if let model = settings.model ?? profile.defaultModel { params["model"] = .string(model) }
+        params["serviceTier"] = .string(resolvedServiceTier(for: settings.model ?? profile.defaultModel))
         if !launch.projectInstructions.isEmpty { params["developerInstructions"] = .string(launch.projectInstructions) }
         return params
     }

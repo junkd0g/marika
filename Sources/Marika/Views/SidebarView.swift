@@ -13,58 +13,70 @@ struct SidebarView: View {
     }
 
     var body: some View {
-        List(selection: Binding(
-            get: { model.selectedSession?.projectID },
-            set: { id in
-                if let id, let project = model.project(id: id) {
-                    Task { @MainActor in model.openProject(project) }
-                }
+        VStack(alignment: .leading, spacing: 0) {
+            VStack(spacing: 2) {
+                sidebarAction("New chat", symbol: "square.and.pencil") { model.newSessionInCurrentProject() }
+                sidebarAction("Search project", symbol: "magnifyingglass") { model.showsProjectSearch = true }
+                    .disabled(model.selectedProject == nil)
             }
-        )) {
-            Section("Projects") {
-                ForEach(visibleProjects) { project in
-                    Button { model.openProject(project) } label: {
-                        ProjectRow(project: project)
+            .padding(.horizontal, 10).padding(.top, 10).padding(.bottom, 22)
+
+            HStack {
+                Text("Projects").font(.system(size: 11, weight: .medium)).foregroundStyle(.secondary)
+                Spacer()
+                Button { model.chooseProject() } label: { Image(systemName: "plus").frame(width: 20, height: 20) }
+                    .buttonStyle(.plain).foregroundStyle(.secondary).help("Open a project (⌘O)")
+                    .accessibilityLabel("Open Project")
+            }
+            .padding(.horizontal, 20).padding(.bottom, 9)
+
+            HStack(spacing: 7) {
+                Image(systemName: "line.3.horizontal.decrease").foregroundStyle(.tertiary)
+                TextField("Filter projects", text: $searchText).textFieldStyle(.plain)
+                    .accessibilityLabel("Find a project")
+            }
+            .font(.system(size: 11.5))
+            .padding(.horizontal, 10).padding(.vertical, 8)
+            .background(Theme.surface, in: RoundedRectangle(cornerRadius: 7))
+            .padding(.horizontal, 12).padding(.bottom, 8)
+
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 3) {
+                    ForEach(visibleProjects) { project in
+                        Button { model.openProject(project) } label: { ProjectRow(project: project) }
+                            .buttonStyle(.plain)
+                            .background(model.selectedSession?.projectID == project.id ? Theme.selection : .clear,
+                                        in: RoundedRectangle(cornerRadius: 8))
+                            .accessibilityAddTraits(model.selectedSession?.projectID == project.id ? [.isSelected] : [])
+                            .contextMenu {
+                                Button("Open Project") { model.openProject(project) }
+                                Button("Show Agents") { model.openProject(project, tab: .agents) }
+                                Button("Launch Agent…") { model.showAgents(for: project, launch: true) }
+                                Divider()
+                                Button("Reveal in Finder") { model.revealProject(project) }
+                                Button("Remove from Marika", role: .destructive) { model.removeProject(project) }
+                            }
                     }
-                        .buttonStyle(.plain)
-                        .tag(project.id)
-                        .listRowSeparator(.hidden)
-                        .contextMenu {
-                            Button("Open Project") { model.openProject(project) }
-                            Button("Show Agents") { model.openProject(project, tab: .agents) }
-                            Button("Launch Agent…") { model.showAgents(for: project, launch: true) }
-                            Divider()
-                            Button("Reveal in Finder") { model.revealProject(project) }
-                            Button("Remove from Marika", role: .destructive) { model.removeProject(project) }
-                        }
-                }
-            }
-        }
-        .listStyle(.sidebar)
-        .searchable(text: $searchText, placement: .sidebar, prompt: "Find a project")
-        .overlay {
-            if model.isReady, visibleProjects.isEmpty {
-                VStack(spacing: 10) {
-                    Image(systemName: model.workspace.projects.isEmpty ? "square.stack.3d.up" : "magnifyingglass")
-                        .font(.system(size: 24, weight: .light)).foregroundStyle(.tertiary)
-                    Text(model.workspace.projects.isEmpty ? "Your projects live here" : "No matching projects")
-                        .font(.system(size: 12)).foregroundStyle(.secondary)
-                    if !searchText.isEmpty {
-                        Button("Clear Search") { searchText = "" }.buttonStyle(.link)
+                    if model.isReady, visibleProjects.isEmpty {
+                        Text(model.workspace.projects.isEmpty ? "Open a folder to get started." : "No matching projects")
+                            .font(.system(size: 12)).foregroundStyle(.secondary)
+                            .padding(.horizontal, 10).padding(.top, 16)
                     }
                 }
-                .padding()
+                .padding(.horizontal, 10).padding(.bottom, 12)
             }
+            UsageFooter()
         }
-        .safeAreaInset(edge: .bottom, spacing: 0) { UsageFooter() }
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Button { model.chooseProject() } label: {
-                    Label("Open Project", systemImage: "plus")
-                }
-                .help("Open a project (⌘O)")
-            }
+        .background(Theme.sidebar)
+    }
+
+    private func sidebarAction(_ title: String, symbol: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: symbol)
+                .font(.system(size: 12.5)).frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 10).padding(.vertical, 9).contentShape(Rectangle())
         }
+        .buttonStyle(.plain).foregroundStyle(Theme.ink)
     }
 }
 
@@ -76,40 +88,21 @@ private struct ProjectRow: View {
         model.controllers.values.filter { $0.meta.projectID == project.id && $0.isBusy }
     }
     private var needsApproval: Bool { active.contains { $0.phase == .waitingForUser } }
-    private var tint: Color {
-        let colors: [Color] = [.blue, .purple, .teal, .orange, .pink]
-        let index = project.id.uuidString.utf8.reduce(0) { ($0 + Int($1)) % colors.count }
-        return colors[index]
-    }
 
     var body: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "folder.fill")
-                .font(.system(size: 14, weight: .medium))
-                .foregroundStyle(tint)
-                .frame(width: 30, height: 30)
-                .background(tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
-            VStack(alignment: .leading, spacing: 4) {
-                Text(project.name).font(.system(size: 12.5, weight: .medium))
-                    .lineLimit(1).truncationMode(.middle)
-                Text(project.url.deletingLastPathComponent().lastPathComponent)
-                    .font(.system(size: 10.5)).foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
+        HStack(spacing: 9) {
+            Image(systemName: "folder").font(.system(size: 13)).foregroundStyle(.secondary)
+                .frame(width: 18)
+            Text(project.name).font(.system(size: 12.5, weight: .medium))
+                .lineLimit(1).truncationMode(.middle)
             Spacer(minLength: 0)
             if !active.isEmpty {
-                HStack(spacing: 4) {
-                    Circle().fill(needsApproval ? Theme.attention : tint).frame(width: 5, height: 5)
-                    Text(String(active.count)).monospacedDigit()
-                }
-                .font(.system(size: 10, weight: .medium)).foregroundStyle(.secondary)
-                .help(needsApproval ? "An agent needs your approval" : "\(active.count) agents working")
+                Circle().fill(needsApproval ? Theme.attention : Color.green).frame(width: 5, height: 5)
+                Text(String(active.count)).font(.system(size: 10)).foregroundStyle(.secondary).monospacedDigit()
             }
         }
-        .padding(.vertical, 5)
-        .contentShape(Rectangle())
-        .help(project.path)
-        .accessibilityLabel(project.name)
+        .padding(.horizontal, 10).padding(.vertical, 11)
+        .contentShape(Rectangle()).help(project.path).accessibilityLabel(project.name)
         #if DEBUG
             .background(DebugViewMarker(name: "project-row-" + project.id.uuidString))
         #endif

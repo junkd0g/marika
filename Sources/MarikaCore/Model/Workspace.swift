@@ -10,6 +10,9 @@ public struct Project: Codable, Equatable, Hashable, Sendable, Identifiable {
     public var previewAddress: String?
     /// The project's main conversation, separate from task agents and older history.
     public var conversationSessionID: UUID?
+    /// Last channel or agent DM shown in Chat, independent of the main project conversation.
+    public var chatSessionID: UUID?
+    public var chatReadDates: [String: Date]?
     public var scanProvider: AgentKind?
     public var scanModel: String?
     public var statsAgentID: UUID?
@@ -63,6 +66,7 @@ public struct SessionMeta: Codable, Equatable, Hashable, Sendable, Identifiable 
     public var conversationID: String?
     public var model: String?
     public var effort: String?
+    public var serviceTier: String?
     public var mode: ApprovalMode
     public var totalCostUSD: Double?
     /// Kept with metadata so drafts can be restored without loading every transcript.
@@ -72,7 +76,8 @@ public struct SessionMeta: Codable, Equatable, Hashable, Sendable, Identifiable 
     public init(
         id: UUID = UUID(), projectID: UUID, agent: AgentKind, title: String = "New session", createdAt: Date = Date(),
         updatedAt: Date = Date(), conversationID: String? = nil, model: String? = nil, effort: String? = nil,
-        mode: ApprovalMode = .ask, totalCostUSD: Double? = nil, draft: SessionDraft? = nil, agentTask: AgentTask? = nil
+        mode: ApprovalMode = .ask, totalCostUSD: Double? = nil, draft: SessionDraft? = nil, agentTask: AgentTask? = nil,
+        serviceTier: String? = nil
     ) {
         self.id = id
         self.projectID = projectID
@@ -83,6 +88,7 @@ public struct SessionMeta: Codable, Equatable, Hashable, Sendable, Identifiable 
         self.conversationID = conversationID
         self.model = model
         self.effort = effort
+        self.serviceTier = serviceTier
         self.mode = mode
         self.totalCostUSD = totalCostUSD
         self.draft = draft
@@ -92,10 +98,11 @@ public struct SessionMeta: Codable, Equatable, Hashable, Sendable, Identifiable 
     public var hasDraft: Bool { draft.map { !$0.isEmpty } ?? false }
 
     public var settings: AgentSettings {
-        get { AgentSettings(model: model, effort: effort, mode: mode) }
+        get { AgentSettings(model: model, effort: effort, mode: mode, serviceTier: serviceTier) }
         set {
             model = newValue.model
             effort = newValue.effort
+            serviceTier = newValue.serviceTier
             mode = newValue.mode
         }
     }
@@ -138,6 +145,13 @@ public struct Workspace: Codable, Equatable, Sendable {
         let conversations = sessions.filter { $0.projectID == projectID && $0.agentTask == nil }
         if let id = project.conversationSessionID, let saved = conversations.first(where: { $0.id == id }) { return saved }
         return conversations.max { $0.updatedAt < $1.updatedAt }
+    }
+
+    public func chat(for projectID: UUID) -> SessionMeta? {
+        guard let project = projects.first(where: { $0.id == projectID }) else { return nil }
+        if let id = project.chatSessionID,
+           let selected = sessions.first(where: { $0.id == id && $0.projectID == projectID }) { return selected }
+        return conversation(for: projectID)
     }
 }
 

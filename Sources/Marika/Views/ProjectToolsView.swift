@@ -14,11 +14,6 @@ struct ProjectToolsView: View {
     @State private var actionCommand = ""
     @State private var skillName = ""
     @State private var skillText = ""
-    @State private var scheduleName = ""
-    @State private var schedulePrompt = ""
-    @State private var scheduleHours = 24
-    @State private var scheduleAgent: AgentKind = .codex
-    @State private var scheduleModel = ""
     @State private var selectedSkill: UUID?
     @State private var hookEvent = ProjectHook.Event.beforeTurn
     @State private var hookCommand = ""
@@ -100,48 +95,11 @@ struct ProjectToolsView: View {
     }
 
     private var schedules: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Scheduled agents").font(.headline)
-            Text("Runs while Marika is open and the Mac is awake. Missed runs resume once when you reopen the app. Each task gets an isolated worktree in Git projects and requests approval when needed.")
-                .font(.caption).foregroundStyle(.secondary)
-            ForEach($draft.schedules) { $schedule in
-                VStack(alignment: .leading, spacing: 6) {
-                    Toggle(schedule.name, isOn: $schedule.enabled)
-                    let live = project.tools?.schedules.first { $0.id == schedule.id } ?? schedule
-                    Text("Every \(schedule.hours) hours · Next \(live.nextRun.formatted())").font(.caption).foregroundStyle(.secondary)
-                    if let error = live.lastError { Text(error).font(.caption).foregroundStyle(.red) }
-                    HStack {
-                        Button("Run now") {
-                            if save() {
-                                model.updateProject(project.id) { current in
-                                    if let index = current.tools?.schedules.firstIndex(where: { $0.id == schedule.id }) { current.tools?.schedules[index].nextRun = .now }
-                                }
-                                Task { await model.runSchedules() }
-                            }
-                        }
-                        if let id = live.runs.last, let session = model.workspace.sessions.first(where: { $0.id == id }) {
-                            Button(model.controllers[id]?.isBusy == true ? "Open running agent" : "Open last result") { dismiss(); model.openAgentChat(session.id) }
-                        }
-                        Spacer()
-                        Button("Delete", role: .destructive) { draft.schedules.removeAll { $0.id == schedule.id } }
-                    }
-                }.padding(12).surface()
+        ProjectJobsView(project: project, onOpenChat: { dismiss() })
+            .frame(minHeight: 620)
+            .onChange(of: model.project(id: project.id)?.tools?.schedules) { _, jobs in
+                draft.schedules = jobs ?? []
             }
-            TextField("Task name", text: $scheduleName)
-            TextEditor(text: $schedulePrompt).frame(height: 85).padding(6).background(Theme.surface, in: RoundedRectangle(cornerRadius: 8))
-            HStack {
-                Picker("Agent", selection: $scheduleAgent) { ForEach(AgentKind.allCases) { Text($0.shortName).tag($0) } }
-                Stepper("Every \(scheduleHours) hours", value: $scheduleHours, in: 1...168)
-            }
-            Picker("Model", selection: $scheduleModel) {
-                Text("Agent default").tag("")
-                ForEach(model.capabilities[scheduleAgent]?.models.filter { $0.id != "default" } ?? []) { Text($0.name).tag($0.id) }
-            }.onChange(of: scheduleAgent) { scheduleModel = "" }
-            Button("Add scheduled task", systemImage: "plus") {
-                draft.schedules.append(ProjectSchedule(name: scheduleName, prompt: schedulePrompt, agent: scheduleAgent, model: scheduleModel.isEmpty ? nil : scheduleModel, hours: scheduleHours))
-                scheduleName = ""; schedulePrompt = ""
-            }.disabled(scheduleName.isEmpty || schedulePrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-        }
     }
 
     private var skills: some View {

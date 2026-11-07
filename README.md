@@ -25,10 +25,22 @@ at the top of the window with **Open Saved Data** and **Try Again**. Failed save
 New sessions offer starting prompts you can review before sending. Account and billing changes
 take effect after any active turn finishes, so changing settings doesn't cut off your agent.
 
-Each project has **Conversation**, **Code**, **Browser**, **Agents**, **Stats**, **Pipelines**, and **API** tabs. In Code, browse folders and edit multiple
+The chat composer has separate **model**, **reasoning effort**, and **speed** controls for Codex.
+Speed offers Standard plus the faster tiers advertised by the selected model, including Fast
+or Ultrafast when available. **Default speed** follows your Codex configuration. Each chat keeps
+its own choice across restarts; changes apply to the next turn. Narrow windows wrap the controls
+onto two rows so the speed selector remains accessible. Light and dark chat layouts use quiet
+project navigation, neutral message bubbles, and a rounded composer.
+
+Each project has **Chat**, **Code**, **Browser**, **Agents**, **Stats**, **Pipelines**, and **API** tabs. Chat includes a **#project** channel and direct conversations with the project's agents, with live status, unread replies and agent search. Type **@** to choose an agent, then send a message to its conversation. Drafts and attachments stay with each chat, and switching projects or tabs restores your last conversation. The outer sidebar remains project-only.
+
+In Code, browse folders and edit multiple
 files with line numbers, language-aware syntax colours, undo, and Find (⌘F). Save with ⌘S. Unsaved
 buffers stay open when switching conversations, and Marika asks before discarding edits. Files
 changed on disk reload automatically when clean; conflicting edits are preserved for review.
+Right-click a local file, folder, or open file tab and choose **Move to Trash…** to delete it.
+With the Files list focused (⇧⌘E), Delete or ⌘Delete opens the same confirmation. Unsaved edits
+stay open as recovered drafts, and saved files can be restored from the Mac's Trash.
 The editor supports UTF-8 and UTF-16 text files up to 2 MB. Single-click a file to open it.
 Light and dark palettes distinguish keywords, types, functions, strings, and comments, including
 Go, Swift, TypeScript, Python, GraphQL, and Protocol Buffers. The editor uses a monospaced font,
@@ -37,6 +49,13 @@ in the editor toolbar (or **Settings → Editor**) to set the font size, light/d
 spaces, tab width, guides, and line wrapping. These preferences update open editors immediately.
 The slim file tabs sit above one toolbar; click a breadcrumb to browse and filter that folder.
 Rename, refactoring, formatting, and snippets are in the **…** menu and the code context menu.
+
+Markdown files open in **Preview**. Use **Edit** for the highlighted Markdown source or **Split**
+to edit beside a live preview of your unsaved changes. The preview renders headings, tables,
+checklists, code blocks and images. Relative images and document links resolve from the Markdown
+file's folder within the project; heading links jump within the preview. Your chosen view and
+unsaved source are restored with the file. Switching views preserves the editor's undo history.
+Narrow split panes stack vertically, and ⌘F opens the source editor's search bar.
 Images, PDFs, audio, video, and other files open in an embedded Quick Look preview, using the
 preview formats installed on your Mac. Large text files use a preview instead of the editor.
 
@@ -51,9 +70,15 @@ terminal output to your draft. Project actions run in the selected shell.
 
 **Project → Project Settings** (⇧⌘,) contains worktree setup, reusable actions, schedules,
 playbooks and MCP connections. Setup runs before each isolated agent starts and a setup failure
-stops that launch. Scheduled tasks use isolated worktrees in Git repositories, run while the Mac
-is awake and Marika is open, and resume one missed run after restart. Enable or pause schedules
-there and open their latest agent result. Keep the app running for scheduled work.
+stops that launch. **Chat → Scheduled jobs** manages recurring agent tasks, with fixed hourly
+intervals or five-field cron expressions, time zones, presets and a next-run preview. For example,
+`0 9 * * MON-FRI` runs at 9am on weekdays in the chosen time zone. Edit, pause, resume or run jobs
+manually and open their saved run conversations to follow up. The latest 12 runs are linked from
+each job; their transcripts remain saved in the project. Jobs use isolated worktrees in Git
+repositories and request approval when needed. They run while Marika is open and the Mac is awake,
+catch up one missed run after reopening, and don't overlap runs of the same job. Cron supports
+lists, ranges, steps, month/day names and calendar aliases such as `@daily`; missing DST times
+are skipped and repeated local times run once. Keep the app running for scheduled work.
 
 Enabled project playbooks are sent to Claude and Codex on their next process connection. Import
 an existing SKILL.md or create instructions in the editor. Open **Project → MCP Servers** to add,
@@ -285,6 +310,9 @@ UI steps, which is how the app was checked end to end. See `DebugDriver.swift`.
 After a debug build, `python3 scripts/ui-smoke.py` checks the native tab controls, narrow-window
 layout, multiline drafts, and hidden-composer safety without sending model requests. It saves
 screenshots and a driver log in the temporary directory printed at the end.
+
+`python3 scripts/ui-codex-style.py` checks the light and dark chat layouts, speed-control
+visibility in narrow windows, and speed/effort persistence across restarts using mock agents.
 
 `python3 scripts/ui-recovery.py` checks deleted-file drafts, backup recovery, corrupt-data
 protection, and retrying failed transcript saves through the native app using a mock agent.

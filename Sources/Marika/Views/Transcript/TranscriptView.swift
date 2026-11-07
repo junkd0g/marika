@@ -70,7 +70,7 @@ struct TranscriptView: View {
         let hiddenRows = max(0, rows.count - visibleRows)
 
         ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 24) {
                 if hiddenRows > 0 {
                     Button("Show earlier messages") { visibleRows += Self.pageSize }
                         .buttonStyle(.link)
@@ -174,14 +174,23 @@ private struct MessageRow: View {
         switch item.content {
         case .user(let text, let images):
             UserMessage(text: text, images: images)
+                .help("You · " + item.date.formatted(date: .omitted, time: .shortened))
         case .assistant(let text):
             AssistantMessage(text: text)
+                .help(agent.shortName + " · " + item.date.formatted(date: .omitted, time: .shortened))
         case .notice(let notice):
             NoticeRow(notice: notice, agent: agent)
         case .turnEnd(let summary):
             TurnEndRow(summary: summary, showsCost: agent == .claude && model.workspace.preferences.claudeBilling == .apiKey)
         case .tool, .thinking:
             EmptyView()
+        }
+    }
+
+    private func messageHeader(_ sender: String) -> some View {
+        HStack(spacing: 7) {
+            Text(sender).font(.system(size: 11, weight: .semibold)).foregroundStyle(.secondary)
+            Text(item.date, format: .dateTime.hour().minute()).font(.system(size: 10)).foregroundStyle(.tertiary)
         }
     }
 }
@@ -206,9 +215,9 @@ private struct UserMessage: View {
                         .font(Theme.body)
                         .lineSpacing(3)
                         .textSelection(.enabled)
-                        .padding(.horizontal, 13)
-                        .padding(.vertical, 9)
-                        .background(Color.accentColor.opacity(0.14), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 11)
+                        .background(Theme.messageBubble, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
                 }
             }
         }

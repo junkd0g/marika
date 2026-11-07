@@ -22,12 +22,19 @@ public struct WorkspaceRuntime: Codable, Hashable, Sendable {
 }
 
 public protocol WorkspaceFiles: Actor {
+    nonisolated var supportsTrash: Bool { get }
     func entries(in path: String) async throws -> [ProjectFileEntry]
     func filePaths(limit: Int) async throws -> [String]
     func open(_ path: String) async throws -> ProjectFileContent
     func read(_ path: String) async throws -> TextFileSnapshot
     func preview(_ path: String) async throws -> FilePreviewSnapshot
     func write(_ text: String, replacing snapshot: TextFileSnapshot, overwrite: Bool) async throws -> TextFileSnapshot
+    func trash(_ path: String) async throws -> URL?
+}
+
+extension WorkspaceFiles {
+    public nonisolated var supportsTrash: Bool { false }
+    public func trash(_ path: String) async throws -> URL? { throw ProjectFileError.trashUnavailable }
 }
 
 public actor RemoteFiles: WorkspaceFiles {

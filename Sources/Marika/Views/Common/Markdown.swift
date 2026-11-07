@@ -25,164 +25,27 @@ private func handleLink(_ url: URL, projectRoot: URL?) -> OpenURLAction.Result {
     }
 }
 
-/// The block structure of a Markdown message.
-enum MarkdownBlock: Equatable {
-    struct ListItem: Equatable {
-        var depth: Int
-        var marker: String
-        var text: String
-    }
-
-    case heading(level: Int, text: String)
-    case paragraph(String)
-    case code(language: String, text: String)
-    case list([ListItem])
-    case quote(String)
-    case table(header: [String], rows: [[String]])
-    case rule
-}
-
-enum MarkdownParser {
-    static func parse(_ source: String) -> [MarkdownBlock] {
-        var blocks: [MarkdownBlock] = []
-        var paragraph: [String] = []
-        let lines = source.components(separatedBy: "\n")
-        var index = 0
-
-        func flushParagraph() {
-            guard !paragraph.isEmpty else { return }
-            blocks.append(.paragraph(paragraph.joined(separator: "\n")))
-            paragraph.removeAll()
-        }
-
-        while index < lines.count {
-            let line = lines[index]
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-
-            if trimmed.hasPrefix("```") || trimmed.hasPrefix("~~~") {
-                flushParagraph()
-                let fence = String(trimmed.prefix(3))
-                let language = String(trimmed.dropFirst(3)).trimmingCharacters(in: .whitespaces)
-                var body: [String] = []
-                index += 1
-                while index < lines.count, !lines[index].trimmingCharacters(in: .whitespaces).hasPrefix(fence) {
-                    body.append(lines[index])
-                    index += 1
-                }
-                index += 1
-                blocks.append(.code(language: language, text: body.joined(separator: "\n")))
-            } else if trimmed.isEmpty {
-                flushParagraph()
-                index += 1
-            } else if let heading = heading(trimmed) {
-                flushParagraph()
-                blocks.append(heading)
-                index += 1
-            } else if isRule(trimmed) {
-                flushParagraph()
-                blocks.append(.rule)
-                index += 1
-            } else if trimmed.hasPrefix(">") {
-                flushParagraph()
-                var quoted: [String] = []
-                while index < lines.count, lines[index].trimmingCharacters(in: .whitespaces).hasPrefix(">") {
-                    let text = lines[index].trimmingCharacters(in: .whitespaces).dropFirst()
-                    quoted.append(text.trimmingCharacters(in: .whitespaces))
-                    index += 1
-                }
-                blocks.append(.quote(quoted.joined(separator: "\n")))
-            } else if listItem(line) != nil {
-                flushParagraph()
-                var items: [MarkdownBlock.ListItem] = []
-                while index < lines.count {
-                    if let item = listItem(lines[index]) {
-                        items.append(item)
-                        index += 1
-                    } else if !items.isEmpty, lines[index].hasPrefix("  "),
-                        !lines[index].trimmingCharacters(in: .whitespaces).isEmpty
-                    {
-                        // A wrapped continuation of the previous item.
-                        items[items.count - 1].text += " " + lines[index].trimmingCharacters(in: .whitespaces)
-                        index += 1
-                    } else {
-                        break
-                    }
-                }
-                blocks.append(.list(items))
-            } else if index + 1 < lines.count, trimmed.contains("|"), isTableDivider(lines[index + 1]) {
-                flushParagraph()
-                let header = tableCells(trimmed)
-                index += 2
-                var rows: [[String]] = []
-                while index < lines.count, lines[index].contains("|"),
-                    !lines[index].trimmingCharacters(in: .whitespaces).isEmpty
-                {
-                    rows.append(tableCells(lines[index]))
-                    index += 1
-                }
-                blocks.append(.table(header: header, rows: rows))
-            } else {
-                paragraph.append(trimmed)
-                index += 1
-            }
-        }
-        flushParagraph()
-        return blocks
-    }
-
-    private static func heading(_ line: String) -> MarkdownBlock? {
-        let hashes = line.prefix { $0 == "#" }.count
-        guard (1...6).contains(hashes), line.dropFirst(hashes).first == " " else { return nil }
-        return .heading(level: hashes, text: line.dropFirst(hashes + 1).trimmingCharacters(in: .whitespaces))
-    }
-
-    private static func isRule(_ line: String) -> Bool {
-        guard line.count >= 3, let first = line.first, "-*_".contains(first) else { return false }
-        return line.allSatisfy { $0 == first }
-    }
-
-    private static func listItem(_ line: String) -> MarkdownBlock.ListItem? {
-        let indent = line.prefix { $0 == " " || $0 == "\t" }.count
-        let body = line.dropFirst(indent)
-        let depth = indent / 2
-        if let first = body.first, "-*+".contains(first), body.dropFirst().first == " " {
-            return .init(depth: depth, marker: "•", text: String(body.dropFirst(2)))
-        }
-        let digits = body.prefix { $0.isNumber }
-        if !digits.isEmpty, body.dropFirst(digits.count).hasPrefix(". ") {
-            return .init(depth: depth, marker: "\(digits).", text: String(body.dropFirst(digits.count + 2)))
-        }
-        return nil
-    }
-
-    private static func isTableDivider(_ line: String) -> Bool {
-        let trimmed = line.trimmingCharacters(in: .whitespaces)
-        return trimmed.contains("-") && trimmed.contains("|")
-            && trimmed.allSatisfy { "|-: ".contains($0) }
-    }
-
-    private static func tableCells(_ line: String) -> [String] {
-        var trimmed = line.trimmingCharacters(in: .whitespaces)
-        if trimmed.hasPrefix("|") { trimmed.removeFirst() }
-        if trimmed.hasSuffix("|") { trimmed.removeLast() }
-        return trimmed.components(separatedBy: "|").map { $0.trimmingCharacters(in: .whitespaces) }
-    }
-}
-
 /// Renders agent output. Written by hand so the app has no third-party dependencies.
 struct MarkdownView: View {
     @Environment(\.projectRoot) private var projectRoot
     let text: String
+    var documentURL: URL?
+    var parsedBlocks: [MarkdownBlock]?
+    var onOpenLink: ((URL) -> OpenURLAction.Result)?
 
     var body: some View {
-        let blocks = MarkdownParser.parse(text)
-        VStack(alignment: .leading, spacing: 10) {
-            ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
-                view(for: block)
-            }
+        let blocks = parsedBlocks ?? MarkdownParser.parse(text)
+        let anchors = MarkdownParser.headingAnchors(in: blocks)
+        let content = ForEach(Array(blocks.enumerated()), id: \.offset) { index, block in
+            if documentURL != nil { view(for: block).id(anchors[index] ?? "markdown-block-\(index)") }
+            else { view(for: block) }
+        }
+        Group {
+            if documentURL == nil { VStack(alignment: .leading, spacing: 10) { content } }
+            else { LazyVStack(alignment: .leading, spacing: 16) { content } }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .environment(\.openURL, OpenURLAction { handleLink($0, projectRoot: projectRoot) })
+        .environment(\.openURL, OpenURLAction { url in onOpenLink?(url) ?? handleLink(url, projectRoot: projectRoot) })
     }
 
     @ViewBuilder
@@ -190,22 +53,26 @@ struct MarkdownView: View {
         switch block {
         case .heading(let level, let text):
             InlineText(text)
-                .font(.system(size: level == 1 ? 19 : level == 2 ? 16 : 14, weight: .semibold))
-                .padding(.top, level <= 2 ? 6 : 2)
+                .font(.system(size: headingSize(level), weight: .semibold))
+                .padding(.top, level <= 2 ? 10 : 4)
         case .paragraph(let text):
             InlineText(text)
-                .font(Theme.body)
-                .lineSpacing(3)
+                .font(documentURL == nil ? Theme.body : .system(size: 14))
+                .lineSpacing(documentURL == nil ? 3 : 5)
         case .code(let language, let text):
             CodeBlock(language: language, text: text)
         case .list(let items):
             VStack(alignment: .leading, spacing: 5) {
                 ForEach(Array(items.enumerated()), id: \.offset) { _, item in
                     HStack(alignment: .firstTextBaseline, spacing: 7) {
-                        Text(item.marker)
-                            .foregroundStyle(.secondary)
-                            .monospacedDigit()
-                            .frame(minWidth: 12, alignment: .trailing)
+                        if let checked = item.checked {
+                            Image(systemName: checked ? "checkmark.square.fill" : "square")
+                                .foregroundStyle(checked ? Color.accentColor : .secondary)
+                                .accessibilityLabel(checked ? "Completed task" : "Incomplete task")
+                        } else {
+                            Text(item.marker).foregroundStyle(.secondary).monospacedDigit()
+                                .frame(minWidth: 12, alignment: .trailing)
+                        }
                         InlineText(item.text)
                             .lineSpacing(3)
                     }
@@ -225,7 +92,16 @@ struct MarkdownView: View {
             MarkdownTable(header: header, rows: rows)
         case .rule:
             Divider().padding(.vertical, 2)
+        case .image(let alt, let source):
+            if let documentURL, let projectRoot {
+                MarkdownImage(alt: alt, source: source, documentURL: documentURL, root: projectRoot)
+            } else { InlineText(alt) }
         }
+    }
+
+    private func headingSize(_ level: Int) -> CGFloat {
+        if documentURL != nil { return level == 1 ? 28 : level == 2 ? 22 : level == 3 ? 18 : 15 }
+        return level == 1 ? 19 : level == 2 ? 16 : 14
     }
 }
 

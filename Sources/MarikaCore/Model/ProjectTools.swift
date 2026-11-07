@@ -22,6 +22,8 @@ public struct ProjectSchedule: Codable, Hashable, Identifiable, Sendable {
     public var agent: AgentKind
     public var model: String?
     public var hours: Int
+    public var cron: String?
+    public var timeZoneID: String?
     public var enabled = true
     public var nextRun: Date
     public var runs: [UUID] = []
@@ -29,6 +31,19 @@ public struct ProjectSchedule: Codable, Hashable, Identifiable, Sendable {
     public init(name: String, prompt: String, agent: AgentKind, model: String? = nil, hours: Int) {
         self.name = name; self.prompt = prompt; self.agent = agent; self.model = model
         self.hours = max(1, hours); nextRun = Date().addingTimeInterval(Double(max(1, hours)) * 3600)
+    }
+
+    public var cadence: String {
+        if let cron { return cron + " · " + (timeZoneID ?? TimeZone.current.identifier) }
+        return hours == 1 ? "Every hour" : "Every \(hours) hours"
+    }
+
+    public func nextOccurrence(after date: Date) throws -> Date {
+        guard let cron else { return date.addingTimeInterval(Double(max(1, hours)) * 3600) }
+        guard let zone = TimeZone(identifier: timeZoneID ?? TimeZone.current.identifier) else {
+            throw CronExpression.ValidationError.invalid("Choose a valid IANA time zone, such as Europe/London.")
+        }
+        return try CronExpression(cron).next(after: date, timeZone: zone)
     }
 }
 

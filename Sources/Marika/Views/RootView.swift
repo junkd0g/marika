@@ -29,7 +29,10 @@ struct RootView: View {
                 .controlSize(.small).padding(12).background(Theme.attention.opacity(0.1))
             }
 
-            NavigationSplitView {
+            NavigationSplitView(columnVisibility: Binding(
+                get: { model.showsProjectSidebar ? .all : .detailOnly },
+                set: { model.showsProjectSidebar = $0 != .detailOnly }
+            )) {
                 SidebarView()
                     .disabled(model.workspaceLoadFailed)
                     .navigationSplitViewColumnWidth(min: 210, ideal: 240, max: 340)
@@ -50,8 +53,17 @@ struct RootView: View {
                         .id(project.id)
                 } else {
                     WelcomeView()
+                        .overlay(alignment: .topLeading) {
+                            if !model.showsProjectSidebar {
+                                Button { model.showsProjectSidebar = true } label: { Image(systemName: "sidebar.left") }
+                                    .buttonStyle(.plain).padding(16).help("Show projects")
+                            }
+                        }
                 }
             }
+            .toolbar(removing: .title)
+            .toolbar(removing: .sidebarToggle)
+            .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
         }
         .font(.system(size: 12))
         .controlSize(.small)
@@ -119,7 +131,7 @@ private struct ProjectWorkspaceView: View {
             Divider()
             GeometryReader { geometry in
                 ZStack(alignment: .topLeading) {
-                    place(SessionContainer(meta: meta).id(meta.id)
+                    place(ProjectChatView(project: project, selection: meta)
                         .environment(\.conversationIsVisible, visible(.conversation)), panel: .conversation, size: geometry.size)
                     if let editor = model.editors[project.id] {
                         place(ProjectCodeView(editor: editor, changeCount: model.controllers[meta.id]?.changeCount ?? 0,
@@ -155,38 +167,6 @@ private struct ProjectWorkspaceView: View {
             #endif
         }
         .background(Theme.canvas)
-        .navigationTitle(project.name)
-        .navigationSubtitle(selectedTab == .conversation && meta.agentTask != nil ? "Agent · \(meta.title)" : selectedTab.rawValue)
-        .toolbar {
-            if selectedTab == .conversation {
-                ToolbarItem(placement: .primaryAction) {
-                    if meta.agentTask != nil {
-                        Button { model.selectProjectTab(.conversation) } label: {
-                            Label("Project Conversation", systemImage: "arrow.uturn.backward")
-                        }
-                        .help("Return to the project's conversation")
-                    } else {
-                        let history = model.sessions(in: project).filter { $0.agentTask == nil }
-                        if history.count > 1 {
-                            Menu {
-                                ForEach(history) { conversation in
-                                    Button { model.openAgentChat(conversation.id) } label: {
-                                        Label(conversation.title, systemImage: conversation.id == meta.id ? "checkmark" : "bubble.left")
-                                    }
-                                }
-                            } label: { Label("Previous Conversations", systemImage: "clock.arrow.circlepath") }
-                            .help("Previous conversations in this project")
-                        }
-                    }
-                }
-                ToolbarItem(placement: .primaryAction) {
-                    Button { model.showsInspector.toggle() } label: {
-                        Label("Changes", systemImage: "sidebar.right")
-                    }
-                    .help("Show or hide changes (⌥⌘I)")
-                }
-            }
-        }
         .inspector(isPresented: Binding(
             get: { selectedTab == .conversation && arrangement.secondary == nil && model.showsInspector },
             set: { if selectedTab == .conversation { model.showsInspector = $0 } })
@@ -247,7 +227,7 @@ private struct ProjectWorkspaceView: View {
 }
 
 /// Loads a session's transcript before showing it.
-private struct SessionContainer: View {
+struct SessionContainer: View {
     @Environment(AppModel.self) private var model
     let meta: SessionMeta
 

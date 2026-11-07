@@ -63,6 +63,7 @@
                 var settings = session.meta.settings
                 if let value = step["model"]?.string { settings.model = value }
                 if let value = step["effort"]?.string { settings.effort = value }
+                if let value = step["serviceTier"] { settings.serviceTier = value.string }
                 if let value = step["mode"]?.string, let mode = ApprovalMode(rawValue: value) { settings.mode = mode }
                 session.update(settings: settings)
             case "split":
@@ -372,6 +373,10 @@
                 try await testNavigationLinks(step, model)
             case "mcpOAuthTest":
                 try await testMCPOAuth(step, model)
+            case "projectChatTest":
+                try await testProjectChat(step, model)
+            case "markdownTest":
+                try await testMarkdown(step, model)
             case "clickMarker":
                 let name = step["name"]?.string ?? ""
                 guard let target = NSApp.windows.compactMap({ window in window.contentView.flatMap { marker(in: $0, named: name) }.map { (window, $0) } }).first else { throw DriverError("Missing UI element: " + name) }
@@ -402,6 +407,14 @@
             case "agentsMock":
                 let seconds = step["seconds"]?.double ?? 1
                 model.agentFactoryOverride = { _ in DebugTaskAgent(seconds: seconds) }
+            case "composerMock":
+                let session = try await current(model)
+                session.apply(.contextUsage(ContextUsage(usedTokens: 28_000, maxTokens: 128_000)))
+                session.apply(.capabilities(AgentCapabilities(models: [ModelOption(
+                    id: "ui-model", name: "Coding model", efforts: ["low", "medium", "high"], isDefault: true,
+                    defaultEffort: "medium", serviceTiers: [
+                        .standard, ServiceTierOption(id: "priority", name: "Fast"), ServiceTierOption(id: "ultrafast", name: "Ultrafast"),
+                    ])])))
             case "experience":
                 guard let project = model.selectedProject else { throw DriverError("No project") }
                 model.showExperience(step["section"]?.string ?? "Recovery", project: project)
@@ -703,12 +716,14 @@
                     "path": editor.selectedDocument?.path ?? "",
                     "text": editor.selectedDocument?.text ?? "",
                     "modified": editor.selectedDocument?.isModified ?? false,
+                    "recovered": editor.selectedDocument?.isRecoveredDraft ?? false,
                     "conflict": editor.selectedDocument?.changedOnDisk ?? false,
                     "documents": editor.documents.map(\.path),
                     "preview": editor.selectedDocument?.preview?.url.lastPathComponent ?? "",
                     "navigator": editor.navigatorSelection ?? "",
                     "navigatorVisible": editor.showsNavigator,
                     "navigatorQuery": editor.navigatorQuery,
+                    "pendingTrash": editor.pendingTrashPath ?? "",
                     "canGoBack": editor.canGoBack,
                     "canGoForward": editor.canGoForward,
                     "recentFiles": editor.recentFilePaths,
@@ -720,7 +735,8 @@
                 ]
                 log("code " + String(decoding: try JSONSerialization.data(withJSONObject: state, options: [.sortedKeys]), as: UTF8.self))
             case "search":
-                guard let view = window()?.contentView, let field = searchField(in: view) else {
+                guard let view = window()?.contentView,
+                      let field: NSTextField = textField(in: view, placeholder: "Filter projects") ?? searchField(in: view) else {
                     throw DriverError("no sidebar search field")
                 }
                 field.stringValue = step["text"]?.string ?? ""
@@ -781,6 +797,11 @@
                     return ["x": .double(rect.minX), "y": .double(rect.minY),
                             "width": .double(rect.width), "height": .double(rect.height)]
                 }
+                func windowControl(_ kind: NSWindow.ButtonType) -> JSONValue {
+                    guard let button = window.standardWindowButton(kind) else { return .null }
+                    return ["visible": .bool(button.window === window && !button.isHiddenOrHasHiddenAncestor && button.alphaValue > 0),
+                            "enabled": .bool(button.isEnabled), "bounds": bounds(button)]
+                }
                 let composer = textViews(in: root).first { ($0 as? PromptTextView)?.composerActive == true && !$0.isHiddenOrHasHiddenAncestor }?.enclosingScrollView
                 let prompt = composer?.documentView as? NSTextView
                 let usedHeight = prompt.flatMap { view -> CGFloat? in
@@ -789,9 +810,17 @@
                     return manager.usedRect(for: container).height + view.textContainerInset.height * 2
                 }
                 let state: JSONValue = ["windowWidth": .double(root.bounds.width), "tabs": bounds(tabs),
+                    "titleHidden": .bool(window.titleVisibility == .hidden),
+                    "toolbarVisible": .bool(window.toolbar?.isVisible == true),
+                    "windowControls": ["close": windowControl(.closeButton),
+                                       "minimize": windowControl(.miniaturizeButton),
+                                       "fullScreen": windowControl(.zoomButton)],
+                    "fullScreen": .bool(window.styleMask.contains(.fullScreen)),
+                    "projectsVisible": .bool(model.showsProjectSidebar),
                     "content": bounds(content),
                     "tab": .string(model.selectedSession.flatMap { model.projectTabs[$0.projectID]?.rawValue } ?? "Conversation"),
                     "composer": composer.map(bounds) ?? .null,
+                    "speed": marker(in: root, named: "composer-speed").map(bounds) ?? .null,
                     "composerUsedHeight": usedHeight.map { .double($0) } ?? .null,
                     "composerScrollY": composer.map { .double($0.contentView.bounds.minY) } ?? .null,
                     "composerFocused": .bool(window.firstResponder is PromptTextView)]
@@ -818,6 +847,8 @@
                     "agent": session.meta.agent.rawValue,
                     "composerFocused": window()?.firstResponder is PromptTextView,
                     "mode": session.meta.mode.rawValue,
+                    "serviceTier": session.meta.serviceTier ?? "",
+                    "effort": session.meta.effort ?? "",
                     "cost": session.meta.totalCostUSD ?? -1,
                     "lastText": session.items.compactMap {
                         if case .assistant(let text) = $0.content { text } else { nil }
@@ -913,6 +944,155 @@
             default:
                 throw DriverError("unknown step: \(step)")
             }
+        }
+
+        private static func testMarkdown(_ step: JSONValue, _ model: AppModel) async throws {
+            guard let project = model.selectedProject else { throw DriverError("No project") }
+            model.showsInspector = false
+            model.selectProjectTab(.code)
+            let editor = model.editor(for: project)
+            await editor.loadDirectory("")
+            try await pause(0.4)
+            try await run(["op": "codeClickRow", "path": "README.md"], model)
+            try await pause(0.6)
+            guard let document = editor.selectedDocument, document.path == "README.md", document.isMarkdown,
+                  document.markdownPresentation == .preview else { throw DriverError("Markdown file did not open in Preview on a single click") }
+            let original = document.text
+            guard let content = window()?.contentView,
+                  marker(in: content, named: "markdown-preview") != nil else { throw DriverError("Rendered Markdown view missing") }
+            if let folder = step["directory"]?.string { try snapshot(to: folder + "/markdown-preview.png", title: nil) }
+            try await run(["op": "clickMarker", "name": "markdown-mode-edit"], model)
+            guard let field = textViews(in: content).compactMap({ $0 as? CodeEditingTextView }).first(where: { $0.documentID == document.id }),
+                  document.markdownPresentation == .source, field.editorActive else { throw DriverError("Edit mode did not activate the source editor") }
+            let identity = ObjectIdentifier(field)
+            field.insertText("\n\n## Live update\n\nThis paragraph came from the editor.\n", replacementRange: NSRange(location: (field.string as NSString).length, length: 0))
+            try await pause(0.25)
+            guard document.isModified, document.text.contains("Live update") else { throw DriverError("Source editing did not update the Markdown document") }
+            try await run(["op": "clickMarker", "name": "markdown-mode-split"], model)
+            try await pause(0.3)
+            guard document.markdownPresentation == .split,
+                  let retained = textViews(in: content).compactMap({ $0 as? CodeEditingTextView }).first(where: { $0.documentID == document.id }),
+                  ObjectIdentifier(retained) == identity else { throw DriverError("Switching preview mode recreated the source editor") }
+            if let folder = step["directory"]?.string { try snapshot(to: folder + "/markdown-split.png", title: nil) }
+            field.undoManager?.undo()
+            try await pause(0.2)
+            guard document.text == original else { throw DriverError("Preview mode lost the editor undo history") }
+            field.undoManager?.redo()
+            try await pause(0.2)
+            guard document.text.contains("Live update"), await editor.save(document) else { throw DriverError("Markdown edits did not save") }
+            guard try String(contentsOf: project.url.appendingPathComponent(document.path), encoding: .utf8) == document.text else { throw DriverError("Saved Markdown differs from the source") }
+            try await run(["op": "clickMarker", "name": "markdown-mode-preview"], model)
+            guard (window()?.firstResponder as? CodeEditingTextView)?.documentID != document.id else { throw DriverError("Preview left the hidden source editor focused") }
+            editor.findRequest += 1
+            try await pause(0.3)
+            guard document.markdownPresentation == .source, field.enclosingScrollView?.isFindBarVisible == true else { throw DriverError("Find did not open the Markdown source and search bar") }
+            await editor.open("notes.txt")
+            guard editor.selectedDocument?.isMarkdown == false else { throw DriverError("Plain text was treated as Markdown") }
+            editor.selectDocument(document.id)
+            try await run(["op": "clickMarker", "name": "markdown-mode-split"], model)
+            NSApp.appearance = NSAppearance(named: .aqua)
+            window()?.setContentSize(NSSize(width: 1020, height: 820))
+            try await pause(0.3)
+            if let folder = step["directory"]?.string { try snapshot(to: folder + "/markdown-compact.png", title: nil) }
+            log("Markdown passed: single-click Preview, native editing, live Split, retained editor identity and undo, save, Find and compact layout")
+        }
+
+        private static func testProjectChat(_ step: JSONValue, _ model: AppModel) async throws {
+            guard let project = model.selectedProject, let main = model.workspace.conversation(for: project.id) else { throw DriverError("No project chat") }
+            model.agentFactoryOverride = { _ in DebugTaskAgent(seconds: 0.35) }
+            model.showsInspector = false
+            NSApp.activate()
+            await model.open(main.id)
+            let reviewer = try await model.launchAgent(in: project, agent: .codex, settings: AgentSettings(),
+                prompt: "Review the API changes and suggest the next tests.", isolated: false)
+            let tester = try await model.launchAgent(in: project, agent: .claude, settings: AgentSettings(),
+                prompt: "Check the GraphQL and gRPC test coverage.", isolated: false)
+            model.rename(reviewer.id, to: "API reviewer")
+            model.rename(tester.id, to: "Test engineer")
+            model.openAgentChat(main.id)
+            try await pause(1)
+            guard model.chatUnreadCount(reviewer.id) == 1, model.chatUnreadCount(tester.id) == 1 else {
+                throw DriverError("Background agent replies were not marked unread")
+            }
+            try await run(["op": "clickMarker", "name": .string("chat-agent-" + reviewer.id.uuidString)], model)
+            // Headless macOS can deny foreground activation; simulate the visible-read signal
+            // separately while still verifying the actual native navigation click.
+            if !NSApp.isActive { model.markChatRead(reviewer.id) }
+            guard model.selectedSessionID == reviewer.id, model.chatUnreadCount(reviewer.id) == 0 else {
+                if let folder = step["directory"]?.string { try snapshot(to: folder + "/chat-click.png", title: nil) }
+                throw DriverError("Agent click: selected=\(model.selectedSessionID == reviewer.id) unread=\(model.chatUnreadCount(reviewer.id)) active=\(NSApp.isActive) visible=\(model.visibleChatSessionIDs.contains(reviewer.id))")
+            }
+            reviewer.draft = "Unsent follow-up stays here"
+            model.openAgentChat(main.id)
+            guard let source = model.controllers[main.id] else { throw DriverError("Main chat not loaded") }
+            let mention = "@" + ProjectChat.handle(for: reviewer.meta) + " What should we test next?"
+            source.draft = "@codex"
+            try await pause(0.2)
+            guard let content = window()?.contentView,
+                  let prompt = textViews(in: content).first(where: { $0 is PromptTextView }) else { throw DriverError("Chat composer missing") }
+            prompt.doCommand(by: #selector(NSResponder.insertTab(_:)))
+            guard source.draft == "@" + ProjectChat.handle(for: reviewer.meta) + " " else { throw DriverError("Mention autocomplete did not choose the project agent") }
+            source.draft = mention
+            try await pause(0.2)
+            window()?.makeFirstResponder(prompt)
+            try await run(["op": "key", "code": 36], model)
+            try await pause(0.3)
+            guard source.draft.isEmpty, reviewer.draft == "Unsent follow-up stays here",
+                  model.selectedSessionID == reviewer.id,
+                  reviewer.items.contains(where: { if case .user(let text, _) = $0.content { return text == "What should we test next?" }; return false }) else {
+                throw DriverError("Mention routing lost a draft or sent to the wrong agent")
+            }
+            model.selectProjectTab(.code)
+            model.selectProjectTab(.conversation)
+            guard model.selectedSessionID == reviewer.id, model.workspace.conversation(for: project.id)?.id == main.id else {
+                throw DriverError("Chat selection changed when switching tabs")
+            }
+            try await pause(0.7)
+            model.markChatRead(reviewer.id)
+            if let folder = step["directory"]?.string { try snapshot(to: folder + "/chat-dark.png", title: nil) }
+
+            let otherURL = project.url.deletingLastPathComponent().appendingPathComponent("OtherProject")
+            try FileManager.default.createDirectory(at: otherURL, withIntermediateDirectories: true)
+            model.addProject(at: otherURL)
+            guard ProjectChat.agents(in: model.selectedProject!.id, sessions: model.workspace.sessions).isEmpty else {
+                throw DriverError("An agent leaked into another project")
+            }
+            model.openProject(project)
+            guard model.selectedSessionID == reviewer.id else { throw DriverError("Returning to the project lost the selected DM") }
+
+            var job = ProjectSchedule(name: "Morning code review", prompt: "Review the code and report risks with file references.", agent: .codex, hours: 24)
+            job.cron = "0 9 * * MON-FRI"; job.timeZoneID = "Europe/London"
+            var tools = model.project(id: project.id)?.tools ?? ProjectTools()
+            tools.schedules.append(job)
+            try model.saveTools(tools, for: project)
+            let scheduledTime = model.project(id: project.id)!.tools!.schedules[0].nextRun
+            try await model.runJobNow(job.id, projectID: project.id)
+            do {
+                try await model.runJobNow(job.id, projectID: project.id)
+                throw DriverError("A job launched overlapping agents")
+            } catch is AgentError { }
+            guard let live = model.project(id: project.id)?.tools?.schedules.first, live.runs.count == 1,
+                  live.nextRun == scheduledTime else { throw DriverError("Run now changed cadence or created duplicate runs") }
+            try await pause(0.9)
+            model.updateProject(project.id) { current in current.tools?.schedules[0].nextRun = .distantPast }
+            await model.runSchedules()
+            await model.runSchedules()
+            guard model.project(id: project.id)?.tools?.schedules.first?.runs.count == 2 else {
+                throw DriverError("Missed scheduled job did not catch up exactly once")
+            }
+            try await pause(0.9)
+            try await run(["op": "clickMarker", "name": "chat-open-jobs"], model)
+            if let folder = step["directory"]?.string { try snapshot(to: folder + "/jobs-dark.png", title: nil) }
+            try await run(["op": "clickMarker", "name": "jobs-create"], model)
+            if let folder = step["directory"]?.string { try snapshot(to: folder + "/job-editor.png", title: nil, sheet: true) }
+            try await run(["op": "clickMarker", "name": "job-editor-cancel"], model)
+            try await run(["op": "clickMarker", "name": "chat-open-jobs"], model)
+            NSApp.appearance = NSAppearance(named: .aqua)
+            window()?.setContentSize(NSSize(width: 860, height: 760))
+            try await pause(0.5)
+            if let folder = step["directory"]?.string { try snapshot(to: folder + "/chat-compact.png", title: nil) }
+            guard await model.save() else { throw DriverError("Chat and jobs did not save") }
+            log("Project chat passed: native agent selection, unread replies, mention delivery, drafts, tab/project isolation, cron run now, overlap prevention and one missed-run catch-up")
         }
 
         private static func decision(_ step: JSONValue, _ request: ApprovalRequest) -> ApprovalDecision {

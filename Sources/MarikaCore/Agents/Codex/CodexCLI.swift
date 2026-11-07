@@ -77,12 +77,26 @@ public enum CodexCLI {
         return AgentCapabilities(models: models, commands: commands)
     }
 
-    private static func option(_ model: JSONValue) -> ModelOption? {
+    static func option(_ model: JSONValue) -> ModelOption? {
         guard model["hidden"]?.bool != true, let id = model["model"]?.string ?? model["id"]?.string else { return nil }
+        let tiers: [ServiceTierOption]?
+        if let advertised = model["serviceTiers"]?.array, !advertised.isEmpty {
+            tiers = advertised.compactMap { tier in
+                guard let id = tier["id"]?.string, !id.isEmpty else { return nil }
+                return ServiceTierOption(id: id, name: tier["name"]?.string ?? ServiceTierOption.displayName(id),
+                                         detail: tier["description"]?.string ?? "")
+            }
+        } else {
+            // Older app-servers advertise just the additional speed IDs.
+            tiers = model["additionalSpeedTiers"]?.array?.compactMap { tier in
+                tier.string.map { ServiceTierOption(id: $0, name: ServiceTierOption.displayName($0)) }
+            }
+        }
         return ModelOption(
             id: id, name: model["displayName"]?.string ?? id, detail: model["description"]?.string ?? "",
             efforts: (model["supportedReasoningEfforts"]?.array ?? []).compactMap { $0["reasoningEffort"]?.string },
-            isDefault: model["isDefault"]?.bool ?? false, defaultEffort: model["defaultReasoningEffort"]?.string)
+            isDefault: model["isDefault"]?.bool ?? false, defaultEffort: model["defaultReasoningEffort"]?.string,
+            serviceTiers: tiers, defaultServiceTier: model["defaultServiceTier"]?.string)
     }
 
     private static let commands = [

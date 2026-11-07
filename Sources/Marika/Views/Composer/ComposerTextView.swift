@@ -35,7 +35,7 @@ struct ComposerTextView: NSViewRepresentable {
         textView.isAutomaticDashSubstitutionEnabled = false
         textView.isAutomaticTextReplacementEnabled = false
         textView.isAutomaticSpellingCorrectionEnabled = false
-        textView.font = .systemFont(ofSize: 13.5)
+        textView.font = .systemFont(ofSize: 14)
         textView.textColor = .labelColor
         textView.backgroundColor = .clear
         textView.drawsBackground = false
@@ -94,7 +94,7 @@ struct ComposerTextView: NSViewRepresentable {
     }
 
     fileprivate static func textHeight(_ text: String, width: CGFloat) -> CGFloat {
-        let storage = NSTextStorage(string: text, attributes: [.font: NSFont.systemFont(ofSize: 13.5)])
+        let storage = NSTextStorage(string: text, attributes: [.font: NSFont.systemFont(ofSize: 14)])
         let manager = NSLayoutManager()
         let container = NSTextContainer(size: NSSize(width: max(1, width), height: .greatestFiniteMagnitude))
         container.lineFragmentPadding = 0

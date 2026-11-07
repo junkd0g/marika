@@ -264,9 +264,11 @@ struct LaunchAgentView: View {
         if includeFile, let selectedFile { task += "\n\nStart with this project file: \(selectedFile)" }
         Task {
             do {
-                _ = try await model.launchAgent(in: project, agent: agent,
+                let opensChat = model.projectTabs[project.id] == .conversation
+                let controller = try await model.launchAgent(in: project, agent: agent,
                     settings: AgentSettings(model: selectedModel.isEmpty ? nil : selectedModel, mode: mode), prompt: task, isolated: isolated)
-                model.showAgents(for: project)
+                if opensChat { model.openAgentChat(controller.id) }
+                else { model.showAgents(for: project) }
                 dismiss()
             } catch { self.error = error.localizedDescription; isLaunching = false }
         }

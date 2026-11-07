@@ -21,6 +21,7 @@ struct MarikaApp: App {
                 }
         }
         .defaultSize(width: 1240, height: 820)
+        .windowStyle(.hiddenTitleBar)
         .windowToolbarStyle(.unifiedCompact)
         .commands { MarikaCommands(model: model) }
 
@@ -82,6 +83,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 struct MarikaCommands: Commands {
     @Bindable var model: AppModel
+    @FocusedValue(\.fileNavigator) private var fileNavigator
 
     var body: some Commands {
         CommandGroup(replacing: .newItem) {
@@ -95,6 +97,11 @@ struct MarikaCommands: Commands {
                 .disabled(model.workspace.projects.isEmpty)
         }
         CommandGroup(after: .newItem) {
+            Button("Move to Trash…") {
+                if let editor = fileNavigator, let path = editor.navigatorSelection { editor.pendingTrashPath = path }
+            }
+            .keyboardShortcut(.delete, modifiers: .command)
+            .disabled(fileNavigator?.supportsTrash != true || fileNavigator?.navigatorSelection == nil || fileNavigator?.trashingPath != nil)
             Button("Command Palette…") { model.showsCommandPalette = true }.keyboardShortcut("k")
             Button("Search Project…") { model.showsProjectSearch = true }
                 .keyboardShortcut("f", modifiers: [.command, .shift]).disabled(model.selectedSession == nil)
@@ -127,7 +134,7 @@ struct MarikaCommands: Commands {
         }
         CommandMenu("Navigate") {
             ForEach(AppModel.ProjectTab.allCases, id: \.self) { tab in
-                Button("Show \(tab.rawValue)") { model.switchPanel(tab) }
+                Button("Show \(tab.title)") { model.switchPanel(tab) }
                     .keyboardShortcut(KeyEquivalent(Character(tab.shortcut)))
                     .disabled(model.selectedSession == nil)
             }

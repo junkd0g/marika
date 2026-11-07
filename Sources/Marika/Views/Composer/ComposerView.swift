@@ -11,11 +11,18 @@ struct ComposerView: View {
     @State private var highlightedCommand = 0
     @State private var isConfirmingBypass = false
     @State private var isDropTargeted = false
+    @State private var isRoutingMessage = false
+    @State private var routingError: String?
 
     private var capabilities: AgentCapabilities? { model.capabilities[session.meta.agent] }
+    private var selectedModel: ModelOption? {
+        let models = capabilities?.models ?? []
+        return models.first { $0.id == (session.meta.model ?? session.reportedModel) }
+            ?? models.first(where: \.isDefault) ?? models.first
+    }
     private var trimmedDraft: String { session.draft.trimmingCharacters(in: .whitespacesAndNewlines) }
     private var canSend: Bool {
-        (!trimmedDraft.isEmpty || !session.draftImages.isEmpty) && isAgentAvailable
+        (!trimmedDraft.isEmpty || !session.draftImages.isEmpty) && (isAgentAvailable || trimmedDraft.hasPrefix("@")) && !isRoutingMessage
             && (session.pendingApproval == nil || !trimmedDraft.isEmpty)
     }
 
@@ -23,16 +30,13 @@ struct ComposerView: View {
     /// to it. Unknown status counts as available so a slow check never blocks typing.
     private var isAgentAvailable: Bool {
         if session.meta.agentTask?.workspace?.status == .discarded { return false }
-        return switch model.statuses[session.meta.agent]?.readiness {
-        case .notInstalled, .signedOut, .unavailable: false
-        default: true
-        }
+        return model.canMessage(session.meta.agent)
     }
 
     private var placeholder: String {
         if session.pendingApproval != nil { return "Or tell the agent what to do instead…" }
         if session.isBusy { return "Add to this turn…" }
-        return session.hasStarted ? "Reply…" : "What should we work on?"
+        return session.hasStarted ? "Ask a follow-up, or @mention an agent…" : "Ask anything, or describe a task…"
     }
 
     /// Commands matching the `/word` being typed.
@@ -41,6 +45,12 @@ struct ComposerView: View {
         let prefix = session.draft.dropFirst().lowercased()
         let commands = capabilities?.commands ?? []
         return Array(commands.filter { $0.name.lowercased().hasPrefix(prefix) }.prefix(7))
+    }
+
+    private var mentionMatches: [SessionMeta] {
+        guard session.draft.hasPrefix("@"), !session.draft.contains(where: { $0.isWhitespace }) else { return [] }
+        return Array(ProjectChat.agents(in: session.meta.projectID, sessions: model.workspace.sessions,
+                                       matching: String(session.draft.dropFirst())).prefix(6))
     }
 
     var body: some View {
@@ -61,7 +71,7 @@ struct ComposerView: View {
             .padding(.horizontal, 4)
         }
         .onDrop(of: [.fileURL], isTargeted: $isDropTargeted, perform: handleDrop)
-        .onChange(of: session.draft) { _, _ in highlightedCommand = 0 }
+        .onChange(of: session.draft) { _, _ in highlightedCommand = 0; routingError = nil }
         .confirmationDialog(
             "Run without any approval checks?", isPresented: $isConfirmingBypass, titleVisibility: .visible
         ) {
@@ -79,6 +89,10 @@ struct ComposerView: View {
             if !commandMatches.isEmpty {
                 commandList
             }
+            if !mentionMatches.isEmpty { mentionList }
+            if let routingError {
+                Text(routingError).font(.system(size: 11)).foregroundStyle(Theme.attention).textSelection(.enabled)
+            }
             if !session.draftImages.isEmpty {
                 attachments
                 if session.pendingApproval != nil {
@@ -89,7 +103,7 @@ struct ComposerView: View {
             }
             ComposerTextView(
                 text: $session.draft, placeholder: placeholder,
-                isActive: conversationIsVisible,
+                isActive: conversationIsVisible && !isRoutingMessage,
                 focusToken: [session.id, model.composerFocusRequest],
                 onSubmit: { submit() }, onPasteImage: { data in addImage(data: data) }, onKey: { key in handleKey(key) }
             )
@@ -97,13 +111,14 @@ struct ComposerView: View {
 
             controls
         }
-        .padding(.horizontal, 14)
-        .padding(.top, 12)
-        .padding(.bottom, 9)
-        .floatingPanel()
+        .padding(.horizontal, 16)
+        .padding(.top, 16)
+        .padding(.bottom, 12)
+        .background(Theme.composer, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay { RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(Theme.hairline) }
         .overlay {
             if isDropTargeted {
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
                     .strokeBorder(Color.accentColor, lineWidth: 2)
             }
         }
@@ -129,7 +144,31 @@ struct ComposerView: View {
         ViewThatFits(in: .horizontal) {
             controlRow(.full)
             controlRow(.compact)
-            controlRow(.minimal)
+            VStack(spacing: 8) {
+                HStack(spacing: 8) {
+                    attachmentButton
+                    modelMenu
+                    Spacer(minLength: 4)
+                    sendControls
+                }
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 8) {
+                        effortMenu
+                        speedMenu
+                        Spacer(minLength: 4)
+                        modeMenu(showsTitle: false)
+                        if let context = session.context { ContextRing(usage: context) }
+                    }
+                    VStack(spacing: 8) {
+                        HStack(spacing: 8) { effortMenu; speedMenu; Spacer(minLength: 0) }
+                        HStack(spacing: 8) {
+                            modeMenu(showsTitle: true)
+                            Spacer(minLength: 0)
+                            if let context = session.context { ContextRing(usage: context) }
+                        }
+                    }
+                }
+            }
         }
         .font(.system(size: 12))
     }
@@ -137,22 +176,15 @@ struct ComposerView: View {
     private enum Density {
         case full
         case compact
-        case minimal
     }
 
     private func controlRow(_ density: Density) -> some View {
-        HStack(spacing: 2) {
-            Button(action: chooseImages) {
-                Image(systemName: "paperclip").frame(width: 24, height: 22)
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(.secondary)
-            .help("Attach images")
-
-            if density == .full || !session.hasStarted { agentMenu }
+        HStack(spacing: 8) {
+            attachmentButton
             modelMenu
-            if density != .minimal { effortMenu }
-            modeMenu(showsTitle: density != .minimal)
+            effortMenu
+            speedMenu
+            modeMenu(showsTitle: density == .full)
 
             Spacer(minLength: 6)
 
@@ -161,6 +193,12 @@ struct ComposerView: View {
             }
             sendControls
         }
+    }
+
+    private var attachmentButton: some View {
+        Button(action: chooseImages) { Image(systemName: "plus").frame(width: 22, height: 24) }
+            .buttonStyle(.plain).foregroundStyle(.secondary)
+            .accessibilityLabel("Attach images").help("Attach images")
     }
 
     @ViewBuilder
@@ -209,20 +247,30 @@ struct ComposerView: View {
                         menuLabel(option.name, isSelected: session.meta.model == option.id)
                     }
                 }
+                if !session.hasStarted {
+                    Divider()
+                    Section("Agent") {
+                        ForEach(AgentKind.allCases) { agent in
+                            Button { model.setAgent(agent, for: session.id) } label: {
+                                menuLabel(agent.displayName, isSelected: session.meta.agent == agent)
+                            }
+                        }
+                    }
+                }
             } label: {
-                Text(models.first { $0.id == session.meta.model }?.name ?? "Default model")
+                Text(selectedModel?.name ?? "Default model").lineLimit(1).truncationMode(.middle).frame(maxWidth: 155)
             }
             .menuStyle(.borderlessButton)
             .fixedSize()
             .help("Model")
+        } else {
+            agentMenu
         }
     }
 
     @ViewBuilder
     private var effortMenu: some View {
-        let models = capabilities?.models ?? []
-        let selected = models.first { $0.id == session.meta.model } ?? models.first
-        let efforts = selected?.efforts ?? []
+        let efforts = selectedModel?.efforts ?? []
         if !efforts.isEmpty {
             Menu {
                 Button {
@@ -239,11 +287,44 @@ struct ComposerView: View {
                     }
                 }
             } label: {
-                Text(session.meta.effort.map(Format.effort) ?? "Effort")
+                Text((session.meta.effort ?? selectedModel?.defaultEffort).map(Format.effort) ?? "Effort")
             }
             .menuStyle(.borderlessButton)
             .fixedSize()
             .help("How hard the model thinks. Applies from your next message.")
+        }
+    }
+
+    @ViewBuilder
+    private var speedMenu: some View {
+        if session.meta.agent == .codex {
+            let options = selectedModel?.speedOptions ?? [.standard]
+            let label = session.meta.serviceTier.map { tier in
+                options.first { $0.id == ServiceTierOption.requestValue(tier) }?.name ?? ServiceTierOption.displayName(tier)
+            } ?? "Default speed"
+            let menu = Menu {
+                Section("Speed") {
+                    Button { setServiceTier(nil) } label: { menuLabel("Default speed", isSelected: session.meta.serviceTier == nil) }
+                    Divider()
+                    ForEach(options) { option in
+                        Button { setServiceTier(option.id) } label: {
+                            menuLabel(option.name, isSelected: session.meta.serviceTier.map(ServiceTierOption.requestValue) == option.id)
+                        }
+                        .help(option.detail)
+                    }
+                }
+                Text("Applies to the next turn. Faster tiers may use more of your plan.")
+            } label: {
+                Label(label, systemImage: "bolt")
+            }
+            .menuStyle(.borderlessButton).fixedSize()
+            .accessibilityLabel("Speed: " + label)
+            .help("Speed is separate from reasoning effort. Default follows your Codex settings; changes apply to the next turn.")
+            #if DEBUG
+                menu.background(DebugViewMarker(name: "composer-speed"))
+            #else
+                menu
+            #endif
         }
     }
 
@@ -290,7 +371,7 @@ struct ComposerView: View {
             Button(action: submit) {
                 Image(systemName: "arrow.up.circle.fill")
                     .font(.system(size: 23))
-                    .foregroundStyle(canSend ? Color.accentColor : Color.secondary.opacity(0.5))
+                    .foregroundStyle(canSend ? Theme.ink : Color.secondary.opacity(0.35))
             }
             .buttonStyle(.plain)
             .disabled(!canSend)
@@ -341,7 +422,43 @@ struct ComposerView: View {
         session.draft = "/\(command.name) "
     }
 
+    private var mentionList: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text("MESSAGE AN AGENT").font(.system(size: 9, weight: .semibold)).foregroundStyle(.secondary).padding(6)
+            ForEach(Array(mentionMatches.enumerated()), id: \.element.id) { index, agent in
+                Button { acceptMention(agent) } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "at").foregroundStyle(Color.accentColor)
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(agent.title).font(.system(size: 12, weight: .medium)).lineLimit(1)
+                            Text(ProjectChat.handle(for: agent)).font(.system(size: 10)).foregroundStyle(.secondary)
+                        }
+                        Spacer(minLength: 0)
+                        Text(agent.agent.shortName).font(.system(size: 10)).foregroundStyle(.secondary)
+                    }
+                    .padding(8).contentShape(Rectangle())
+                    .background(index == highlightedCommand ? Color.accentColor.opacity(0.12) : .clear,
+                                in: RoundedRectangle(cornerRadius: 6))
+                }.buttonStyle(.plain)
+            }
+        }
+    }
+
+    private func acceptMention(_ agent: SessionMeta) {
+        session.draft = "@" + ProjectChat.handle(for: agent) + " "
+    }
+
     private func handleKey(_ key: ComposerTextView.Key) -> Bool {
+        let mentions = mentionMatches
+        if !mentions.isEmpty {
+            switch key {
+            case .up: highlightedCommand = max(0, highlightedCommand - 1)
+            case .down: highlightedCommand = min(mentions.count - 1, highlightedCommand + 1)
+            case .tab: acceptMention(mentions[min(highlightedCommand, mentions.count - 1)])
+            case .escape: session.draft = ""
+            }
+            return true
+        }
         let matches = commandMatches
         if key == .escape {
             // Handled here because a focused text view would otherwise offer word completions.
@@ -371,6 +488,10 @@ struct ComposerView: View {
     // MARK: Actions
 
     private func submit() {
+        if !mentionMatches.isEmpty {
+            acceptMention(mentionMatches[min(highlightedCommand, mentionMatches.count - 1)])
+            return
+        }
         if !commandMatches.isEmpty, !session.draft.contains(" ") {
             let command = commandMatches[min(highlightedCommand, commandMatches.count - 1)]
             if session.draft != "/\(command.name)" {
@@ -379,6 +500,16 @@ struct ComposerView: View {
             }
         }
         guard canSend else { return }
+        if trimmedDraft.hasPrefix("@") {
+            let input = UserInput(text: trimmedDraft, images: session.draftImages)
+            isRoutingMessage = true
+            Task {
+                defer { isRoutingMessage = false }
+                do { try await model.sendChatMention(input, from: session.id) }
+                catch { routingError = error.localizedDescription }
+            }
+            return
+        }
         if let approval = session.pendingApproval {
             guard !trimmedDraft.isEmpty else { return }
             session.answer(approval, with: .denyWithFeedback(trimmedDraft))
@@ -394,14 +525,23 @@ struct ComposerView: View {
         settings.model = model
         // Effort levels differ by model, and a stale one would be rejected.
         let models = capabilities?.models ?? []
-        let chosen = models.first { $0.id == model } ?? models.first
+        let chosen = models.first { $0.id == model } ?? models.first(where: \.isDefault) ?? models.first
         if let effort = settings.effort, chosen?.efforts.contains(effort) == false { settings.effort = nil }
+        if let tier = settings.serviceTier, chosen?.speedOptions.contains(where: { $0.id == ServiceTierOption.requestValue(tier) }) == false {
+            settings.serviceTier = nil
+        }
         session.update(settings: settings)
     }
 
     private func setEffort(_ effort: String?) {
         var settings = session.meta.settings
         settings.effort = effort
+        session.update(settings: settings)
+    }
+
+    private func setServiceTier(_ tier: String?) {
+        var settings = session.meta.settings
+        settings.serviceTier = tier
         session.update(settings: settings)
     }
 

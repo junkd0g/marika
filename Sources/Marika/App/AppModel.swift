@@ -21,6 +21,7 @@ final class AppModel {
     var storageRecoveryNotice: String?
 
     var selectedSessionID: UUID?
+    var showsProjectSidebar = true
     var showsInspector = true {
         didSet {
             if let id = selectedSession?.projectID, let index = workspace.projects.firstIndex(where: { $0.id == id }) {
@@ -55,6 +56,8 @@ final class AppModel {
         projectSettingsID = project.id
     }
     var runningSchedules = false
+    @ObservationIgnored var launchingJobs: Set<UUID> = []
+    var visibleChatSessionIDs: Set<UUID> = []
     @ObservationIgnored var scheduler: Task<Void, Never>?
     var agentLaunchProjectID: UUID?
     var apiWorkspaces: [UUID: APIWorkspace] = [:]
@@ -144,10 +147,7 @@ final class AppModel {
         let editor = editor(for: project)
         switchPanel(.code)
         if quickOpen { editor.showsQuickOpen = true }
-        if focusFiles {
-            editor.showsNavigator = true
-            editor.navigatorFocusRequest += 1
-        }
+        if focusFiles { editor.focusNavigator() }
     }
 
     func showAgents(for preferredProject: Project? = nil, launch: Bool = false) {
@@ -205,6 +205,7 @@ final class AppModel {
     func openAgentChat(_ id: UUID) {
         guard let meta = workspace.sessions.first(where: { $0.id == id }) else { return }
         if meta.agentTask == nil { rememberProjectConversation(meta) }
+        rememberChat(meta)
         selectedSessionID = id
         projectTabs[meta.projectID] = .conversation
         composerFocusRequest = UUID()
@@ -522,10 +523,11 @@ final class AppModel {
 
     func openProject(_ project: Project, tab: ProjectTab? = nil) {
         guard let current = self.project(id: project.id) else { return }
-        let conversation = workspace.conversation(for: current.id) ?? newSession(in: current)
+        let conversation = workspace.chat(for: current.id) ?? newSession(in: current)
         selectedSessionID = conversation.id
         showsInspector = current.layout?.showsInspector ?? true
         rememberProjectConversation(conversation)
+        rememberChat(conversation)
         if let tab { projectTabs[current.id] = tab }
         let saved = layout(for: current.id)
         let primary = projectTabs[current.id] ?? .conversation
@@ -540,6 +542,13 @@ final class AppModel {
             let index = workspace.projects.firstIndex(where: { $0.id == conversation.projectID }),
             workspace.projects[index].conversationSessionID != conversation.id else { return }
         workspace.projects[index].conversationSessionID = conversation.id
+        scheduleSave()
+    }
+
+    private func rememberChat(_ session: SessionMeta) {
+        guard let index = workspace.projects.firstIndex(where: { $0.id == session.projectID }),
+            workspace.projects[index].chatSessionID != session.id else { return }
+        workspace.projects[index].chatSessionID = session.id
         scheduleSave()
     }
 
@@ -639,6 +648,7 @@ final class AppModel {
         if let empty = sessions(in: project).first(where: { $0.agentTask == nil && $0.conversationID == nil && !$0.hasDraft && isUntouched($0.id) }) {
             selectedSessionID = empty.id
             rememberProjectConversation(empty)
+            rememberChat(empty)
             projectTabs[project.id] = .conversation
             return empty
         }
@@ -647,6 +657,7 @@ final class AppModel {
             projectID: project.id, agent: agent ?? preferences.defaultAgent, mode: preferences.defaultMode)
         workspace.sessions.append(meta)
         rememberProjectConversation(meta)
+        rememberChat(meta)
         selectedSessionID = meta.id
         projectTabs[project.id] = .conversation
         scheduleSave()
@@ -679,6 +690,7 @@ final class AppModel {
         workspace.sessions[index].agent = agent
         workspace.sessions[index].model = nil
         workspace.sessions[index].effort = nil
+        workspace.sessions[index].serviceTier = nil
         let previous = controllers.removeValue(forKey: id)
         previous?.disconnect()
         Task { await open(id) }
@@ -713,6 +725,7 @@ final class AppModel {
         controller.beforeTurn = { [weak self] session, input in try await self?.prepareTurn(session, input: input) }
         controller.afterTurn = { [weak self] session in await self?.completeTurn(session) }
         controllers[id] = controller
+        if project(for: meta)?.chatReadDates?[id.uuidString] == nil { markChatRead(id) }
     }
 
     private func makeAgent(for meta: SessionMeta) async throws -> any AgentSession {
@@ -786,6 +799,9 @@ final class AppModel {
             let index = workspace.sessions.firstIndex(where: { $0.id == controller.id })
         else { return }
         workspace.sessions[index] = controller.meta
+        if visibleChatSessionIDs.contains(controller.id), NSApp.isActive {
+            markChatRead(controller.id)
+        }
         if transcriptChanged { dirtyTranscripts.insert(controller.id) }
         scheduleSave()
     }

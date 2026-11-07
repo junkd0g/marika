@@ -26,8 +26,11 @@ public final class CodeDocument: Identifiable {
     public var completionIsLoading = false
     public var completionMessage: String?
     public var foldedRanges: [NSRange] = []
+    public var markdownPresentation: MarkdownPresentation = .preview { didSet { onChange?() } }
+    public var markdownAnchor: String?
 
     public var isEditable: Bool { snapshot != nil }
+    public var isMarkdown: Bool { isEditable && MarkdownParser.isMarkdown(path) }
     public var isModified: Bool { isRecoveredDraft || (snapshot.map { text != $0.text } ?? false) }
     public var name: String { URL(fileURLWithPath: path).lastPathComponent }
 
@@ -65,8 +68,17 @@ public final class CodeWorkspace {
     public var expandedDirectories: Set<String> = []
     public private(set) var loadingDirectories: Set<String> = []
     public var errorMessage: String?
+    public var pendingTrashPath: String?
+    public private(set) var trashingPath: String?
     public private(set) var isOpening = false
-    public var findRequest = 0
+    public var findRequest = 0 {
+        didSet {
+            if let document = selectedDocument, document.isMarkdown, document.markdownPresentation == .preview {
+                document.markdownPresentation = .source
+                focusEditor()
+            }
+        }
+    }
     public var showsQuickOpen = false
     public var showsNavigator = true { didSet { onStateChange?() } }
     public var navigatorWidth = 220.0 { didSet { onStateChange?() } }
@@ -86,6 +98,7 @@ public final class CodeWorkspace {
     public private(set) var isRestoring = false
     @ObservationIgnored private let files: any WorkspaceFiles
     @ObservationIgnored private var openRevision = 0
+    @ObservationIgnored private var filesystemRevision = 0
     private struct Visit { var id: UUID; var line: Int; var column: Int }
     private var navigationHistory: [Visit] = []
     private var historyIndex = -1
@@ -97,12 +110,14 @@ public final class CodeWorkspace {
 
     public var selectedDocument: CodeDocument? { documents.first { $0.id == selectedDocumentID } }
     public var modifiedDocuments: [CodeDocument] { documents.filter(\.isModified) }
+    public var supportsTrash: Bool { files.supportsTrash }
     public var canGoBack: Bool { historyIndex > 0 }
     public var canGoForward: Bool { historyIndex + 1 < navigationHistory.count }
 
     public var savedFiles: [EditorFileState] {
         documents.map { EditorFileState(path: $0.path, draft: $0.isModified ? $0.text : nil,
-                                       baseText: $0.isModified ? ($0.restoredBaseText ?? $0.snapshot?.text) : nil, line: $0.line, column: $0.column) }
+                                       baseText: $0.isModified ? ($0.restoredBaseText ?? $0.snapshot?.text) : nil, line: $0.line, column: $0.column,
+                                       markdownPresentation: $0.isMarkdown ? $0.markdownPresentation : nil) }
     }
 
     public func restore(_ layout: ProjectLayout) async {
@@ -128,6 +143,7 @@ public final class CodeWorkspace {
                 document.text = draft
             }
             document.line = max(1, state.line); document.column = max(1, state.column)
+            document.markdownPresentation = state.markdownPresentation ?? .preview
             document.selectionRequest += 1
         }
         if let selected = documents.first(where: { $0.path == layout.selectedFile }) { selectDocument(selected.id, focus: false) }
@@ -135,6 +151,7 @@ public final class CodeWorkspace {
 
     public func reveal(line: Int, column: Int = 1, length: Int = 0) {
         guard let document = selectedDocument else { return }
+        if document.isMarkdown && document.markdownPresentation == .preview { document.markdownPresentation = .source }
         document.line = max(1, line); document.column = max(1, column)
         document.selectionLength = max(0, length); document.selectionRequest += 1
         focusEditor()
@@ -169,7 +186,11 @@ public final class CodeWorkspace {
         guard !loadingDirectories.contains(path), force || directories[path] == nil else { return }
         loadingDirectories.insert(path)
         defer { loadingDirectories.remove(path) }
-        do { directories[path] = try await files.entries(in: path) }
+        let revision = filesystemRevision
+        do {
+            let entries = try await files.entries(in: path)
+            if revision == filesystemRevision { directories[path] = entries }
+        }
         catch { errorMessage = error.localizedDescription }
     }
 
@@ -186,8 +207,10 @@ public final class CodeWorkspace {
     }
 
     public func open(_ path: String, focus: Bool = true) async {
+        guard trashingPath.map({ Self.contains(path, under: $0) }) != true else { return }
         openRevision += 1
         let revision = openRevision
+        let fileRevision = filesystemRevision
         if let existing = documents.first(where: { $0.path == path }) {
             selectDocument(existing.id, focus: focus)
             isOpening = false
@@ -199,7 +222,7 @@ public final class CodeWorkspace {
         defer { if revision == openRevision { isOpening = false } }
         do {
             let content = try await files.open(path)
-            guard revision == openRevision else { return }
+            guard revision == openRevision, fileRevision == filesystemRevision else { return }
             let document: CodeDocument
             switch content {
             case .text(let snapshot): document = CodeDocument(snapshot: snapshot)
@@ -211,7 +234,7 @@ public final class CodeWorkspace {
             errorMessage = nil
             await revealParents(of: path)
         } catch {
-            if revision == openRevision { errorMessage = error.localizedDescription }
+            if revision == openRevision, fileRevision == filesystemRevision { errorMessage = error.localizedDescription }
         }
     }
 
@@ -293,8 +316,15 @@ public final class CodeWorkspace {
         guard !isIndexing, !indexed || force else { return }
         isIndexing = true
         defer { isIndexing = false }
+        let revision = filesystemRevision
         do {
-            filePaths = try await files.filePaths(limit: 20_000)
+            let paths = try await files.filePaths(limit: 20_000)
+            guard revision == filesystemRevision else {
+                indexed = false
+                fileIndexRevision += 1
+                return
+            }
+            filePaths = paths
             indexed = true
             fileIndexRevision += 1
         } catch { errorMessage = error.localizedDescription }
@@ -311,6 +341,12 @@ public final class CodeWorkspace {
         editorFocusRequest += 1
     }
 
+    public func focusNavigator() {
+        focusEditorOnSelection = false
+        showsNavigator = true
+        navigatorFocusRequest += 1
+    }
+
     private func revealParents(of path: String) async {
         let components = path.split(separator: "/").dropLast()
         var parent = ""
@@ -323,6 +359,10 @@ public final class CodeWorkspace {
 
     @discardableResult
     public func save(_ document: CodeDocument, overwrite: Bool = false) async -> Bool {
+        guard trashingPath.map({ Self.contains(document.path, under: $0) }) != true else {
+            errorMessage = ProjectFileError.operationInProgress.localizedDescription
+            return false
+        }
         guard !document.isSaving, let snapshot = document.snapshot else { return false }
         guard !document.changedOnDisk || overwrite else { errorMessage = ProjectFileError.changedOnDisk.localizedDescription; return false }
         document.isSaving = true
@@ -399,6 +439,57 @@ public final class CodeWorkspace {
             return true
         } catch {
             errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
+    private static func contains(_ candidate: String, under path: String) -> Bool {
+        candidate == path || candidate.hasPrefix(path + "/")
+    }
+
+    public func openDocuments(under path: String) -> [CodeDocument] {
+        documents.filter { Self.contains($0.path, under: path) }
+    }
+
+    /// Move the on-disk item to Trash. Dirty buffers stay open as recovered drafts;
+    /// deleting a folder must never silently discard edits inside it.
+    @discardableResult
+    public func moveToTrash(_ path: String) async -> Bool {
+        guard supportsTrash else { errorMessage = ProjectFileError.trashUnavailable.localizedDescription; return false }
+        guard trashingPath == nil, !openDocuments(under: path).contains(where: \.isSaving) else {
+            errorMessage = ProjectFileError.operationInProgress.localizedDescription
+            return false
+        }
+        trashingPath = path
+        defer { trashingPath = nil }
+        do {
+            _ = try await files.trash(path)
+            filesystemRevision += 1
+            isOpening = false
+            for document in openDocuments(under: path) {
+                if document.isModified {
+                    document.changedOnDisk = true
+                    document.isRecoveredDraft = true
+                } else { close(document) }
+            }
+            directories = directories.filter { !Self.contains($0.key, under: path) }
+                .mapValues { entries in entries.filter { !Self.contains($0.path, under: path) } }
+            expandedDirectories = Set(expandedDirectories.filter { !Self.contains($0, under: path) })
+            recentFilePaths.removeAll { Self.contains($0, under: path) }
+            filePaths.removeAll { Self.contains($0, under: path) }
+            fileIndexRevision += 1
+            if navigatorSelection.map({ Self.contains($0, under: path) }) == true { navigatorSelection = nil }
+            let parent = (path as NSString).deletingLastPathComponent
+            if navigatorSelection == nil { navigatorSelection = parent.isEmpty ? visibleEntries.first?.id : parent }
+            focusNavigator()
+            errorMessage = nil
+            onSave?()
+            onStateChange?()
+            await loadDirectory(parent, force: true)
+            if indexed { await loadFileIndex(force: true) }
+            return true
+        } catch {
+            errorMessage = "Couldn't move \((path as NSString).lastPathComponent) to Trash. \(error.localizedDescription)"
             return false
         }
     }

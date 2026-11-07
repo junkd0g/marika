@@ -14,8 +14,34 @@ public struct CodeToken: Sendable, Equatable {
 /// so identifiers inside them can never be coloured as code. All offsets are UTF-16.
 public enum CodeSyntax {
     public static func tokens(in text: String, path: String) -> [CodeToken] {
+        if MarkdownParser.isMarkdown(path) { return markdownTokens(text) }
         var lexer = Lexer(text, path: path)
         return lexer.scan()
+    }
+
+    private static func markdownTokens(_ text: String) -> [CodeToken] {
+        let rules: [(String, CodeTokenKind)] = [
+            (#"(?ms)^ {0,3}(`{3,}|~{3,})[^\n]*\n.*?^ {0,3}\1[ \t]*(?=\n|$)"#, .string),
+            (#"`+[^`\n]+`+"#, .string),
+            (#"(?m)^ {0,3}#{1,6}[ \t]+.*$|^ {0,3}(?:={2,}|-{2,})[ \t]*$"#, .keyword),
+            (#"!?\[[^\]\n]*\]\([^\n]*?\)"#, .function),
+            (#"\*\*[^*\n]+\*\*|__[^_\n]+__"#, .keyword),
+            (#"\*[^*\n]+\*|_[^_\n]+_"#, .type),
+            (#"(?m)^[ \t]*(?:[-+*]|\d+\.)[ \t]+(?:\[[ xX]\])?"#, .punctuation),
+            (#"(?m)^ {0,3}>.*$"#, .comment)
+        ]
+        let length = (text as NSString).length
+        var occupied = IndexSet(), tokens: [CodeToken] = []
+        for (pattern, kind) in rules {
+            guard let regex = try? NSRegularExpression(pattern: pattern) else { continue }
+            for match in regex.matches(in: text, range: NSRange(location: 0, length: length)) {
+                let range = match.range.location..<NSMaxRange(match.range)
+                guard !occupied.intersects(integersIn: range) else { continue }
+                occupied.insert(integersIn: range)
+                tokens.append(CodeToken(match.range, kind))
+            }
+        }
+        return tokens.sorted { $0.range.location < $1.range.location }
     }
 
     private struct Lexer {

@@ -5,17 +5,30 @@ enum Theme {
     static let transcriptWidth: CGFloat = 760
     static let code = Font.system(size: 12, design: .monospaced)
     static let codeSmall = Font.system(size: 11, design: .monospaced)
-    static let body = Font.system(size: 13.5)
+    static let body = Font.system(size: 14)
     static let radius: CGFloat = 10
 
     static let addition = Color.green
     static let deletion = Color.red
     static let attention = Color.orange
     static let surface = Color.primary.opacity(0.04)
-    static let hairline = Color(nsColor: .separatorColor).opacity(0.55)
-    static let canvas = Color(nsColor: .textBackgroundColor)
-    static let panel = Color(nsColor: .controlBackgroundColor)
-    static let chrome = Color(nsColor: .windowBackgroundColor)
+    static let hairline = Color.primary.opacity(0.10)
+    static let canvas = adaptive(light: 0xFFFFFF, dark: 0x202020)
+    static let panel = adaptive(light: 0xFAFAFA, dark: 0x272727)
+    static let chrome = adaptive(light: 0xFAFAFA, dark: 0x1D1D1D)
+    static let sidebar = adaptive(light: 0xF5F5F5, dark: 0x181818)
+    static let composer = adaptive(light: 0xF9F9F9, dark: 0x292929)
+    static let selection = Color.primary.opacity(0.07)
+    static let messageBubble = adaptive(light: 0xF0F0F0, dark: 0x303030)
+    static let ink = adaptive(light: 0x202020, dark: 0xEEEEEE)
+
+    private static func adaptive(light: UInt32, dark: UInt32) -> Color {
+        Color(nsColor: NSColor(name: nil) { appearance in
+            let hex = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? dark : light
+            return NSColor(srgbRed: Double((hex >> 16) & 255) / 255,
+                           green: Double((hex >> 8) & 255) / 255, blue: Double(hex & 255) / 255, alpha: 1)
+        })
+    }
 
     @MainActor static let appIcon: NSImage? = {
         if let bundled = Bundle.main.url(forResource: "AppIcon", withExtension: "icns") {

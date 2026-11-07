@@ -30,7 +30,7 @@ public enum ProjectFileContent: Sendable {
 }
 
 public enum ProjectFileError: LocalizedError, Equatable {
-    case outsideProject, notRegularFile, tooLarge, notText, changedOnDisk
+    case outsideProject, notRegularFile, tooLarge, notText, changedOnDisk, protectedItem, trashUnavailable, operationInProgress
 
     public var errorDescription: String? {
         switch self {
@@ -39,6 +39,9 @@ public enum ProjectFileError: LocalizedError, Equatable {
         case .tooLarge: "This file is too large for the editor. The limit is 2 MB."
         case .notText: "This file isn't supported text. Open it in its default app instead."
         case .changedOnDisk: "This file changed on disk. Reload it or review your edits before overwriting it."
+        case .protectedItem: "The project folder and Git metadata cannot be moved to Trash here."
+        case .trashUnavailable: "Move to Trash is available for local files. Use the remote filesystem's file manager for this item."
+        case .operationInProgress: "Wait for the current file operation to finish, then try again."
         }
     }
 }
@@ -47,11 +50,24 @@ public enum ProjectFileError: LocalizedError, Equatable {
 /// bytes before writing so an agent's changes cannot be silently overwritten.
 public actor ProjectFiles: WorkspaceFiles {
     public let root: URL
+    public nonisolated var supportsTrash: Bool { true }
+    private let trashItem: @Sendable (URL) throws -> URL?
     public static let maxFileBytes = 2 * 1024 * 1024
     private static let omitted = Set([".git", ".build", ".swiftpm", "node_modules", "DerivedData", ".DS_Store"])
 
     public init(root: URL) {
         self.root = root.standardizedFileURL.resolvingSymlinksInPath()
+        trashItem = { url in
+            var destination: NSURL?
+            try FileManager.default.trashItem(at: url, resultingItemURL: &destination)
+            return destination as URL?
+        }
+    }
+
+    /// Keep filesystem mutation tests isolated from the user's system Trash.
+    init(root: URL, trashItem: @escaping @Sendable (URL) throws -> URL?) {
+        self.root = root.standardizedFileURL.resolvingSymlinksInPath()
+        self.trashItem = trashItem
     }
 
     private func url(for path: String) throws -> URL {
@@ -60,6 +76,22 @@ public actor ProjectFiles: WorkspaceFiles {
         let prefix = root.path == "/" ? "/" : root.path + "/"
         guard candidate == root || candidate.path.hasPrefix(prefix) else { throw ProjectFileError.outsideProject }
         return candidate
+    }
+
+    /// Resolve the parent, but never the leaf: trashing a symlink must move the link,
+    /// including a dangling link, without touching its target.
+    public func trash(_ path: String) async throws -> URL? {
+        guard !path.hasPrefix("/"), !path.contains("\0") else { throw ProjectFileError.outsideProject }
+        let parts = path.split(separator: "/").map(String.init)
+        guard !parts.isEmpty, !parts.contains("."), !parts.contains("..") else { throw ProjectFileError.protectedItem }
+        guard !parts.contains(".git") else { throw ProjectFileError.protectedItem }
+        let parent = try url(for: parts.dropLast().joined(separator: "/"))
+        let target = parent.appendingPathComponent(parts.last!)
+        let relative = String(target.path.dropFirst(root.path.count)).split(separator: "/")
+        guard target != root, !relative.contains(".git") else { throw ProjectFileError.protectedItem }
+        // attributesOfItem uses the link itself, so broken links remain deletable.
+        _ = try FileManager.default.attributesOfItem(atPath: target.path)
+        return try trashItem(target)
     }
 
     public func entries(in path: String = "") throws -> [ProjectFileEntry] {
@@ -137,7 +169,7 @@ public actor ProjectFiles: WorkspaceFiles {
         // macOS also associates .ts with MPEG transport streams. Prefer the source
         // interpretation for ambiguous code extensions, then fall back to a binary preview.
         let sourceExtensions: Set<String> = ["ts", "tsx", "mts", "cts", "js", "jsx", "mjs", "cjs", "py", "go", "swift", "rs", "kt", "kts", "java", "cs", "c", "cc", "cpp", "h", "hpp", "m", "mm", "sh", "bash", "zsh", "rb", "php", "scala", "dart", "vue", "svelte", "sql", "graphql", "gql", "proto", "css", "scss", "json", "toml", "yaml", "yml", "md", "txt"]
-        if !sourceExtensions.contains(preview.url.pathExtension.lowercased()), let type, type.conforms(to: .image) || type.conforms(to: .pdf)
+        if !sourceExtensions.contains(preview.url.pathExtension.lowercased()), !MarkdownParser.isMarkdown(path), let type, type.conforms(to: .image) || type.conforms(to: .pdf)
             || type.conforms(to: .audiovisualContent) {
             return .preview(preview)
         }

@@ -16,11 +16,14 @@ struct ProjectCodeView: View {
     @State private var showsRename = false
     @State private var hoveredTab: UUID?
 
-    private enum DocumentAction {
-        case close(CodeDocument), reload(CodeDocument), overwrite(CodeDocument)
+    @MainActor private enum DocumentAction {
+        case close(CodeDocument), reload(CodeDocument), overwrite(CodeDocument), trash(String)
 
-        var document: CodeDocument {
-            switch self { case .close(let doc), .reload(let doc), .overwrite(let doc): doc }
+        var path: String {
+            switch self {
+            case .close(let doc), .reload(let doc), .overwrite(let doc): doc.path
+            case .trash(let path): path
+            }
         }
 
         var title: String {
@@ -28,6 +31,7 @@ struct ProjectCodeView: View {
             case .close: "Save changes before closing?"
             case .reload: "Reload the file from disk?"
             case .overwrite: "Replace the changes on disk?"
+            case .trash(let path): "Move “\((path as NSString).lastPathComponent)” to Trash?"
             }
         }
     }
@@ -46,7 +50,7 @@ struct ProjectCodeView: View {
     private var editorBody: some View {
         HStack(spacing: 0) {
             if editor.showsNavigator && !isCompact {
-                FileNavigator(editor: editor).frame(width: editor.navigatorWidth)
+                FileNavigator(editor: editor, isActive: isVisible && agentReview == nil).frame(width: editor.navigatorWidth)
                 Rectangle().fill(Theme.hairline).frame(width: 1)
                     .overlay {
                         Color.clear.frame(width: 7).contentShape(Rectangle())
@@ -59,6 +63,9 @@ struct ProjectCodeView: View {
             VStack(spacing: 0) {
                 fileTabs
                 editorToolbar
+                if let document = editor.selectedDocument, document.isMarkdown {
+                    MarkdownModeBar(document: document, editor: editor)
+                }
                 Divider()
                 if let error = editor.errorMessage {
                     HStack(alignment: .top, spacing: 8) {
@@ -77,25 +84,11 @@ struct ProjectCodeView: View {
                     // and scroll position. Documents also survive switching project tabs.
                     ZStack {
                         ForEach(editor.documents.filter(\.isEditable)) { doc in
-                            CodeTextView(document: doc, isActive: isVisible && agentReview == nil && doc.id == editor.selectedDocumentID,
-                                         findRequest: editor.findRequest, focusRequest: editor.editorFocusRequest,
-                                         shouldFocus: editor.focusEditorOnSelection,
-                                         style: settings.style,
-                                         onEditorAction: { action in performEditorAction(action) },
-                                         ide: ide,
-                                         diagnostics: ide?.diagnostics[doc.path] ?? [],
-                                         breakpoints: ide?.breakpoints[doc.path] ?? [],
-                                         coverage: ide?.coverage.first(where: { $0.key.hasSuffix(doc.path) })?.value ?? [:],
-                                         toggleBreakpoint: { line in
-                                             guard let ide else { return }
-                                             if ide.breakpoints[doc.path, default: []].contains(line) { ide.breakpoints[doc.path]?.remove(line) }
-                                             else { ide.breakpoints[doc.path, default: []].insert(line) }
-                                         },
-                                         automaticCompletions: model.selectedProject?.tools?.completionsEnabled == true,
-                                         requestCompletion: { text, offset in
-                                             guard let project = model.selectedProject else { return "" }
-                                             return try await model.completeCode(project: project, path: doc.path, text: text, offset: offset)
-                                         })
+                            Group {
+                                if doc.isMarkdown {
+                                    MarkdownEditorPane(document: doc, editor: editor) { sourceEditor(doc) }
+                                } else { sourceEditor(doc) }
+                            }
                                 .opacity(doc.id == editor.selectedDocumentID ? 1 : 0)
                                 .allowsHitTesting(doc.id == editor.selectedDocumentID)
                                 .accessibilityHidden(doc.id != editor.selectedDocumentID)
@@ -146,8 +139,11 @@ struct ProjectCodeView: View {
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             Task { await editor.refresh() }
         }
+        .onChange(of: editor.pendingTrashPath) { _, path in
+            if let path { pendingAction = .trash(path) }
+        }
         .alert(pendingAction?.title ?? "", isPresented: Binding(
-            get: { pendingAction != nil }, set: { if !$0 { pendingAction = nil } }), presenting: pendingAction
+            get: { pendingAction != nil }, set: { if !$0 { pendingAction = nil; editor.pendingTrashPath = nil } }), presenting: pendingAction
         ) { action in
             switch action {
             case .close(let document):
@@ -161,17 +157,45 @@ struct ProjectCodeView: View {
                 Button("Reload", role: .destructive) { Task { await editor.reload(document) } }
             case .overwrite(let document):
                 Button("Overwrite File", role: .destructive) { Task { await editor.save(document, overwrite: true) } }
+            case .trash(let path):
+                Button("Move to Trash", role: .destructive) { Task { await editor.moveToTrash(path) } }
             }
             Button("Cancel", role: .cancel) {}
         } message: { action in
-            Text("\(action.document.path)\n\n" + {
+            Text("\(action.path)\n\n" + {
                 switch action {
                 case .close: "Your unsaved edits will be lost if you discard them."
                 case .reload: "Your unsaved edits will be replaced with the current file on disk."
                 case .overwrite: "The current file on disk will be replaced with the text in this editor."
+                case .trash(let path):
+                    editor.openDocuments(under: path).contains(where: \.isModified)
+                        ? "The saved file or folder will move to Trash. Unsaved edits will stay open as recovered drafts so you can save a copy."
+                        : "You can restore this item from Trash. Moving a folder also moves its contents."
                 }
             }())
         }
+    }
+
+    private func sourceEditor(_ doc: CodeDocument) -> some View {
+        CodeTextView(document: doc, isActive: isVisible && agentReview == nil && doc.id == editor.selectedDocumentID && (!doc.isMarkdown || doc.markdownPresentation != .preview),
+                                         findRequest: editor.findRequest, focusRequest: editor.editorFocusRequest,
+                                         shouldFocus: editor.focusEditorOnSelection,
+                                         style: settings.style,
+                                         onEditorAction: { action in performEditorAction(action) },
+                                         ide: ide,
+                                         diagnostics: ide?.diagnostics[doc.path] ?? [],
+                                         breakpoints: ide?.breakpoints[doc.path] ?? [],
+                                         coverage: ide?.coverage.first(where: { $0.key.hasSuffix(doc.path) })?.value ?? [:],
+                                         toggleBreakpoint: { line in
+                                             guard let ide else { return }
+                                             if ide.breakpoints[doc.path, default: []].contains(line) { ide.breakpoints[doc.path]?.remove(line) }
+                                             else { ide.breakpoints[doc.path, default: []].insert(line) }
+                                         },
+                                         automaticCompletions: model.selectedProject?.tools?.completionsEnabled == true,
+                                         requestCompletion: { text, offset in
+                                             guard let project = model.selectedProject else { return "" }
+                                             return try await model.completeCode(project: project, path: doc.path, text: text, offset: offset)
+                                         })
     }
 
     private var fileTabs: some View {
@@ -263,6 +287,8 @@ struct ProjectCodeView: View {
                         NSPasteboard.general.clearContents(); NSPasteboard.general.setString(document.path, forType: .string)
                     }
                     Button("Reveal in Finder") { NSWorkspace.shared.activateFileViewerSelecting([editor.root.appendingPathComponent(document.path)]) }
+                    Button("Move to Trash…", role: .destructive) { editor.pendingTrashPath = document.path }
+                        .disabled(!editor.supportsTrash || editor.trashingPath != nil)
                     if !document.isEditable { Button("Reload Preview") { Task { await editor.reload(document) } } }
                     Divider()
                 }
@@ -368,6 +394,9 @@ struct ProjectCodeView: View {
                 if document.isModified { pendingAction = .close(document) } else { editor.close(document) }
             }
             .disabled(document.isSaving)
+            Divider()
+            Button("Move to Trash…", role: .destructive) { editor.pendingTrashPath = document.path }
+                .disabled(!editor.supportsTrash || editor.trashingPath != nil || document.isSaving)
         }
     }
 

@@ -2,9 +2,14 @@ import Foundation
 
 public enum ProjectPanel: String, Codable, CaseIterable, Sendable {
     case conversation = "Conversation", code = "Code", browser = "Browser", agents = "Agents", stats = "Stats", pipelines = "Pipelines", api = "API", changes = "Changes", terminal = "Terminal"
+    public var title: String { self == .conversation ? "Chat" : rawValue }
     public var shortcut: String {
         switch self { case .conversation: "1"; case .code: "2"; case .browser: "3"; case .agents: "4"; case .stats: "5"; case .pipelines: "6"; case .api: "7"; case .changes: "8"; case .terminal: "9" }
     }
+}
+
+public enum MarkdownPresentation: String, Codable, CaseIterable, Sendable {
+    case preview = "Preview", source = "Edit", split = "Split"
 }
 
 public struct EditorFileState: Codable, Equatable, Hashable, Sendable {
@@ -13,8 +18,10 @@ public struct EditorFileState: Codable, Equatable, Hashable, Sendable {
     public var baseText: String?
     public var line: Int
     public var column: Int
-    public init(path: String, draft: String? = nil, baseText: String? = nil, line: Int = 1, column: Int = 1) {
+    public var markdownPresentation: MarkdownPresentation?
+    public init(path: String, draft: String? = nil, baseText: String? = nil, line: Int = 1, column: Int = 1, markdownPresentation: MarkdownPresentation? = nil) {
         self.path = path; self.draft = draft; self.baseText = baseText; self.line = line; self.column = column
+        self.markdownPresentation = markdownPresentation
     }
 }
 

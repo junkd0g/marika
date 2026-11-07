@@ -92,12 +92,45 @@ public enum ApprovalMode: String, Codable, CaseIterable, Sendable, Identifiable 
 public struct AgentSettings: Codable, Equatable, Sendable {
     public var model: String?
     public var effort: String?
+    public var serviceTier: String?
     public var mode: ApprovalMode
 
-    public init(model: String? = nil, effort: String? = nil, mode: ApprovalMode = .ask) {
+    public init(model: String? = nil, effort: String? = nil, mode: ApprovalMode = .ask, serviceTier: String? = nil) {
         self.model = model
         self.effort = effort
         self.mode = mode
+        self.serviceTier = serviceTier
+    }
+}
+
+public struct ServiceTierOption: Codable, Equatable, Hashable, Sendable, Identifiable {
+    public var id: String
+    public var name: String
+    public var detail: String
+
+    public init(id: String, name: String, detail: String = "") {
+        self.id = Self.requestValue(id)
+        self.name = name
+        self.detail = detail
+    }
+
+    public static let standard = ServiceTierOption(id: "default", name: "Standard")
+
+    public static func requestValue(_ tier: String) -> String {
+        switch tier {
+        case "fast": "priority"
+        case "standard": "default"
+        default: tier
+        }
+    }
+
+    public static func displayName(_ tier: String) -> String {
+        switch requestValue(tier) {
+        case "default": "Standard"
+        case "priority": "Fast"
+        case "ultrafast": "Ultrafast"
+        default: tier.capitalized
+        }
     }
 }
 
@@ -108,10 +141,12 @@ public struct ModelOption: Codable, Equatable, Hashable, Sendable, Identifiable 
     public var efforts: [String]
     public var isDefault: Bool
     public var defaultEffort: String?
+    public var serviceTiers: [ServiceTierOption]?
+    public var defaultServiceTier: String?
 
     public init(
         id: String, name: String, detail: String = "", efforts: [String] = [], isDefault: Bool = false,
-        defaultEffort: String? = nil
+        defaultEffort: String? = nil, serviceTiers: [ServiceTierOption]? = nil, defaultServiceTier: String? = nil
     ) {
         self.id = id
         self.name = name
@@ -119,6 +154,14 @@ public struct ModelOption: Codable, Equatable, Hashable, Sendable, Identifiable 
         self.efforts = efforts
         self.isDefault = isDefault
         self.defaultEffort = defaultEffort
+        self.serviceTiers = serviceTiers
+        self.defaultServiceTier = defaultServiceTier
+    }
+
+    /// Standard is always available; faster tiers must come from the active model's catalog.
+    public var speedOptions: [ServiceTierOption] {
+        var seen: Set<String> = []
+        return ([.standard] + (serviceTiers ?? [])).filter { seen.insert($0.id).inserted }
     }
 }
 

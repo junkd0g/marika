@@ -28,17 +28,26 @@ extension AppModel {
         }
         var saved = tools
         for index in saved.schedules.indices {
+            guard !saved.schedules[index].name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                  !saved.schedules[index].prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                throw AgentError.launchFailed("Give each job a name and task.")
+            }
+            let next = try saved.schedules[index].nextOccurrence(after: Date())
             if let live = self.project(id: project.id)?.tools?.schedules.first(where: { $0.id == saved.schedules[index].id }) {
                 saved.schedules[index].runs = live.runs
                 saved.schedules[index].lastError = live.lastError
-                if saved.schedules[index].hours == live.hours && saved.schedules[index].enabled == live.enabled {
+                if saved.schedules[index].hours == live.hours && saved.schedules[index].enabled == live.enabled && saved.schedules[index].cron == live.cron && saved.schedules[index].timeZoneID == live.timeZoneID {
                     saved.schedules[index].nextRun = live.nextRun
-                }
-            }
+                } else { saved.schedules[index].nextRun = next }
+            } else { saved.schedules[index].nextRun = next }
         }
+        let liveTools = self.project(id: project.id)?.tools
+        let reconnect = liveTools?.instructions != saved.instructions || liveTools?.mcpConfig != saved.mcpConfig
         updateProject(project.id) { $0.tools = saved }
         for (key, ide) in ideWorkspaces where key.hasPrefix(project.id.uuidString) { ide.configure(saved.ide ?? IDEPreferences()) }
-        for controller in controllers.values where controller.meta.projectID == project.id { controller.disconnectWhenIdle() }
+        if reconnect {
+            for controller in controllers.values where controller.meta.projectID == project.id { controller.disconnectWhenIdle() }
+        }
     }
     func startScheduler() {
         scheduler?.cancel()
@@ -58,23 +67,42 @@ extension AppModel {
                 guard !Task.isCancelled else { return }
                 if schedule.runs.contains(where: { controllers[$0]?.isBusy == true }) { continue }
                 guard controllers.values.filter({ $0.meta.projectID == project.id && $0.meta.agentTask != nil && $0.isBusy }).count < AgentTaskPolicy.maxConcurrent else { continue }
-                updateSchedule(schedule.id, projectID: project.id) {
-                    $0.nextRun = now.addingTimeInterval(Double(max(1, schedule.hours)) * 3600)
-                    $0.lastError = nil
-                }
-                // Persist the claim before starting work so a restart does not launch it twice.
-                guard await save() else { return }
-                guard !Task.isCancelled, self.project(id: project.id)?.tools?.schedules.contains(where: { $0.id == schedule.id && $0.enabled }) == true else { continue }
                 do {
-                    let agent = try await launchAgent(in: project, agent: schedule.agent,
-                        settings: AgentSettings(model: schedule.model, mode: .ask), prompt: schedule.prompt)
-                    updateSchedule(schedule.id, projectID: project.id) { $0.runs = Array(($0.runs + [agent.id]).suffix(12)) }
+                    try await executeJob(schedule.id, projectID: project.id, now: now, manual: false)
                 } catch {
                     updateSchedule(schedule.id, projectID: project.id) { $0.lastError = error.localizedDescription }
                 }
                 await save()
             }
         }
+    }
+
+    func runJobNow(_ id: UUID, projectID: UUID) async throws {
+        do { try await executeJob(id, projectID: projectID, now: Date(), manual: true) }
+        catch {
+            updateSchedule(id, projectID: projectID) { $0.lastError = error.localizedDescription }
+            throw error
+        }
+    }
+
+    private func executeJob(_ id: UUID, projectID: UUID, now: Date, manual: Bool) async throws {
+        guard let project = project(id: projectID), let job = project.tools?.schedules.first(where: { $0.id == id }),
+              manual || job.enabled else { return }
+        guard !launchingJobs.contains(id), !job.runs.contains(where: { controllers[$0]?.isBusy == true }) else {
+            throw AgentError.launchFailed("This job already has an active run.")
+        }
+        launchingJobs.insert(id)
+        defer { launchingJobs.remove(id) }
+        let next = manual && job.nextRun > now ? job.nextRun : try job.nextOccurrence(after: now)
+        updateSchedule(id, projectID: projectID) { $0.nextRun = next; $0.lastError = nil }
+        // Persist the claim before creating a worktree or contacting a provider.
+        guard await save() else { throw AgentError.launchFailed("Couldn't save this job's run. Restore saved data before retrying.") }
+        guard !Task.isCancelled, self.project(id: projectID)?.tools?.schedules.contains(where: { $0.id == id && (manual || $0.enabled) }) == true else { return }
+        let agent = try await launchAgent(in: project, agent: job.agent,
+            settings: AgentSettings(model: job.model, mode: .ask), prompt: job.prompt)
+        rename(agent.id, to: job.name)
+        updateSchedule(id, projectID: projectID) { $0.runs = Array(($0.runs + [agent.id]).suffix(12)) }
+        await save()
     }
     private func updateSchedule(_ id: UUID, projectID: UUID, update: (inout ProjectSchedule) -> Void) {
         updateProject(projectID) { project in

@@ -9,74 +9,45 @@ struct SessionStartView: View {
     var body: some View {
         GeometryReader { geometry in
             ScrollView {
-                VStack(alignment: .leading, spacing: 24) {
-                    HStack(spacing: geometry.size.width < 420 ? 10 : 16) {
-                        AppIconMark(size: geometry.size.width < 420 ? 48 : 68)
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text("Project conversation")
-                                .font(.system(size: geometry.size.width < 420 ? 20 : 24, weight: .semibold))
-                                .fixedSize(horizontal: false, vertical: true)
-                            Label(project.name, systemImage: "folder")
-                                .font(.system(size: 12))
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1).truncationMode(.middle)
-                                .help(project.path)
-                        }
+                VStack(spacing: 22) {
+                    VStack(spacing: 12) {
+                        Image(systemName: "chevron.left.forwardslash.chevron.right")
+                            .font(.system(size: 30, weight: .light)).foregroundStyle(Theme.ink)
+                            .padding(.bottom, 6).accessibilityHidden(true)
+                        Text("What would you like to build?")
+                            .font(.system(size: geometry.size.width < 420 ? 22 : 28, weight: .medium))
+                            .tracking(-0.6).multilineTextAlignment(.center)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Label(project.name, systemImage: "folder")
+                            .font(.system(size: 12)).foregroundStyle(.secondary)
+                            .lineLimit(1).truncationMode(.middle).help(project.path)
                     }
 
-                    VStack(alignment: .leading, spacing: 10) {
-                        HStack(spacing: 20) {
-                            Text("Work with").font(.system(size: 12)).foregroundStyle(.secondary)
-                            Picker("Agent", selection: Binding(
-                                get: { session.meta.agent },
-                                set: { model.setAgent($0, for: session.id) }
-                            )) {
-                                ForEach(AgentKind.allCases) { agent in
-                                    Text(agent.shortName).tag(agent)
-                                }
-                            }
-                            .pickerStyle(.segmented).labelsHidden()
-                        }
+                    if model.statuses[session.meta.agent]?.readiness != .ready {
                         AgentStatusLine(agent: session.meta.agent)
                     }
 
                     if !session.meta.hasDraft {
-                        VStack(alignment: .leading, spacing: 10) {
-                            Text("Start with a task")
-                                .font(.system(size: 12, weight: .medium)).foregroundStyle(.secondary)
-                            VStack(spacing: 0) {
-                                ForEach(SessionStarter.allCases) { starter in
-                                    Button {
-                                        model.prepareStarter(starter, for: session.id)
-                                    } label: {
-                                        HStack(spacing: 12) {
-                                            Image(systemName: starter.symbol)
-                                                .font(.system(size: 14))
-                                                .foregroundStyle(Color.accentColor)
-                                                .frame(width: 20)
-                                            Text(starter.title).font(.system(size: 13))
-                                            Spacer(minLength: 8)
-                                            Image(systemName: "arrow.up.left")
-                                                .font(.system(size: 10, weight: .medium))
-                                                .foregroundStyle(.tertiary)
-                                        }
-                                        .padding(.horizontal, 14).padding(.vertical, 13)
-                                        .contentShape(Rectangle())
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), spacing: 10)], spacing: 10) {
+                            ForEach(SessionStarter.allCases) { starter in
+                                Button { model.prepareStarter(starter, for: session.id) } label: {
+                                    VStack(alignment: .leading, spacing: 12) {
+                                        Image(systemName: starter.symbol).font(.system(size: 14)).foregroundStyle(.secondary)
+                                        Text(starter.title).font(.system(size: 12)).lineLimit(2)
                                     }
-                                    .buttonStyle(.plain)
-                                    .help("Add this prompt to your draft")
-                                    if starter != SessionStarter.allCases.last {
-                                        Divider().padding(.leading, 46)
-                                    }
+                                    .frame(maxWidth: .infinity, minHeight: 58, alignment: .leading)
+                                    .padding(14)
+                                    .background(Theme.surface, in: RoundedRectangle(cornerRadius: 12))
+                                    .overlay { RoundedRectangle(cornerRadius: 12).strokeBorder(Theme.hairline.opacity(0.6)) }
+                                    .contentShape(RoundedRectangle(cornerRadius: 12))
                                 }
+                                .buttonStyle(.plain).help("Add this prompt to your draft")
                             }
-                            .background(Theme.chrome.opacity(0.5), in: RoundedRectangle(cornerRadius: 10))
-                            .overlay { RoundedRectangle(cornerRadius: 10).strokeBorder(Theme.hairline) }
                         }
                     }
                 }
-                .frame(maxWidth: 410, alignment: .leading)
-                .padding(geometry.size.width < 420 ? 24 : 32)
+                .frame(maxWidth: 530)
+                .padding(geometry.size.width < 420 ? 24 : 40)
                 .frame(maxWidth: .infinity)
                 .frame(minHeight: geometry.size.height, alignment: .center)
             }
