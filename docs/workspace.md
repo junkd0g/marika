@@ -44,6 +44,20 @@ browser pages stay with the project. See the [split screenshots](screenshots.md#
 
 Chat includes a **#project** channel and direct conversations with the project's agents, with live status, unread replies and agent search. Type **@** to choose an agent, then send a message to its conversation. Drafts and attachments stay with each chat, and switching projects or tabs restores your last conversation. The outer sidebar remains project-only.
 
+## Run a proposed terminal command
+
+Shell blocks in assistant replies have a **▶ Run** button beside Copy. Click it to run the
+whole block in a new Terminal tab. The terminal displays the command, output and exit status,
+and keeps that output available after the command finishes. Existing shells stay separate.
+Commands run in the originating chat's project folder, or the task agent's isolated worktree.
+Remote projects route the command through their configured runtime.
+
+The button supports blocks labeled `sh`, `bash`, `zsh`, `shell` or `shellscript`. Prompt-only
+examples such as `$ npm test` also work in console or unlabeled blocks; copied output mixed
+with prompts is not runnable. Source-code blocks and Markdown files do not get a Run button.
+Run is disabled while the agent is still responding. Reading a reply never starts a command;
+execution happens when you click Run.
+
 ## Models, effort and speed
 
 The chat composer has separate **model**, **reasoning effort**, and **speed** controls for Codex.

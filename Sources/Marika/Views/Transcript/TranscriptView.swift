@@ -85,7 +85,7 @@ struct TranscriptView: View {
                     Group {
                         switch row {
                         case .message(let item):
-                            MessageRow(item: item, agent: session.meta.agent)
+                            MessageRow(item: item, session: session)
                         case .activity(_, let items):
                             ActivityGroup(
                                 items: items, children: children,
@@ -215,7 +215,8 @@ final class ScrollWheelActivity {
 private struct MessageRow: View {
     @Environment(AppModel.self) private var model
     let item: TranscriptItem
-    let agent: AgentKind
+    let session: SessionController
+    private var agent: AgentKind { session.meta.agent }
 
     var body: some View {
         switch item.content {
@@ -223,8 +224,7 @@ private struct MessageRow: View {
             UserMessage(text: text, images: images)
                 .help("You · " + item.date.formatted(date: .omitted, time: .shortened))
         case .assistant(let text):
-            AssistantMessage(text: text)
-                .help(agent.shortName + " · " + item.date.formatted(date: .omitted, time: .shortened))
+            AssistantMessage(text: text, session: session)
         case .notice(let notice):
             NoticeRow(notice: notice, agent: agent)
         case .turnEnd(let summary):
@@ -272,17 +272,26 @@ private struct UserMessage: View {
 }
 
 private struct AssistantMessage: View {
+    @Environment(AppModel.self) private var model
     let text: String
+    let session: SessionController
     @State private var isHovering = false
+    @State private var commandError: String?
 
     var body: some View {
-        MarkdownView(text: text)
+        MarkdownView(text: text, onRunCommand: { command in
+            do { try model.runChatCommand(command, sessionID: session.id) }
+            catch { commandError = error.localizedDescription }
+        }, runCommandsDisabled: session.isBusy)
             .overlay(alignment: .bottomTrailing) {
                 CopyButton(text: text)
                     .opacity(isHovering ? 1 : 0)
                     .offset(y: 20)
             }
             .onHover { isHovering = $0 }
+            .alert("Couldn't run command", isPresented: Binding(get: { commandError != nil }, set: { if !$0 { commandError = nil } })) {
+                Button("OK") { commandError = nil }
+            } message: { Text(commandError ?? "") }
     }
 }
 

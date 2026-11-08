@@ -8,7 +8,7 @@ extension EnvironmentValues {
 }
 
 /// Decides what clicking a link in agent output does. That text is untrusted, so a click must not
-/// be able to run anything: opening a script can execute it, and a custom URL scheme can drive
+/// be able to run anything through a link: opening a script can execute it, and a custom URL scheme can drive
 /// another app. Web links open normally, file links only reveal the file, and the rest do nothing.
 private func handleLink(_ url: URL, projectRoot: URL?) -> OpenURLAction.Result {
     switch url.scheme?.lowercased() {
@@ -32,6 +32,8 @@ struct MarkdownView: View {
     var documentURL: URL?
     var parsedBlocks: [MarkdownBlock]?
     var onOpenLink: ((URL) -> OpenURLAction.Result)?
+    var onRunCommand: ((ChatTerminalCommand) -> Void)?
+    var runCommandsDisabled = false
 
     var body: some View {
         let blocks = parsedBlocks ?? MarkdownParser.parse(text)
@@ -60,7 +62,7 @@ struct MarkdownView: View {
                 .font(documentURL == nil ? Theme.body : .system(size: 14))
                 .lineSpacing(documentURL == nil ? 3 : 5)
         case .code(let language, let text):
-            CodeBlock(language: language, text: text)
+            CodeBlock(language: language, text: text, onRunCommand: onRunCommand, runDisabled: runCommandsDisabled)
         case .list(let items):
             VStack(alignment: .leading, spacing: 5) {
                 ForEach(Array(items.enumerated()), id: \.offset) { _, item in
@@ -135,6 +137,8 @@ struct InlineText: View {
 struct CodeBlock: View {
     let language: String
     let text: String
+    var onRunCommand: ((ChatTerminalCommand) -> Void)?
+    var runDisabled = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -143,6 +147,13 @@ struct CodeBlock: View {
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
                 Spacer()
+                if let onRunCommand, let command = ChatTerminalCommand(language: language, text: text) {
+                    Button { onRunCommand(command) } label: { Label("Run", systemImage: "play.fill") }
+                        .buttonStyle(.plain).font(.system(size: 11, weight: .medium))
+                        .disabled(runDisabled)
+                        .help(runDisabled ? "Wait for the agent to finish before running this command" : "Run this block in a new Terminal tab")
+                        .accessibilityLabel("Run command in Terminal")
+                }
                 CopyButton(text: text)
             }
             .padding(.horizontal, 10)

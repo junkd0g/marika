@@ -25,6 +25,18 @@ import SwiftUI
         selected = shell.id
     }
     var current: Shell? { shells.first { $0.id == selected } }
+    func run(_ command: ChatTerminalCommand, invocation: ChatTerminalCommand.Invocation, environment: [String: String]) {
+        let view = ChatCommandTerminalView(frame: NSRect(x: 0, y: 0, width: 700, height: 350))
+        view.font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
+        view.feed(text: "$ " + command.script.replacingOccurrences(of: "\n", with: "\r\n") + "\r\n\r\n")
+        var env = environment
+        env["TERM"] = "xterm-256color"
+        view.startProcess(executable: invocation.executable.path, args: invocation.arguments,
+                          environment: env.map { $0.key + "=" + $0.value }, currentDirectory: invocation.directory.path)
+        let shell = Shell(directory: invocation.directory, name: command.title, view: view)
+        shells.append(shell)
+        selected = shell.id
+    }
     func addRemote(arguments: [String], name: String, directory: URL, environment: [String: String]) {
         let view = LocalProcessTerminalView(frame: NSRect(x: 0, y: 0, width: 700, height: 350))
         view.font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
@@ -47,6 +59,18 @@ import SwiftUI
         return String(String(decoding: view.getTerminal().getBufferAsData(), as: UTF8.self).suffix(12000))
     }
     func send(_ command: String) { current?.view.process.send(data: Array((command + "\n").utf8)[...]) }
+}
+
+private final class ChatCommandTerminalView: LocalProcessTerminalView {
+    override func processTerminated(_ source: LocalProcess, exitCode: Int32?) {
+        super.processTerminated(source, exitCode: exitCode)
+        // SwiftTerm's forkpty backend reports the raw waitpid status.
+        let result = exitCode.map { status in
+            let signal = status & 0x7f
+            return signal == 0 ? " · exit \((status >> 8) & 0xff)" : " · signal \(signal)"
+        } ?? ""
+        feed(text: "\r\n[Command finished" + result + "]\r\n")
+    }
 }
 
 struct ProjectTerminalView: View {

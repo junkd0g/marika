@@ -100,6 +100,10 @@ Open **Terminal** (⌘9, or Control + backtick) for interactive shells in the pr
 opens another shell; closing a shell stops its processes. **Send output to chat** adds the current
 terminal output to your draft. Project actions run in the selected shell.
 
+The **▶ Run** button on a shell block in Chat opens a separate command tab, preserving the
+selected shell. It uses that chat's project or agent-worktree folder and retains the output and
+exit status when the command finishes. See [running a proposed command](workspace.md#run-a-proposed-terminal-command).
+
 Compiler locations and stack frames in Terminal are clickable. Go, Swift, TypeScript and Python
 locations open the matching project file and line. Dragging still selects terminal text. Relative
 paths use the shell's initial folder or its reported current folder through OSC 7.

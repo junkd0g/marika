@@ -17,6 +17,23 @@ extension AppModel {
         switchPanel(.terminal)
         if let command { terminals[project.id]?.send(command) }
     }
+
+    func runChatCommand(_ command: ChatTerminalCommand, sessionID: UUID) throws {
+        guard let session = controllers[sessionID], let project = project(for: session.meta) else {
+            throw AgentError.launchFailed("This chat is no longer available.")
+        }
+        guard !session.isBusy else { throw AgentError.launchFailed("Wait for the agent to finish before running this command.") }
+        let invocation = try command.invocation(project: project, session: session.meta, environment: toolEnvironment)
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: invocation.directory.path, isDirectory: &isDirectory), isDirectory.boolValue else {
+            throw AgentError.launchFailed("The command's working folder no longer exists.")
+        }
+        let terminal = terminals[project.id] ?? ProjectTerminal()
+        terminals[project.id] = terminal
+        terminal.run(command, invocation: invocation, environment: toolEnvironment)
+        if selectedProject?.id != project.id { openProject(project) }
+        switchPanel(.terminal)
+    }
     func saveTools(_ tools: ProjectTools, for project: Project) throws {
         _ = try ProjectMCP.servers(tools.mcpConfig)
         for machine in tools.remoteMachines ?? [] { _ = try machine.arguments() }
