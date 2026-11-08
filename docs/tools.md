@@ -39,6 +39,77 @@ permissions in the agent launch form. Launching creates a separate implementatio
 projects default to an isolated worktree. The finding then offers **Open task**, which opens the
 task detail page. Research never starts implementation automatically.
 
+## Compare models
+
+In **Research → Compare models**, ask one question and choose the provider that will combine
+the results. **Compare Claude + Codex** starts separate plan-mode chats using your installed
+accounts. Each analysis gets the same question and is instructed to inspect evidence without
+reading the other response or changing project files. Two free agent slots are required.
+
+After both agents publish their structured answers, a third run automatically synthesizes
+agreements, disagreements, a recommendation and checks still needed. Synthesis uses bounded
+snapshots of the independent answers; it does not establish that either answer is correct.
+Open each chat for approvals, full reasoning, failures or follow-up. Stop either active analysis
+from its card. A completed turn without a published answer remains explicitly incomplete.
+Retry an incomplete analysis or choose **Combine conclusions** if synthesis stopped.
+
+Questions, assigned chats, answers and synthesis are saved with the project. A restart does
+not silently repeat interrupted work; use the visible retry controls. Keep up to 40 comparisons
+and remove finished ones when no longer needed. Switching the provider of an assigned analysis
+chat prevents it from publishing under the original provider's label until you switch back.
+All three runs use the accounts' normal approvals and usage limits.
+
+## Project knowledge and reviewed memory
+
+Open **Research → Knowledge**, or **Project Knowledge** in the command palette. Import UTF-8
+text, Markdown, CSV, PDF, DOCX or RTF, or add a document, link or decision manually. Imports store
+extracted text, with a 10 MB input limit and a 100 KB text limit per item. PDFs must be unlocked
+and have at most 200 pages; text extraction does not include OCR. No original file is modified.
+
+Search approved snapshots locally, inspect matching passages and copy their stable citations:
+`[K:entryID:revision:passage]`. Link entries store your supplied text and source URL; adding a
+link does not fetch it. To capture a URL, ask a research agent to retrieve it and propose a
+knowledge item with its evidence. Stored content is a dated snapshot, so verify facts that may
+have changed. The library supports up to 200 approved items.
+
+Agents can search and read the project's approved library through `project_search_knowledge`
+and `project_read_knowledge`. Relevant context carries into new tasks through those tools and
+project instructions. Agents are instructed to treat stored documents as reference data and
+can propose durable additions or corrections with `project_propose_knowledge`.
+
+Expand **Review memory updates** to compare current and proposed content, inspect its source
+chat, and approve or reject it. Pending proposals never enter approved search results. Updates
+must match the revision reviewed; a newer edit blocks a stale replacement. The library keeps
+up to 200 prior snapshots and 40 pending proposals. Removing an item excludes it from current
+search, while retained revisions remain readable by citation. Existing manually maintained
+Project Settings memory remains available alongside the library.
+
+## Rich deliverables and exports
+
+Choose **Deliverables** in Research, **Deliverables and Exports** in the command palette, or
+**Deliverables, Plans and Artifacts** in the workspace menu. Select Report, Spreadsheet or
+Presentation, describe the result, and choose **Create deliverable**. The selected project
+provider gathers context and publishes a structured deliverable in a separate plan-mode chat.
+Open that chat for approvals or revisions. Plans, walkthroughs and browser evidence remain in
+the same artifact library.
+
+| Deliverable | Preview | Export formats |
+| --- | --- | --- |
+| Report | Formatted Markdown with sources | PDF, Markdown, self-contained HTML, JSON |
+| Spreadsheet | Selectable sheets and a scrollable text grid | XLSX, selected-sheet CSV, HTML, JSON |
+| Presentation | Navigable slides and expandable speaker notes | PPTX, PDF, HTML, Markdown, JSON |
+
+**Export** opens a save dialog and preserves the published snapshot. Existing Markdown plans
+and walkthroughs can also be exported. XLSX includes every sheet and a source sheet when
+sources are supplied; PPTX preserves speaker notes and adds source slides. PDF output paginates
+long content. Exported HTML is self-contained and blocks scripts and external resources.
+
+Spreadsheet cells are literal text, including formula-like values. Marika does not calculate
+formulas or infer numeric cell types. CSV protects formula-like text when opened in a spreadsheet
+application. Presentations support up to 60 authored slides; spreadsheets support up to 12 sheets
+with 1,000 rows and 50 columns each. Published payloads are limited to 1 MB. Agents must supply
+their sources; a preview or export does not verify the content's accuracy.
+
 ## Code-health reviews
 
 Open **Stats** (⌘5) for code-health reviews. **Run review** starts the selected agent to inspect

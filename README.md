@@ -89,7 +89,7 @@ through Marika's MCP bridge; access to external sites is controlled in the brows
 | **Code** | Edit files, preview Markdown, use language tools, and run tests or debug sessions. |
 | **Browser** | Preview local work, inspect elements, and send visual feedback to chat. |
 | **Agents** | Launch or queue tasks, follow progress and activity, and review isolated changes. |
-| **Research** | Investigate documentation, libraries and competitors, inspect sources, and turn findings into tasks. |
+| **Research** | Inspect sources, compare Claude and Codex, search project knowledge, and turn findings into tasks. |
 | **Stats** | Request a code-health review with findings linked to source locations. |
 | **Changes** | Review diffs, stage hunks, commit, push, and open pull requests. |
 | **Terminal** | Run interactive shells in projects and agent worktrees. |
@@ -113,6 +113,9 @@ In smaller windows, additional tools are under **More views** or **More**.
 | Save / find in the current file | **⌘S** / **⌘F** |
 
 ## Documentation
+
+Use [Compare models](docs/tools.md#compare-models), maintain [project knowledge](docs/tools.md#project-knowledge-and-reviewed-memory),
+and create [reports, spreadsheets and presentations](docs/tools.md#rich-deliverables-and-exports) with native previews and exports.
 
 Start with the [documentation index](docs/README.md) or the [feature tour in screenshots](docs/screenshots.md).
 

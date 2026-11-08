@@ -32,6 +32,8 @@ public struct Project: Codable, Equatable, Hashable, Sendable, Identifiable {
     public var debugRuns: [DebugRun]?
     public var artifacts: [ProjectArtifact]?
     public var research: [ResearchRun]?
+    public var comparisons: [ModelComparison]?
+    public var knowledge: ProjectKnowledge?
     public var taskQueue: AgentTaskQueue?
     public var taskActivity: [TaskActivity]?
     public var runtime: WorkspaceRuntime?

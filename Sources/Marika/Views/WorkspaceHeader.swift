@@ -40,7 +40,7 @@ struct WorkspaceHeader: View {
                         Button(model.showsInspector ? "Hide Change Inspector" : "Show Change Inspector") { model.showsInspector.toggle() }
                         Button("Checkpoints…") { model.showExperience("Recovery", project: project) }
                         Button("Runtime Debugging…") { model.showExperience("Debug", project: project) }
-                        Button("Plans and Artifacts…") { model.showExperience("Artifacts", project: project) }
+                        Button("Deliverables, Plans and Artifacts…") { model.showExperience("Artifacts", project: project) }
                         Button("Terminal…") { model.openTerminal() }
                         Button("Connections…") { model.openProjectSettings(project, section: "MCP") }
                         Button("Task Queue…") { model.taskQueueProjectID = project.id }

@@ -19,6 +19,13 @@ public struct MCPOAuthCredential: Codable, Sendable {
     public var refreshToken: String?
     public var expiresAt: Date
     public var scope: String?
+    public static func bearer(_ token: String, resource: URL) throws -> Self {
+        guard resource.scheme == "https", resource.host != nil, resource.user == nil, resource.password == nil,
+              !token.isEmpty, token.count <= 16_000, !token.unicodeScalars.contains(where: { CharacterSet.whitespacesAndNewlines.contains($0) || CharacterSet.controlCharacters.contains($0) }) else {
+            throw AgentError.launchFailed("Provide a valid token and HTTPS resource without credentials.")
+        }
+        return Self(resource: resource, issuer: resource, tokenEndpoint: resource, clientID: "", accessToken: token, refreshToken: nil, expiresAt: .distantFuture, scope: nil)
+    }
 }
 
 private final class OAuthRedirectPolicy: NSObject, URLSessionTaskDelegate, @unchecked Sendable {

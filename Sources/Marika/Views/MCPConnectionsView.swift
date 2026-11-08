@@ -14,6 +14,10 @@ struct MCPConnectionsView: View {
     @State private var error: String?
     @State private var advanced = false
     @State private var catalogSelection: ConnectionCatalogEntry?
+    @State private var catalogClientID = ""
+    @State private var catalogToken = ""
+    @State private var catalogRedirect = "http://127.0.0.1:8765/oauth/slack"
+    @State private var connecting = false
     @State private var query = ""
     @State private var showsCatalog = true
     @State private var reports: [String: MCPConnectionReport] = [:]
@@ -88,22 +92,27 @@ struct MCPConnectionsView: View {
                 Label("Access to review", systemImage: "lock.shield").font(.headline)
                 Text(entry.permissions).fixedSize(horizontal: false, vertical: true)
                 Text(entry.endpoint).font(.caption.monospaced()).foregroundStyle(.secondary).textSelection(.enabled)
+                if let setup = entry.setup {
+                    ScrollView { Text(setup).font(.callout).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading) }.frame(maxHeight: 180)
+                    CopyButton(text: setup)
+                }
+                if entry.requiresClientID {
+                    TextField("Approved OAuth client ID", text: $catalogClientID).textFieldStyle(.roundedBorder)
+                    TextField("Registered loopback redirect", text: $catalogRedirect).textFieldStyle(.roundedBorder)
+                }
+                if entry.usesToken { SecureField("Personal access token", text: $catalogToken).textFieldStyle(.roundedBorder) }
                 Link("Official setup guide", destination: URL(string: entry.documentation)!)
-                Text(entry.usesOAuth ? "Connect opens the service's sign-in page. Credentials stay in Keychain. Save Project Settings to keep this connection." : "Connect adds the server. Use Test connection to check access, then Save Project Settings.")
+                Text(entry.usesToken ? "Connect stores the token in Keychain. Save Project Settings to retain the credential reference." : entry.usesOAuth ? "Connect opens the service's sign-in page. Credentials stay in Keychain. Save Project Settings to keep this connection." : "Connect adds the server. Use Test connection to check access, then Save Project Settings.")
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 if let error { Text(error).foregroundStyle(Theme.attention) }
                 HStack {
-                    Button("Cancel") { catalogSelection = nil }
+                    Button("Cancel") { catalogSelection = nil }.disabled(connecting)
                     Spacer()
-                    Button("Connect") {
-                        do {
-                            configuration = try MCPConfigurationEditor.save(entry.server, in: configuration)
-                            catalogSelection = nil; showsCatalog = false; query = ""; error = nil
-                            if entry.usesOAuth { signIn(entry.server) }
-                        } catch { self.error = error.localizedDescription }
-                    }.buttonStyle(.borderedProminent)
+                    Button(connecting ? "Connecting…" : "Connect") { connectCatalog(entry) }
+                        .buttonStyle(.borderedProminent).disabled(connecting || (entry.requiresClientID && catalogClientID.isEmpty) || (entry.usesToken && catalogToken.isEmpty))
                 }
-            }.padding(24).frame(width: 480)
+            }.padding(24).frame(width: 520)
+                .onDisappear { catalogToken = ""; catalogClientID = "" }.interactiveDismissDisabled(connecting)
         }
         .sheet(item: $editing) { draft in
             MCPServerEditor(draft: draft) { server in
@@ -162,11 +171,11 @@ struct MCPConnectionsView: View {
                     Text(entry.category).font(.caption).foregroundStyle(.secondary)
                 }
                 Spacer()
-                Button("Connect") { error = nil; catalogSelection = entry }.buttonStyle(.borderedProminent)
+                Button("Connect") { error = nil; catalogClientID = ""; catalogToken = ""; catalogSelection = entry }.buttonStyle(.borderedProminent)
                     .accessibilityLabel("Connect " + entry.name)
             }
             Text(entry.summary)
-            Text(entry.usesOAuth ? "Not connected · Browser sign-in" : "Not configured · Public documentation").font(.caption).foregroundStyle(.secondary)
+            Text("Not configured · " + entry.setupLabel).font(.caption).foregroundStyle(.secondary)
             DisclosureGroup("Permissions") { Text(entry.permissions).font(.caption).foregroundStyle(.secondary).padding(.top, 5) }
         }.padding(14).frame(maxWidth: .infinity, alignment: .leading).surface()
     }
@@ -221,7 +230,9 @@ struct MCPConnectionsView: View {
                 }
             }.font(.system(size: 11)).controlSize(.small)
             if let failure = failures[server.name] { Text(failure).font(.system(size: 11)).foregroundStyle(Theme.attention).textSelection(.enabled) }
-            if server.transport != "stdio", ConnectionCatalogEntry.entries.first(where: { $0.configuredServer(in: [server]) != nil })?.usesOAuth != false { authorizationRow(server) }
+            let catalog = ConnectionCatalogEntry.entries.first(where: { $0.configuredServer(in: [server]) != nil })
+            if let setup = catalog?.setup { DisclosureGroup("Setup instructions") { Text(setup).font(.caption).textSelection(.enabled); Link("Setup guide", destination: URL(string: catalog!.documentation)!) } }
+            if server.transport != "stdio", catalog?.usesOAuth != false || catalog?.usesToken == true { authorizationRow(server) }
             if let report = reports[server.name] {
                 DisclosureGroup("Permissions and tools (\(report.tools.count))") {
                     VStack(alignment: .leading, spacing: 9) {
@@ -252,7 +263,7 @@ struct MCPConnectionsView: View {
                 Spacer()
                 Button("Cancel") { model.mcpAccounts.cancel(key) }
             } else if let key, model.mcpAccounts.signedIn.contains(key) {
-                Text("Signed in · Keychain").foregroundStyle(.secondary)
+                Text(server.configuration["marikaAuthKind"]?.string == "token" ? "Token saved · Keychain" : "Signed in · Keychain").foregroundStyle(.secondary)
                 Spacer()
                 Button("Sign out") {
                     Task {
@@ -265,9 +276,12 @@ struct MCPConnectionsView: View {
                     }
                 }
             } else {
-                Text("Browser sign-in for servers that support OAuth").foregroundStyle(.secondary)
+                Text(server.configuration["marikaAuthKind"]?.string == "token" ? "Token required" : "Browser sign-in for servers that support OAuth").foregroundStyle(.secondary)
                 Spacer()
-                Button("Sign in") { signIn(server) }.disabled(!server.enabled)
+                Button(server.configuration["marikaAuthKind"]?.string == "token" ? "Add token" : "Sign in") {
+                    if server.configuration["marikaAuthKind"]?.string == "token", let entry = ConnectionCatalogEntry.entries.first(where: { $0.configuredServer(in: [server]) != nil }) { catalogSelection = entry }
+                    else { signIn(server) }
+                }.disabled(!server.enabled)
                     #if DEBUG
                     .background(DebugViewMarker(name: "mcp-sign-in-" + server.name))
                     #endif
@@ -275,6 +289,35 @@ struct MCPConnectionsView: View {
         }.font(.system(size: 11)).controlSize(.small)
         if let key, let message = model.mcpAccounts.errors[key] {
             Text(message).font(.system(size: 11)).foregroundStyle(Theme.attention).textSelection(.enabled)
+        }
+    }
+
+    private func connectCatalog(_ entry: ConnectionCatalogEntry) {
+        connecting = true
+        let token = catalogToken, clientID = catalogClientID, redirect = catalogRedirect
+        Task {
+            defer { connecting = false }
+            do {
+                let previous = entry.configuredServer(in: servers)
+                var fields = entry.server.configuration.object ?? [:]
+                if !clientID.isEmpty { fields["marikaOAuthClientID"] = .string(clientID) }
+                if entry.requiresClientID {
+                    guard let url = URL(string: redirect) else { throw AgentError.launchFailed("Supply the registered loopback redirect.") }
+                    _ = try OAuthCallbackServer(state: "validate", redirect: url)
+                    fields["marikaOAuthRedirect"] = .string(redirect)
+                }
+                if entry.usesToken {
+                    guard let url = URL(string: entry.endpoint) else { return }
+                    let reference = UUID().uuidString; fields["marikaOAuthID"] = .string(reference)
+                    let key = projectID.uuidString + "." + reference
+                    try await model.mcpAccounts.credentials.save(MCPOAuthCredential.bearer(token, resource: url), key: key)
+                    model.mcpAccounts.signedIn.insert(key)
+                }
+                let server = MCPServerConfiguration(name: previous?.name ?? entry.id, configuration: .object(fields))
+                configuration = try MCPConfigurationEditor.save(server, replacing: previous?.name, in: configuration)
+                catalogToken = ""; catalogSelection = nil; showsCatalog = false; query = ""; error = nil
+                if entry.usesOAuth { signIn(server) }
+            } catch { self.error = error.localizedDescription }
         }
     }
 
@@ -287,7 +330,7 @@ struct MCPConnectionsView: View {
             guard let address = resolved[server.name]?["url"]?.string, let url = URL(string: address),
                   let key = MCPAccounts.key(projectID: projectID, configuration: configured.configuration) else { return }
             configuration = try MCPConfigurationEditor.save(configured, replacing: server.name, in: configuration)
-            model.mcpAccounts.signIn(key: key, server: url, clientID: fields["marikaOAuthClientID"]?.string) {
+            model.mcpAccounts.signIn(key: key, server: url, clientID: fields["marikaOAuthClientID"]?.string, redirect: fields["marikaOAuthRedirect"]?.string.flatMap(URL.init(string:))) {
                 if let updated = servers.first(where: { $0.name == server.name }) { test(updated) }
             }
         } catch { self.error = error.localizedDescription }
@@ -330,6 +373,7 @@ private struct MCPServerDraft: Identifiable {
     var arguments: [MCPArgument] = []
     var url = ""
     var oauthClientID = ""
+    var oauthRedirect = ""
     var environment: [MCPFieldPair] = []
     var headers: [MCPFieldPair] = []
     var original: [String: JSONValue] = [:]
@@ -341,6 +385,7 @@ private struct MCPServerDraft: Identifiable {
         arguments = (server.configuration["args"]?.array ?? []).map { MCPArgument(value: $0.string ?? "") }
         url = server.configuration["url"]?.string ?? ""
         oauthClientID = server.configuration["marikaOAuthClientID"]?.string ?? ""
+        oauthRedirect = server.configuration["marikaOAuthRedirect"]?.string ?? ""
         environment = (server.configuration["env"]?.object ?? [:]).sorted { $0.key < $1.key }.map { MCPFieldPair(name: $0.key, value: $0.value.string ?? "") }
         headers = (server.configuration["headers"]?.object ?? server.configuration["http_headers"]?.object ?? [:]).sorted { $0.key < $1.key }.map { MCPFieldPair(name: $0.key, value: $0.value.string ?? "") }
     }
@@ -356,7 +401,7 @@ private struct MCPServerDraft: Identifiable {
         }
         var config = original
         if transport == "stdio" {
-            for key in ["url", "type", "headers", "http_headers", "marikaOAuthID", "marikaOAuthClientID"] { config[key] = nil }
+            for key in ["url", "type", "headers", "http_headers", "marikaOAuthID", "marikaOAuthClientID", "marikaOAuthRedirect", "marikaAuthKind"] { config[key] = nil }
             config["command"] = .string(command.trimmingCharacters(in: .whitespacesAndNewlines))
             config["args"] = .array(arguments.map { .string($0.value) })
             config["env"] = try fields(environment)
@@ -366,6 +411,11 @@ private struct MCPServerDraft: Identifiable {
             config["type"] = .string(transport)
             config["headers"] = try fields(headers)
             config["marikaOAuthClientID"] = oauthClientID.isEmpty ? nil : .string(oauthClientID)
+            if !oauthRedirect.isEmpty {
+                guard let url = URL(string: oauthRedirect) else { throw AgentError.launchFailed("Supply a valid loopback redirect.") }
+                _ = try OAuthCallbackServer(state: "validate", redirect: url)
+            }
+            config["marikaOAuthRedirect"] = oauthRedirect.isEmpty ? nil : .string(oauthRedirect)
         }
         return MCPServerConfiguration(name: name.trimmingCharacters(in: .whitespacesAndNewlines), configuration: .object(config))
     }
@@ -408,6 +458,7 @@ private struct MCPServerEditor: View {
                         TextField("https://server.example/mcp", text: $draft.url)
                         pairs("HTTP headers", values: $draft.headers)
                         TextField("OAuth public client ID (optional)", text: $draft.oauthClientID)
+                        TextField("Registered loopback redirect (optional)", text: $draft.oauthRedirect)
                         Text("Leave the client ID empty for automatic registration. Sign-in credentials are stored in Keychain.").font(.system(size: 11)).foregroundStyle(.secondary)
                         if draft.transport == "sse" { Text("Use streamable HTTP for new servers; SSE is a legacy transport.").foregroundStyle(.secondary) }
                     }

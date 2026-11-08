@@ -14,6 +14,9 @@ macOS workspace. Start with the [screenshot tour](screenshots.md) to see the int
 | [Editing, reviewing and debugging](editor.md) | Find files, edit Markdown, use language tools, review Git changes and run tests. |
 | [Browser, reviews, APIs and pipelines](tools.md) | Preview local work, review code health, send API requests and run supported CI jobs. |
 | [Research](tools.md#research) | Investigate documentation, libraries or competitors, inspect sources and create implementation tasks. |
+| [Compare models](tools.md#compare-models) | Get independent Claude/Codex answers and a synthesis of agreements and disagreements. |
+| [Knowledge](tools.md#project-knowledge-and-reviewed-memory) | Search stored documents and decisions, then review proposed memory updates. |
+| [Deliverables](tools.md#rich-deliverables-and-exports) | Preview and export reports, spreadsheets and presentations. |
 | [Connections](workspace.md#playbooks-and-mcp-connections) | Find a connector, review access, sign in and test discovery. |
 | [Saved work, recovery and updates](recovery-and-updates.md) | Recover drafts, use checkpoints, review artifacts and check for app updates. |
 | [Approval modes](approval-modes.md) | Understand the command and edit permissions for each provider. |

@@ -104,7 +104,9 @@ struct ResearchAndTaskTests {
 
     @Test func catalogSearchAndConnectionMatchingRespectActualEndpoints() throws {
         for entry in ConnectionCatalogEntry.entries {
-            #expect(entry.endpoint.hasPrefix("https://") && entry.documentation.hasPrefix("https://"))
+            #expect(entry.documentation.hasPrefix("https://"))
+            if entry.command == nil { #expect(entry.endpoint.hasPrefix("https://")) }
+            else { #expect(entry.server.transport == "stdio" && !entry.arguments.isEmpty) }
             let config = try MCPConfigurationEditor.save(entry.server, in: #"{"mcpServers":{}}"#)
             var server = try #require(MCPConfigurationEditor.servers(in: config).first)
             server.name = "renamed"

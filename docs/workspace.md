@@ -208,6 +208,32 @@ Tokens refresh before agent connections and connection checks; **Sign out** remo
 credential. The project stores only an opaque credential reference. OAuth credentials are local
 to this Mac and project. Existing provider consent is managed at the provider.
 
+### Additional catalog connections
+
+The catalog also includes GitHub, Slack, Gmail, Google Calendar, Google Drive and Google Sheets.
+Each entry shows its access and setup requirements before adding configuration:
+
+- **GitHub** uses a personal access token stored in Keychain. Project JSON contains only an opaque
+  credential reference. Select minimal repository permissions, then use **Test connection**.
+  **Sign out** removes the local credential; revoke the token at GitHub to invalidate it.
+- **Slack** uses its vendor-hosted MCP endpoint and requires an approved, PKCE-enabled internal or
+  directory app. Supply its public client ID and register the exact loopback redirect displayed
+  in the Connect form (default `http://127.0.0.1:8765/oauth/slack`). The port must be available.
+  Workspace administrators may need to approve access. Slack does not offer dynamic registration.
+- **Google services** use separate, service-scoped recipes through `@googleworkspace/cli@0.5.0`,
+  a pinned release with an MCP server. The googleworkspace project is not an officially supported
+  Google product. Node.js 18+ and your own Google Cloud Desktop OAuth client are prerequisites.
+  Follow the linked authentication guide and run the displayed service-specific sign-in command
+  in Terminal. The first test or agent connection downloads the pinned package if necessary.
+  Credentials are managed by `gws`, separately from Marika. Adding a recipe alone grants no access.
+
+The setup cards link to [GitHub's server guide](https://github.com/github/github-mcp-server/blob/main/docs/remote-server.md),
+[Slack's server guide](https://docs.slack.dev/ai/slack-mcp-server/), and the
+[versioned Workspace CLI guide](https://github.com/googleworkspace/cli/tree/v0.5.0#authentication).
+A catalog entry means a configuration recipe is available; **Connected** appears only after a
+successful discovery check. Live access still depends on provider policy, account permissions
+and the credentials you authorize. Custom MCP servers remain available through **Add server**.
+
 ## Attached repositories
 
 Use the folder button in the workspace toolbar to attach repositories to a project and switch

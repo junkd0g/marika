@@ -20,7 +20,7 @@ import Observation
     func load(_ key: String) async {
         if await credentials.isSignedIn(key) { signedIn.insert(key) } else { signedIn.remove(key) }
     }
-    func signIn(key: String, server: URL, clientID: String?, finished: @escaping () -> Void) {
+    func signIn(key: String, server: URL, clientID: String?, redirect: URL? = nil, finished: @escaping () -> Void) {
         guard !busy.contains(key) else { return }
         busy.insert(key); errors[key] = nil
         tasks[key] = Task { [weak self] in
@@ -30,7 +30,7 @@ import Observation
                 let client = MCPOAuthClient()
                 let discovery = try await client.discover(server: server)
                 let state = MCPOAuthClient.randomSecret(), verifier = MCPOAuthClient.randomSecret()
-                let callback = try OAuthCallbackServer(state: state)
+                let callback = try OAuthCallbackServer(state: state, redirect: redirect)
                 defer { callback.stop() }
                 let redirect = try await callback.start()
                 let id: String

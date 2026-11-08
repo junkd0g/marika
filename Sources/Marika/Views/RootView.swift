@@ -163,7 +163,7 @@ private struct ProjectWorkspaceView: View {
                     if visible(.api) {
                         place(ProjectAPIView(project: project), panel: .api, size: geometry.size)
                     }
-                    if visible(.research) { place(ProjectResearchView(project: project), panel: .research, size: geometry.size) }
+                    if visible(.research) { place(ProjectResearchHub(project: project), panel: .research, size: geometry.size) }
                     if visible(.pipelines) {
                         place(ProjectPipelinesView(project: project), panel: .pipelines, size: geometry.size)
                     }

@@ -8,7 +8,7 @@ public struct ArtifactComment: Codable, Hashable, Identifiable, Sendable {
 }
 
 public struct ProjectArtifact: Codable, Hashable, Identifiable, Sendable {
-    public enum Kind: String, Codable, CaseIterable, Sendable { case plan = "Plan", walkthrough = "Walkthrough", browser = "Browser evidence" }
+    public enum Kind: String, Codable, CaseIterable, Sendable { case plan = "Plan", walkthrough = "Walkthrough", browser = "Browser evidence", deliverable = "Deliverable" }
     public var id = UUID()
     public var sessionID: UUID
     public var date = Date()
@@ -18,11 +18,12 @@ public struct ProjectArtifact: Codable, Hashable, Identifiable, Sendable {
     public var approved = false
     public var comments: [ArtifactComment] = []
     public var images: [String] = []
+    public var deliverable: Deliverable?
     public init(sessionID: UUID, title: String, kind: Kind, body: String) {
         self.sessionID = sessionID; self.title = title; self.kind = kind; self.body = body
     }
     public static func validated(sessionID: UUID, title: String, kind: String, body: String) throws -> ProjectArtifact {
-        guard let type = Kind(rawValue: kind), type != .browser, !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+        guard let type = Kind(rawValue: kind), [.plan, .walkthrough].contains(type), !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
               title.count <= 180, !body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, body.utf8.count <= 100_000 else {
             throw AgentError.launchFailed("Provide a Plan or Walkthrough, a title under 180 characters, and nonempty Markdown under 100 KB.")
         }

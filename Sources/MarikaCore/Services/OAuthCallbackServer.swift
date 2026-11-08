@@ -7,13 +7,20 @@ public final class OAuthCallbackServer: @unchecked Sendable {
     private let queue = DispatchQueue(label: "app.marika.oauth-callback")
     private let lock = NSLock()
     private let state: String
-    private let path = "/oauth/" + UUID().uuidString.lowercased()
+    private let path: String
     private var result: Result<String, Error>?
     private var waiter: CheckedContinuation<String, Error>?
-    public init(state: String) throws {
+    public init(state: String, redirect: URL? = nil) throws {
         self.state = state
+        if let redirect {
+            guard redirect.scheme == "http", redirect.host == "127.0.0.1", let port = redirect.port, port >= 1024, port <= 65535,
+                  redirect.path.hasPrefix("/oauth/"), redirect.user == nil, redirect.password == nil, redirect.query == nil, redirect.fragment == nil else {
+                throw AgentError.launchFailed("Use a loopback redirect such as http://127.0.0.1:8765/oauth/slack, with an unprivileged port and no query or credentials.")
+            }
+        }
+        path = redirect?.path ?? "/oauth/" + UUID().uuidString.lowercased()
         let parameters = NWParameters.tcp
-        parameters.requiredLocalEndpoint = .hostPort(host: "127.0.0.1", port: .any)
+        parameters.requiredLocalEndpoint = .hostPort(host: "127.0.0.1", port: redirect?.port.flatMap { NWEndpoint.Port(rawValue: UInt16($0)) } ?? .any)
         listener = try NWListener(using: parameters)
     }
     private final class Start: @unchecked Sendable {

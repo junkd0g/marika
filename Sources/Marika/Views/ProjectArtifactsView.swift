@@ -13,6 +13,7 @@ struct ProjectArtifactsView: View {
     @State private var imageIndex = 0
     @State private var error: String?
     @State private var launching = false
+    @State private var creation = "Plan"
     private var artifacts: [(Project, ProjectArtifact)] {
         (allProjects ? model.workspace.projects : [model.project(id: project.id) ?? project])
             .flatMap { project in (project.artifacts ?? []).map { (project, $0) } }
@@ -21,12 +22,15 @@ struct ProjectArtifactsView: View {
     private var selected: (Project, ProjectArtifact)? { artifacts.first { $0.1.id == selectedID } ?? artifacts.first }
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
+            Picker("Create", selection: $creation) {
+                Text("Plan").tag("Plan"); Text("Report").tag("report"); Text("Spreadsheet").tag("spreadsheet"); Text("Presentation").tag("presentation")
+            }.pickerStyle(.segmented)
             HStack {
-                TextField("Describe a task to plan…", text: $task).textFieldStyle(.roundedBorder)
-                Button("Draft plan") { launchPlan() }.disabled(launching || task.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                TextField(creation == "Plan" ? "Describe a task to plan…" : "Describe the deliverable and its sources…", text: $task).textFieldStyle(.roundedBorder)
+                Button(launching ? "Starting…" : creation == "Plan" ? "Draft plan" : "Create deliverable") { launchPlan() }.disabled(launching || task.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
             HStack {
-                Text("Plans, walkthroughs, and observed browser steps").font(.caption).foregroundStyle(.secondary)
+                Text("Deliverables, plans, walkthroughs and browser evidence").font(.caption).foregroundStyle(.secondary)
                 Spacer()
                 Toggle("All projects", isOn: $allProjects).toggleStyle(.checkbox)
             }
@@ -51,7 +55,11 @@ struct ProjectArtifactsView: View {
                                 Spacer()
                                 Button("Open agent") { model.experienceProjectID = nil; model.openAgentChat(artifact.sessionID) }
                             }
-                            MarkdownView(text: artifact.body).environment(\.projectRoot, owner.url).textSelection(.enabled)
+                            if let value = artifact.deliverable { DeliverablePreview(value: value).id(artifact.id) }
+                            else {
+                                DeliverableExportButton(value: Deliverable(kind: .report, title: artifact.title, body: artifact.body))
+                                MarkdownView(text: artifact.body).environment(\.projectRoot, owner.url).textSelection(.enabled)
+                            }
                             if !artifact.images.isEmpty { images(artifact) }
                             if artifact.kind != .browser { review(artifact, owner: owner) }
                         }.padding(20).frame(maxWidth: .infinity, alignment: .leading)
@@ -126,7 +134,7 @@ struct ProjectArtifactsView: View {
             do {
                 let session = try await model.launchAgent(in: project, agent: model.selectedSession?.agent ?? .codex,
                     settings: AgentSettings(model: model.selectedSession?.model, mode: .plan),
-                    prompt: "Plan this task only; do not change files. Inspect the code, propose changes with concrete file references, risks, and verification steps. Publish a Plan with project_publish_artifact, then stop for review.\n\n" + task, isolated: false)
+                    prompt: creation == "Plan" ? "Plan this task only; do not change files. Inspect the code, propose changes with concrete file references, risks, and verification steps. Publish a Plan with project_publish_artifact, then stop for review.\n\n" + task : "Create a " + creation + " deliverable for this request. Inspect project knowledge and relevant sources. Do not edit project files. Use project_publish_deliverable with kind " + creation + ". Publish useful content, cite evidence actually retrieved, and state uncertainties. Spreadsheet cells are literal text; compute necessary values explicitly. Keep slide bullets concise and put supporting details in notes.\n\n" + String(task.prefix(6000)), isolated: false)
                 model.experienceProjectID = nil
                 model.openAgentChat(session.id)
             } catch { self.error = error.localizedDescription }
