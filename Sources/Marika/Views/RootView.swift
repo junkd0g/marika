@@ -131,6 +131,7 @@ private struct ProjectWorkspaceView: View {
     let project: Project
 
     @State private var dragStart: Double?
+    @State private var dropEdge: ProjectSplitEdge?
     @State private var inspectorPresented = false
 
     private var selectedTab: AppModel.ProjectTab { model.projectTabs[project.id] ?? .conversation }
@@ -173,8 +174,11 @@ private struct ProjectWorkspaceView: View {
                     if arrangement.secondary != nil {
                         splitDivider(in: geometry.size)
                     }
+                    if let dropEdge { WorkspaceSplitPreview(edge: dropEdge) }
                 }
                 .frame(width: geometry.size.width, height: geometry.size.height, alignment: .topLeading).clipped()
+                .onDrop(of: [.marikaWorkspaceTab], delegate: WorkspaceTabDrop(projectID: project.id, size: geometry.size,
+                    edge: $dropEdge, split: model.splitProjectTab))
             }
             #if DEBUG
                 .background(DebugViewMarker(name: "workspace-content"))

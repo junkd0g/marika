@@ -112,6 +112,19 @@ public struct ProjectLayout: Codable, Equatable, Hashable, Sendable {
         return openTabs[(index + offset % openTabs.count + openTabs.count) % openTabs.count]
     }
 
+    /// Put the dragged view at an edge, retaining the other visible view when possible.
+    @discardableResult
+    public mutating func splitTab(_ tab: ProjectPanel, at edge: ProjectSplitEdge) -> Bool {
+        let other = panel == tab ? secondary ?? openTabs.last(where: { $0 != tab }) : panel
+        guard let other, other != tab else { return false }
+        secondary = nil
+        panel = edge.leading ? tab : other
+        secondary = edge.leading ? other : tab
+        stacked = edge.stacked
+        splitFraction = 0.5
+        return true
+    }
+
     private mutating func includeTab(_ tab: ProjectPanel) {
         if !openTabs.contains(tab) { openTabs.append(tab) }
     }

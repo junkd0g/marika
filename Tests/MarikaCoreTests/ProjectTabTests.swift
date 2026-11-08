@@ -4,6 +4,61 @@ import Testing
 @testable import MarikaCore
 
 struct ProjectTabTests {
+    @Test func draggedViewsSplitAtEachEdgeAndPersist() throws {
+        for edge in ProjectSplitEdge.allCases {
+            var layout = ProjectLayout()
+            layout.files = [EditorFileState(path: "App.swift", draft: "unsaved", baseText: "original")]
+            layout.browserURLs = ["http://localhost:3000"]
+            let split = layout.splitTab(.code, at: edge)
+            #expect(split)
+            #expect(layout.panel == (edge.leading ? .code : .conversation))
+            #expect(layout.secondary == (edge.leading ? .conversation : .code))
+            #expect(layout.stacked == edge.stacked && layout.splitFraction == 0.5)
+            #expect(layout.openTabs.contains(.code))
+            #expect(layout.files.first?.draft == "unsaved" && layout.browserURLs == ["http://localhost:3000"])
+            let restored = try JSONDecoder().decode(ProjectLayout.self, from: JSONEncoder().encode(layout))
+            #expect(restored == layout)
+        }
+    }
+
+    @Test func draggingTheActiveViewRetainsTheOtherPaneAndCanReverseTheSplit() {
+        var layout = ProjectLayout()
+        layout.openTab(.code)
+        layout.secondary = .browser
+        let movedRight = layout.splitTab(.code, at: .right)
+        #expect(movedRight)
+        #expect(layout.panel == .browser && layout.secondary == .code)
+        let movedTop = layout.splitTab(.code, at: .top)
+        #expect(movedTop)
+        #expect(layout.panel == .code && layout.secondary == .browser && layout.stacked)
+        // Replacing a split keeps the old view available as a tab.
+        let replaced = layout.splitTab(.stats, at: .bottom)
+        #expect(replaced)
+        #expect(layout.panel == .code && layout.secondary == .stats)
+        #expect(layout.openTabs.contains(.browser))
+    }
+
+    @Test func draggingASingleViewCannotCreateASplitWithItself() {
+        var layout = ProjectLayout()
+        let noPartner = layout.splitTab(.conversation, at: .left)
+        #expect(!noPartner)
+        #expect(layout.secondary == nil)
+        layout.openTab(.code)
+        let split = layout.splitTab(.code, at: .left)
+        #expect(split)
+        #expect(layout.panel == .code && layout.secondary == .conversation)
+    }
+
+    @Test func splitDropTargetsOnlyAcceptWorkspaceEdges() {
+        #expect(ProjectSplitEdge.target(x: 30, y: 300, width: 1000, height: 600) == .left)
+        #expect(ProjectSplitEdge.target(x: 970, y: 300, width: 1000, height: 600) == .right)
+        #expect(ProjectSplitEdge.target(x: 500, y: 10, width: 1000, height: 600) == .top)
+        #expect(ProjectSplitEdge.target(x: 500, y: 590, width: 1000, height: 600) == .bottom)
+        #expect(ProjectSplitEdge.target(x: 500, y: 300, width: 1000, height: 600) == nil)
+        #expect(ProjectSplitEdge.target(x: -1, y: 0, width: 1000, height: 600) == nil)
+        #expect(ProjectSplitEdge.target(x: 0, y: 0, width: 0, height: 0) == nil)
+    }
+
     @Test func legacyLayoutsOpenTheirSelectedAndSplitViews() throws {
         let layout = try JSONDecoder().decode(ProjectLayout.self, from: Data(#"{"panel":"Code","secondary":"Browser"}"#.utf8))
         #expect(layout.openTabs == [.conversation, .code, .browser])

@@ -56,6 +56,22 @@ extension AppModel {
         guard let project = selectedProject else { return }
         switchPanel(layout(for: project.id).adjacentTab(offset))
     }
+
+    func splitProjectTab(_ drag: WorkspaceTabDrag, at edge: ProjectSplitEdge) {
+        guard let project = selectedProject, project.id == drag.projectID else { return }
+        var saved = layout(for: project.id)
+        guard saved.splitTab(drag.panel, at: edge) else { return }
+        for panel in [saved.panel, saved.secondary].compactMap({ $0 }) {
+            switch panel {
+            case .code: _ = editor(for: project)
+            case .browser: _ = browser(for: project)
+            case .terminal: ensureTerminal(for: project)
+            default: break
+            }
+        }
+        updateLayout(saved, for: project.id)
+        selectProjectTab(saved.panel)
+    }
     func preview(for project: Project) -> ProjectPreview {
         if let preview = previews[project.id] { return preview }
         let preview = ProjectPreview()

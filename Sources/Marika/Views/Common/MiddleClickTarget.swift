@@ -23,7 +23,7 @@ struct MiddleClickTarget: NSViewRepresentable {
             monitor = NSEvent.addLocalMonitorForEvents(matching: .otherMouseDown) { [weak self] event in
                 let handled = MainActor.assumeIsolated {
                     guard let self, let window = self.window, event.window === window, event.buttonNumber == 2,
-                          !self.isHiddenOrHasHiddenAncestor, self.bounds.contains(self.convert(event.locationInWindow, from: nil)) else { return false }
+                          !self.isHiddenOrHasHiddenAncestor, self.visibleRect.contains(self.convert(event.locationInWindow, from: nil)) else { return false }
                     self.action()
                     return true
                 }

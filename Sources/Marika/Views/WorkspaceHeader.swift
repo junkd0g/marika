@@ -9,7 +9,6 @@ struct WorkspaceHeader: View {
     var select: (AppModel.ProjectTab) -> Void
     var launchAgent: () -> Void
     @State private var hovered: AppModel.ProjectTab?
-    @State private var showsViewChooser = false
 
     var body: some View {
         GeometryReader { geometry in
@@ -101,7 +100,9 @@ struct WorkspaceHeader: View {
                     Label(tab.title, systemImage: tab.symbol).font(.system(size: 11.5, weight: .medium))
                 }
                 .buttonStyle(.bordered).controlSize(.small).fixedSize()
-                .help("\(openTabs.contains(tab) ? "Switch to" : "Open") \(tab.title) tab (⌘\(tab.shortcut))")
+                .background(MiddleClickTarget { select(tab) })
+                .onDrag { WorkspaceTabDrag(projectID: project.id, panel: tab).itemProvider() }
+                .help("Open \(tab.title) (⌘\(tab.shortcut) or middle-click). Drag to a workspace edge to split.")
                 .accessibilityLabel("Show " + tab.title)
                 #if DEBUG
                     .background(DebugViewMarker(name: "workspace-open-" + tab.rawValue.lowercased()))
@@ -160,22 +161,6 @@ struct WorkspaceHeader: View {
             }
         }
         .frame(minWidth: 0, maxWidth: .infinity)
-        .background(MiddleClickTarget { showsViewChooser = true })
-        .help("Middle-click the tab bar to open a view")
-        .popover(isPresented: $showsViewChooser, arrowEdge: .bottom) {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Open a view").font(.headline)
-                ForEach(ProjectPanel.allCases, id: \.self) { tab in
-                    Button { showsViewChooser = false; select(tab) } label: {
-                        HStack {
-                            Label(tab.title, systemImage: tab.symbol)
-                            Spacer()
-                            if openTabs.contains(tab) { Text("Open").foregroundStyle(.secondary).font(.caption) }
-                        }.contentShape(Rectangle())
-                    }.buttonStyle(.plain).padding(.vertical, 4)
-                }
-            }.padding(16).frame(width: 220)
-        }
         #if DEBUG
             return strip.background(DebugViewMarker(name: "workspace-tabs"))
         #else
@@ -198,7 +183,11 @@ struct WorkspaceHeader: View {
                 .foregroundStyle(selected ? Theme.ink : .secondary)
                 .frame(height: 30).contentShape(Rectangle())
             }
-            .buttonStyle(.plain).help("\(tab.title) (⌘\(tab.shortcut))").accessibilityLabel(tab.title + " tab")
+            .buttonStyle(.plain)
+            .background(MiddleClickTarget { select(tab) })
+            .onDrag { WorkspaceTabDrag(projectID: project.id, panel: tab).itemProvider() }
+            .help("\(tab.title) (⌘\(tab.shortcut)). Middle-click to open; drag to a workspace edge to split.")
+            .accessibilityLabel(tab.title + " tab")
             .accessibilityAddTraits(selected ? [.isSelected] : [])
             if tab != .conversation {
                 Button { model.closeProjectTab(tab) } label: {
@@ -218,7 +207,12 @@ struct WorkspaceHeader: View {
         .overlay { RoundedRectangle(cornerRadius: 7).strokeBorder(selected ? Theme.hairline : .clear) }
         .onHover { hovered = $0 ? tab : nil }
         .contextMenu {
-            Button("Open a view…") { showsViewChooser = true }
+            ForEach(ProjectSplitEdge.allCases, id: \.self) { edge in
+                Button("Split \(tab.title) \(edge.rawValue)") {
+                    model.splitProjectTab(WorkspaceTabDrag(projectID: project.id, panel: tab), at: edge)
+                }
+                .disabled(openTabs.allSatisfy { $0 == tab })
+            }
             Divider()
             Button("Close Tab") { model.closeProjectTab(tab) }.disabled(tab == .conversation)
             Button("Close Other Tabs") { model.closeOtherProjectTabs(keeping: tab) }.disabled(openTabs.count < 2)
