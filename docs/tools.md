@@ -26,6 +26,12 @@ separates maintained source, tests, generated files and dependencies. Compact la
 summaries support the review. Earlier scans remain available from the date menu, and the model can
 be changed from the review settings button.
 
+**Review published** means the report is available even if its conversation continues with a
+follow-up. A new review or failed rerun is reported separately, while the earlier report stays
+readable. A worker that stops after saving inventory without publishing a review is shown as
+incomplete. Inventory line counts do not measure test coverage or code quality. See the
+[sample report screenshot](screenshots.md#code-health-reviews).
+
 ## API collections and project environments
 
 Open **API** (⌘7) and choose **Generate collection** to have the current project agent read the

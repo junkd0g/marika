@@ -35,14 +35,18 @@ preview formats installed on your Mac. Large text files use a preview instead of
 
 ## Search and navigation
 
-Press **⌘P** from any project tab to search files by name, path, or abbreviation. The file list
-also has a project-wide filter. Use **⇧⌘E** to focus it, arrow keys to browse and expand folders,
+Press **⌘P** from any project tab to search files by name, path, or abbreviation. Results
+prefer exact filenames and names without extensions, with equally relevant source files above build output.
+Recent files lead an empty Quick Open search. Generated and build files remain searchable;
+type an explicit path when you want one of them. The file list also has a project-wide filter.
+Use **⇧⌘E** to focus it, arrow keys to browse and expand folders,
 and Return to start editing. **⇧⌘[ / ⇧⌘]** switch open files. Tabs scroll to the selected file,
 the open-files menu shows full paths, and breadcrumb menus let you jump to nearby files.
 
 Use **⌘K** to find workspace commands and **⇧⌘F** to search file contents across the project.
 Select a match to jump to its line in Code. Use the split menu to pair two project panels side by
-side or stack them vertically. Drag the divider to resize them, or press `⌥⌘\` to toggle the
+side or stack them vertically, or [drag a view tab to a workspace edge](workspace.md#split-workspace).
+Drag the divider to resize them, or press `⌥⌘\` to toggle the
 split. Marika restores the layout, browser addresses, open files, and unsaved edits on restart.
 
 ## Language servers and code assistance

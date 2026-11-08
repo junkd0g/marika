@@ -21,10 +21,24 @@ Use the named buttons in the **Views** row to open **Code**, **Stats**, **Browse
 **Changes**, **Terminal**, **Pipelines**, or **API** as a tab. Narrow windows keep **Code** and
 **Stats** visible and put additional tools in **More views** (**More** in compact layouts).
 **Chat** stays pinned at the beginning. Opening a view again selects its existing tab.
+Middle-click a named view shortcut or tab to open that view directly, without a chooser.
 Each tool tab has an **×** to close it; its context menu can
 close other tabs or move it left or right. Each project remembers its open tabs, order and selected
 view across restarts. Closing a tool tab keeps unsaved editor files and running tasks available
 when you reopen it. **⌃Tab / ⌃⇧Tab** cycle through open tabs; **⌘1–9** open or select a view directly.
+
+## Split workspace
+
+Drag a view tab, or a button from **Views**, toward an edge of the workspace content. The outer
+quarter at each edge is a drop target; the center does not change the layout. A highlighted half
+shows the proposed placement. Drop at **left** or **right** for side-by-side views, or **top** or
+**bottom** to stack them. A split contains two different views; moving an existing pane retains
+its partner where possible. Replaced views remain available as tabs.
+
+For the same placement without dragging, right-click a tab and choose **Split Code right**,
+**Split Browser bottom**, or another directional action. Drag the divider to resize the panes.
+Use the split menu in the toolbar to change orientation or **Close Split**. Files, drafts and
+browser pages stay with the project. See the [split screenshots](screenshots.md#side-by-side-workspace).
 
 ## Project channels and agent conversations
 
@@ -48,8 +62,11 @@ live conversations locally; it sends no messages to a provider and leaves your d
 
 ## Launch and review task agents
 
-Use **Agents → Launch Agent** (⇧⌘N) to give Claude or Codex a task in a separate chat. Choose its
+Choose **New Agent** (⇧⌘N) to give Claude or Codex a task in a separate chat. Choose its
 model and permissions, optionally include the selected file, and monitor progress from Agents.
+Set an optional agent name when launching; otherwise Marika suggests a short name from the task.
+The pencil beside the agent name in Agents or its Chat header renames it without changing its
+stable @mention. Completed cards preview the latest assistant result instead of repeating the task.
 Open an agent's chat to answer approval requests or give further instructions. Each agent keeps
 its own conversation. Git projects use isolated worktrees by default. Choose **Review Changes**
 to open a before/after diff in the code editor. Accept or reject each hunk, or accept all remaining
@@ -58,6 +75,22 @@ editor drafts and refuses stale reviews; refresh if the project or agent's propo
 **Run tests** runs the relevant Go packages or the project's Swift, Rust, JavaScript or Python
 test command in the agent's worktree. Send review feedback and failed test output directly to
 that agent. Agents in non-Git folders share the project files. Up to four agent tasks can run at once.
+
+## Task status and filters
+
+Chat and Agents share the same task status and colors. Working and approval states take priority
+while a task is active; the latest turn determines its settled outcome.
+
+| Filter | Includes |
+| --- | --- |
+| **All** | Every task in the project, including unstarted tasks marked Ready. |
+| **Active** | Working and Needs approval. |
+| **Needs attention** | Failed and Needs approval. |
+| **Finished** | Completed, Stopped and Archived. |
+
+Failures show the error and an **Open Chat** action. Pending approvals offer **Review Approval**.
+Stopped means the task was interrupted; Archived means its isolated workspace was discarded.
+The [screenshot tour](screenshots.md#agent-outcomes) shows examples of the settled outcomes.
 
 ## Delegate between agents
 

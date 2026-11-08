@@ -97,6 +97,31 @@ real app with temporary projects, sample conversations, and a local browser prev
 preferences are isolated, and no AI prompts are sent. Capture diagnostics stay in
 `build/readme-capture.log`. Inspect all images before committing them.
 
+### Feature-tour screenshots
+
+The [screenshot tour](screenshots.md) also covers Chat/Agents status, the attention filter,
+published reviews, and side-by-side and stacked workspaces. Prepare its sample data with:
+
+```bash
+python3 scripts/prepare-feature-tour.py
+```
+
+The command prints a launch command for the debug app with an isolated data directory, isolated
+editor preferences, disabled CLI account probing and a local mock agent. It does not launch the
+app or send prompts. An optional argument selects a new or empty destination directory; existing
+files are never overwritten. Build the debug executable first, then run the printed command.
+
+Navigate using the real app and capture its window with native screenshot controls. The
+[image inventory](images/README.md) lists each view and destination filename. The review and task
+results are preloaded examples, not model-generated evidence. Keep that distinction in captions.
+Check each capture for readability and personal information before committing it.
+
+For the split images, use the Code tab's directional context-menu actions with Chat selected.
+These exercise the same layout action used by a drop, but a screenshot of the result does not
+verify the mouse gesture. The current tab/split change passed 341 core tests and a release build;
+physical drag-and-drop and the wheel-button event still require manual verification. Keep that
+limitation in the change description until those checks have been completed.
+
 ## Signed app updates
 
 Sparkle is pinned through SwiftPM and embedded, with its helper services, in the app bundle.

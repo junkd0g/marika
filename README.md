@@ -9,7 +9,7 @@ into spaces, open the tools you need as tabs, and return to your work with draft
 ![macOS 15+](https://img.shields.io/badge/macOS-15%2B-24292f)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-[Get started](#get-started) · [Workspace tour](#workspace-tour) · [Documentation](#documentation) · [Development](#development)
+[Get started](#get-started) · [Screenshot tour](docs/screenshots.md) · [Documentation](docs/README.md) · [Development](#development)
 
 ![Marika in dark mode: a project conversation, named view shortcuts, open tabs and spaces in the sidebar](docs/images/workspace.png)
 
@@ -60,6 +60,8 @@ conversations, open tabs and editor drafts. Right-click a project to move it to 
 
 The **Views** row opens tools directly. **Chat** stays visible on the left; tool tabs can be
 closed, reordered and reopened. Closing a tab keeps its unsaved files and running tasks.
+Middle-click a named view to open it directly. Drag a tab to a workspace edge to arrange a split,
+or use the tab's directional **Split** context-menu actions.
 
 ### From a conversation to working code
 
@@ -110,6 +112,8 @@ In smaller windows, additional tools are under **More views** or **More**.
 | Save / find in the current file | **⌘S** / **⌘F** |
 
 ## Documentation
+
+Start with the [documentation index](docs/README.md) or the [feature tour in screenshots](docs/screenshots.md).
 
 | Guide | Covers |
 | --- | --- |
