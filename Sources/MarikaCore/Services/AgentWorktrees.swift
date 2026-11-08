@@ -134,8 +134,7 @@ public actor AgentWorktrees {
         let latest = try await snapshot(workspace, project: project)
         guard latest.patch == review.patch else { throw AgentWorktreeError(message: "The agent's files changed. Refresh the review before applying.") }
         guard !review.isEmpty else { throw AgentWorktreeError(message: "There are no changes to apply.") }
-        let top = try await checked(["rev-parse", "--show-toplevel"], at: project)
-        let root = URL(fileURLWithPath: top.output.trimmingCharacters(in: .whitespacesAndNewlines))
+        let root = try await repositoryRoot(project)
         try validateProjectFiles(review, at: root, paths: Array(review.projectFiles.keys))
         try await applyPatch(review.patch, at: root, check: true)
         let isolated = try validate(workspace)

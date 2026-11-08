@@ -125,6 +125,8 @@ private struct GeneralSettings: View {
 
     var body: some View {
         Form {
+            Toggle("Task notification banners", isOn: Binding(get: { model.workspace.preferences.taskNotifications ?? true }, set: { enabled in model.setPreferences { $0.taskNotifications = enabled } }))
+            Text("Background banners open the related task or approval. Activity remains saved when banners are off.").font(.caption).foregroundStyle(.secondary)
             Picker(
                 "New projects use",
                 selection: Binding(
@@ -145,6 +147,6 @@ private struct GeneralSettings: View {
             }
         }
         .formStyle(.grouped)
-        .frame(height: 150)
+        .frame(height: 230)
     }
 }

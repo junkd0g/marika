@@ -58,6 +58,8 @@ import Testing
             environment: ProcessInfo.processInfo.environment.merging(["FIXTURE_SECRET": "fixture-secret"]) { _, new in new })
         #expect(report.server == "Marika fixture" && report.tools.map(\.name) == ["read_file", "inspect_schema"])
         #expect(report.resources == 1 && report.prompts == 1)
+        #expect(report.tools.first?.readOnly == true && report.tools.first?.permissionsSummary == "Read only")
+        #expect(report.tools.last?.readOnly == nil && report.tools.last?.permissionsSummary == "Access not specified")
         #expect(try methods(root) == ["initialize", "notifications/initialized", "tools/list", "tools/list", "resources/list", "prompts/list"])
     }
 

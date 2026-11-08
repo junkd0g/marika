@@ -18,6 +18,7 @@ public struct AgentReviewFileState: Sendable, Equatable {
     let mode: Int
 
     static func capture(_ path: String, root: URL) throws -> Self {
+        let root = root.standardizedFileURL.resolvingSymlinksInPath()
         let url = root.appendingPathComponent(path)
         let parent = url.deletingLastPathComponent().resolvingSymlinksInPath().standardizedFileURL
         guard parent.path == root.path || parent.path.hasPrefix(root.path + "/") else {

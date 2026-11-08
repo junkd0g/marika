@@ -4,6 +4,15 @@ public struct MCPToolSummary: Identifiable, Sendable, Equatable {
     public var id: String { name }
     public var name: String
     public var description: String
+    public var readOnly: Bool? = nil
+    public var destructive: Bool? = nil
+    public var openWorld: Bool? = nil
+    public var permissionsSummary: String {
+        if destructive == true { return "May delete or replace data" }
+        if readOnly == true { return "Read only" }
+        if readOnly == false { return "Can change data" }
+        return "Access not specified"
+    }
 }
 
 public struct MCPConnectionReport: Sendable, Equatable {
@@ -71,7 +80,9 @@ public enum MCPConnectionProbe {
             let entries = try await list("tools", transport)
             tools = entries.compactMap { item in
                 guard let name = item["name"]?.string else { return nil }
-                return MCPToolSummary(name: name, description: String((item["description"]?.string ?? "").prefix(2_000)))
+                return MCPToolSummary(name: name, description: String((item["description"]?.string ?? "").prefix(2_000)),
+                    readOnly: item["annotations"]?["readOnlyHint"]?.bool, destructive: item["annotations"]?["destructiveHint"]?.bool,
+                    openWorld: item["annotations"]?["openWorldHint"]?.bool)
             }
         }
         if response["capabilities"]?["resources"] != nil { resources = try await list("resources", transport).count }

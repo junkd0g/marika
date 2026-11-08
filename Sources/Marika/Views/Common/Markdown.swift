@@ -34,6 +34,7 @@ struct MarkdownView: View {
     var onOpenLink: ((URL) -> OpenURLAction.Result)?
     var onRunCommand: ((ChatTerminalCommand) -> Void)?
     var runCommandsDisabled = false
+    var nativeSelection = false
 
     var body: some View {
         let blocks = parsedBlocks ?? MarkdownParser.parse(text)
@@ -43,7 +44,10 @@ struct MarkdownView: View {
             else { view(for: block) }
         }
         Group {
-            if documentURL == nil { VStack(alignment: .leading, spacing: 10) { content } }
+            if nativeSelection, documentURL == nil {
+                ContinuousMarkdownReply(blocks: blocks, onRun: onRunCommand, runDisabled: runCommandsDisabled)
+            }
+            else if documentURL == nil { VStack(alignment: .leading, spacing: 10) { content } }
             else { LazyVStack(alignment: .leading, spacing: 16) { content } }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -54,19 +58,16 @@ struct MarkdownView: View {
     private func view(for block: MarkdownBlock) -> some View {
         switch block {
         case .heading(let level, let text):
-            InlineText(text)
-                .font(.system(size: headingSize(level), weight: .semibold))
+            inline(text, size: headingSize(level), bold: true)
                 .padding(.top, level <= 2 ? 10 : 4)
         case .paragraph(let text):
-            InlineText(text)
-                .font(documentURL == nil ? Theme.body : .system(size: 14))
-                .lineSpacing(documentURL == nil ? 3 : 5)
+            inline(text, lineSpacing: documentURL == nil ? 3 : 5)
         case .code(let language, let text):
-            CodeBlock(language: language, text: text, onRunCommand: onRunCommand, runDisabled: runCommandsDisabled)
+            CodeBlock(language: language, text: text, onRunCommand: onRunCommand, runDisabled: runCommandsDisabled, nativeSelection: nativeSelection)
         case .list(let items):
             VStack(alignment: .leading, spacing: 5) {
                 ForEach(Array(items.enumerated()), id: \.offset) { _, item in
-                    HStack(alignment: .firstTextBaseline, spacing: 7) {
+                    HStack(alignment: nativeSelection ? .top : .firstTextBaseline, spacing: 7) {
                         if let checked = item.checked {
                             Image(systemName: checked ? "checkmark.square.fill" : "square")
                                 .foregroundStyle(checked ? Color.accentColor : .secondary)
@@ -75,29 +76,36 @@ struct MarkdownView: View {
                             Text(item.marker).foregroundStyle(.secondary).monospacedDigit()
                                 .frame(minWidth: 12, alignment: .trailing)
                         }
-                        InlineText(item.text)
-                            .lineSpacing(3)
+                        inline(item.text)
                     }
                     .font(Theme.body)
                     .padding(.leading, CGFloat(item.depth) * 18)
                 }
             }
         case .quote(let text):
-            InlineText(text)
-                .font(Theme.body)
-                .foregroundStyle(.secondary)
+            inline(text, secondary: true)
                 .padding(.leading, 12)
                 .overlay(alignment: .leading) {
                     RoundedRectangle(cornerRadius: 1).fill(.tertiary).frame(width: 2)
                 }
         case .table(let header, let rows):
-            MarkdownTable(header: header, rows: rows)
+            MarkdownTable(header: header, rows: rows, nativeSelection: nativeSelection)
         case .rule:
             Divider().padding(.vertical, 2)
         case .image(let alt, let source):
             if let documentURL, let projectRoot {
                 MarkdownImage(alt: alt, source: source, documentURL: documentURL, root: projectRoot)
-            } else { InlineText(alt) }
+            } else { inline(alt) }
+        }
+    }
+
+    @ViewBuilder private func inline(_ text: String, size: CGFloat = 14, bold: Bool = false, secondary: Bool = false, lineSpacing: CGFloat = 3) -> some View {
+        if nativeSelection {
+            SelectableMessageText(text, font: .systemFont(ofSize: size, weight: bold ? .semibold : .regular),
+                                  color: secondary ? .secondaryLabelColor : .labelColor, lineSpacing: lineSpacing)
+        } else {
+            InlineText(text).font(.system(size: size, weight: bold ? .semibold : .regular))
+                .foregroundStyle(secondary ? .secondary : .primary).lineSpacing(lineSpacing)
         }
     }
 
@@ -139,6 +147,7 @@ struct CodeBlock: View {
     let text: String
     var onRunCommand: ((ChatTerminalCommand) -> Void)?
     var runDisabled = false
+    var nativeSelection = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -160,11 +169,7 @@ struct CodeBlock: View {
             .padding(.top, 6)
 
             ScrollView(.horizontal, showsIndicators: false) {
-                Text(SyntaxHighlighter.highlight(text, language: language))
-                    .font(Theme.code)
-                    .lineSpacing(2)
-                    .textSelection(.enabled)
-                    .fixedSize()
+                codeText
                     .padding(.horizontal, 10)
                     .padding(.top, 4)
                     .padding(.bottom, 10)
@@ -172,25 +177,42 @@ struct CodeBlock: View {
         }
         .surface(cornerRadius: 10)
     }
+
+    @ViewBuilder private var codeText: some View {
+        if nativeSelection {
+            let highlighted = SyntaxHighlighter.highlight(text, language: language)
+            let value = NSMutableAttributedString(string: text, attributes: [.font: NSFont.monospacedSystemFont(ofSize: 12, weight: .regular), .foregroundColor: NSColor.labelColor])
+            var offset = 0
+            let _ = highlighted.runs.forEach { run in
+                let length = String(highlighted[run.range].characters).utf16.count
+                if let color = run.swiftUI.foregroundColor { value.addAttribute(.foregroundColor, value: NSColor(color), range: NSRange(location: offset, length: length)) }
+                offset += length
+            }
+            SelectableMessageText(attributedText: value, wraps: false)
+        } else {
+            Text(SyntaxHighlighter.highlight(text, language: language)).font(Theme.code).lineSpacing(2).textSelection(.enabled).fixedSize()
+        }
+    }
 }
 
 private struct MarkdownTable: View {
     let header: [String]
     let rows: [[String]]
+    var nativeSelection = false
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 7) {
                 GridRow {
                     ForEach(Array(header.enumerated()), id: \.offset) { _, cell in
-                        InlineText(cell).font(.system(size: 12.5, weight: .semibold))
+                        cellText(cell, bold: true)
                     }
                 }
                 Divider()
                 ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
                     GridRow {
                         ForEach(Array(row.enumerated()), id: \.offset) { _, cell in
-                            InlineText(cell).font(.system(size: 12.5))
+                            cellText(cell)
                         }
                     }
                 }
@@ -198,6 +220,11 @@ private struct MarkdownTable: View {
             .padding(10)
         }
         .surface(cornerRadius: 10)
+    }
+
+    @ViewBuilder private func cellText(_ text: String, bold: Bool = false) -> some View {
+        if nativeSelection { SelectableMessageText(text, font: .systemFont(ofSize: 12.5, weight: bold ? .semibold : .regular), fillsWidth: false) }
+        else { InlineText(text).font(.system(size: 12.5, weight: bold ? .semibold : .regular)) }
     }
 }
 

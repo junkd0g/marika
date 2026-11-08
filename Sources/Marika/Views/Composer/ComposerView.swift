@@ -83,6 +83,14 @@ struct ComposerView: View {
 
     private var editorPanel: some View {
         VStack(alignment: .leading, spacing: 8) {
+            if let queued = session.meta.queuedAgent {
+                HStack(alignment: .firstTextBaseline) {
+                    Label("\(queued.shortName) takes over after this turn.", systemImage: "clock")
+                        .foregroundStyle(.secondary)
+                    Spacer(minLength: 4)
+                    Button("Cancel switch") { session.cancelAgentSwitch() }
+                }.font(.system(size: 12))
+            }
             if let running = session.runningMode, running != session.meta.mode {
                 pendingModeNotice(running: running)
             }
@@ -147,9 +155,12 @@ struct ComposerView: View {
             VStack(spacing: 8) {
                 HStack(spacing: 8) {
                     attachmentButton
-                    modelMenu
+                    agentMenu
                     Spacer(minLength: 4)
                     sendControls
+                }
+                if !(capabilities?.models ?? []).isEmpty {
+                    HStack { modelMenu; Spacer(minLength: 0) }
                 }
                 ViewThatFits(in: .horizontal) {
                     HStack(spacing: 8) {
@@ -181,6 +192,7 @@ struct ComposerView: View {
     private func controlRow(_ density: Density) -> some View {
         HStack(spacing: 8) {
             attachmentButton
+            agentMenu
             modelMenu
             effortMenu
             speedMenu
@@ -203,29 +215,33 @@ struct ComposerView: View {
 
     @ViewBuilder
     private var agentMenu: some View {
-        if session.hasStarted {
-            Text(session.meta.agent.shortName)
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 6)
-        } else {
+        Group {
             Menu {
-                ForEach(AgentKind.allCases) { agent in
-                    Button {
-                        model.setAgent(agent, for: session.id)
-                    } label: {
-                        if agent == session.meta.agent {
-                            Label(agent.displayName, systemImage: "checkmark")
-                        } else {
-                            Text(agent.displayName)
+                Section(session.isBusy ? "Switch after this turn" : "Provider") {
+                    ForEach(AgentKind.allCases) { agent in
+                        Button {
+                            model.setAgent(agent, for: session.id)
+                        } label: {
+                            if agent == (session.meta.queuedAgent ?? session.meta.agent) {
+                                Label(agent.displayName, systemImage: "checkmark")
+                            } else {
+                                Text(agent.displayName)
+                            }
                         }
                     }
+                }
+                if session.meta.queuedAgent != nil {
+                    Divider()
+                    Button("Cancel queued switch") { session.cancelAgentSwitch() }
                 }
             } label: {
                 Text(session.meta.agent.shortName)
             }
             .menuStyle(.borderlessButton)
             .fixedSize()
-            .help("Agent for this session")
+            .disabled(session.meta.agentTask?.workspace?.status == .discarded)
+            .accessibilityLabel("Provider: " + session.meta.agent.shortName)
+            .help(session.isBusy ? "Queue a provider switch after this turn" : "Switch provider for the next message; conversation and workspace are kept")
         }
     }
 
@@ -247,24 +263,14 @@ struct ComposerView: View {
                         menuLabel(option.name, isSelected: session.meta.model == option.id)
                     }
                 }
-                if !session.hasStarted {
-                    Divider()
-                    Section("Agent") {
-                        ForEach(AgentKind.allCases) { agent in
-                            Button { model.setAgent(agent, for: session.id) } label: {
-                                menuLabel(agent.displayName, isSelected: session.meta.agent == agent)
-                            }
-                        }
-                    }
-                }
             } label: {
                 Text(selectedModel?.name ?? "Default model").lineLimit(1).truncationMode(.middle).frame(maxWidth: 155)
             }
             .menuStyle(.borderlessButton)
             .fixedSize()
-            .help("Model")
+            .help("Model for " + session.meta.agent.shortName)
         } else {
-            agentMenu
+            EmptyView()
         }
     }
 

@@ -13,6 +13,8 @@ macOS workspace. Start with the [screenshot tour](screenshots.md) to see the int
 | [Spaces, conversations and agents](workspace.md) | Organize projects, open tabs, arrange splits, name agents and find tasks needing attention. |
 | [Editing, reviewing and debugging](editor.md) | Find files, edit Markdown, use language tools, review Git changes and run tests. |
 | [Browser, reviews, APIs and pipelines](tools.md) | Preview local work, review code health, send API requests and run supported CI jobs. |
+| [Research](tools.md#research) | Investigate documentation, libraries or competitors, inspect sources and create implementation tasks. |
+| [Connections](workspace.md#playbooks-and-mcp-connections) | Find a connector, review access, sign in and test discovery. |
 | [Saved work, recovery and updates](recovery-and-updates.md) | Recover drafts, use checkpoints, review artifacts and check for app updates. |
 | [Approval modes](approval-modes.md) | Understand the command and edit permissions for each provider. |
 | [Accounts and subscriptions](subscriptions.md) | Understand how Marika uses the installed CLIs and their accounts. |

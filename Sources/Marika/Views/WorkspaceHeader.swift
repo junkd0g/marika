@@ -42,7 +42,9 @@ struct WorkspaceHeader: View {
                         Button("Runtime Debugging…") { model.showExperience("Debug", project: project) }
                         Button("Plans and Artifacts…") { model.showExperience("Artifacts", project: project) }
                         Button("Terminal…") { model.openTerminal() }
-                        Button("MCP Servers…") { model.openProjectSettings(project, section: "MCP") }
+                        Button("Connections…") { model.openProjectSettings(project, section: "MCP") }
+                        Button("Task Queue…") { model.taskQueueProjectID = project.id }
+                        Button("Task Activity…") { model.taskActivityProjectID = project.id }
                         Button("Project Settings…") { model.openProjectSettings(project) }
                         Divider()
                         Button("Search Project…") { model.showsProjectSearch = true }
@@ -87,7 +89,7 @@ struct WorkspaceHeader: View {
         .background(Theme.canvas)
     }
 
-    private static let shortcutOrder: [ProjectPanel] = [.code, .stats, .browser, .agents, .changes, .terminal, .pipelines, .api]
+    private static let shortcutOrder: [ProjectPanel] = [.code, .research, .browser, .agents, .changes, .terminal, .pipelines, .api, .stats]
 
     private func viewShortcuts(width: CGFloat) -> some View {
         let count = width >= 900 ? 8 : width >= 740 ? 6 : width >= 540 ? 4 : width >= 430 ? 3 : 2
@@ -241,6 +243,7 @@ private extension AppModel.ProjectTab {
         case .changes: "arrow.triangle.branch"
         case .terminal: "terminal"
         case .api: "network"
+        case .research: "books.vertical"
         case .pipelines: "point.3.connected.trianglepath.dotted"
         }
     }

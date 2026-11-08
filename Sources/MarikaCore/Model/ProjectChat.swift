@@ -22,7 +22,7 @@ public enum ProjectChat {
 
     /// Stable across renaming and app restarts; human-readable provider plus session identity.
     public static func handle(for session: SessionMeta) -> String {
-        session.agent.rawValue + "-" + session.id.uuidString.prefix(8).lowercased()
+        session.agentHandle ?? (session.agent.rawValue + "-" + session.id.uuidString.prefix(8).lowercased())
     }
 
     public static func agents(in projectID: UUID, sessions: [SessionMeta], matching query: String = "") -> [SessionMeta] {

@@ -88,7 +88,8 @@ through Marika's MCP bridge; access to external sites is controlled in the brows
 | **Chat** | Project channels, agent conversations, attachments, approvals and history search. |
 | **Code** | Edit files, preview Markdown, use language tools, and run tests or debug sessions. |
 | **Browser** | Preview local work, inspect elements, and send visual feedback to chat. |
-| **Agents** | Launch Claude or Codex tasks, follow progress, and review isolated changes. |
+| **Agents** | Launch or queue tasks, follow progress and activity, and review isolated changes. |
+| **Research** | Investigate documentation, libraries and competitors, inspect sources, and turn findings into tasks. |
 | **Stats** | Request a code-health review with findings linked to source locations. |
 | **Changes** | Review diffs, stage hunks, commit, push, and open pull requests. |
 | **Terminal** | Run interactive shells in projects and agent worktrees. |
@@ -106,7 +107,7 @@ In smaller windows, additional tools are under **More views** or **More**.
 | Search chat history | **⇧⌘H** |
 | Open the command palette | **⌘K** |
 | Cycle open project tabs | **⌃Tab** / **⌃⇧Tab** |
-| Open or select a project view | **⌘1–9** |
+| Open or select a project view | **⌘1–9** · **⌘0** for Research |
 | Switch spaces | **⌃⌥←** / **⌃⌥→** |
 | Launch an agent | **⇧⌘N** |
 | Save / find in the current file | **⌘S** / **⌘F** |

@@ -31,6 +31,9 @@ public struct Project: Codable, Equatable, Hashable, Sendable, Identifiable {
     public var repositoryLayouts: [String: ProjectLayout]?
     public var debugRuns: [DebugRun]?
     public var artifacts: [ProjectArtifact]?
+    public var research: [ResearchRun]?
+    public var taskQueue: AgentTaskQueue?
+    public var taskActivity: [TaskActivity]?
     public var runtime: WorkspaceRuntime?
 
     public init(id: UUID = UUID(), path: String, name: String? = nil) {
@@ -74,6 +77,14 @@ public struct SessionMeta: Codable, Equatable, Hashable, Sendable, Identifiable 
     /// Kept with metadata so drafts can be restored without loading every transcript.
     public var draft: SessionDraft?
     public var agentTask: AgentTask?
+    /// A provider switch starts a fresh harness; seed it with the visible conversation on send.
+    public var needsProviderContext: Bool?
+    public var agentHandle: String?
+    public var previousProviderCostUSD: Double?
+    /// A user-requested handoff to apply once the current turn becomes idle.
+    public var queuedAgent: AgentKind?
+    public var taskPlan: [TodoItem]?
+    public var taskVerification: TaskVerificationRecord?
 
     public init(
         id: UUID = UUID(), projectID: UUID, agent: AgentKind, title: String = "New session", createdAt: Date = Date(),
@@ -114,6 +125,7 @@ public struct AgentTask: Codable, Equatable, Hashable, Sendable {
     public var prompt: String
     public var parentSessionID: UUID?
     public var workspace: AgentWorkspace?
+    public var queueID: UUID?
 
     public init(prompt: String, parentSessionID: UUID? = nil) {
         self.prompt = prompt
@@ -170,6 +182,7 @@ public struct Preferences: Codable, Equatable, Sendable {
     public var defaultAgent: AgentKind
     public var defaultMode: ApprovalMode
     public var claudeBilling: ClaudeBilling
+    public var taskNotifications: Bool?
 
     public init(defaultAgent: AgentKind = .claude, defaultMode: ApprovalMode = .ask, claudeBilling: ClaudeBilling = .subscription) {
         self.defaultAgent = defaultAgent

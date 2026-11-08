@@ -131,6 +131,9 @@ struct CommandPaletteView: View {
                 }),
                 Action(id: "logs", title: "Preview Settings and Logs", symbol: "terminal", shortcut: "", run: { model.openPreviewSettings(for: project) }),
                 Action(id: "agent", title: "Launch Agent…", symbol: "person.badge.plus", shortcut: "⇧⌘N", run: { model.showAgents(launch: true) }),
+                Action(id: "connections", title: "Connections…", symbol: "point.3.connected.trianglepath.dotted", shortcut: "", run: { model.openProjectSettings(project, section: "MCP") }),
+                Action(id: "queue", title: "Task Queue…", symbol: "list.bullet.clipboard", shortcut: "", run: { model.taskQueueProjectID = project.id }),
+                Action(id: "activity", title: "Task Activity…", symbol: "bell", shortcut: "", run: { model.taskActivityProjectID = project.id }),
                 Action(id: "split", title: "Split with Code", symbol: "rectangle.split.2x1", shortcut: "⌥⌘\\", run: { model.setSplit(.code) }),
                 Action(id: "unsplit", title: "Close Split View", symbol: "rectangle", shortcut: "", run: { model.setSplit(nil) }),
             ]

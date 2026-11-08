@@ -85,7 +85,9 @@ public final class SessionController: Identifiable {
         self.meta = meta
         self.makeAgent = makeAgent
         self.items = items.map(Self.settled)
+        todos = meta.taskPlan ?? []
         for (position, item) in self.items.enumerated() { itemIndex[item.id] = position }
+        applyQueuedAgentIfIdle()
     }
 
     /// Nothing can still be in flight in a transcript loaded from disk.
@@ -121,9 +123,11 @@ public final class SessionController: Identifiable {
             addNotice(Notice(level: .error, text: "This agent's worktree was discarded. Start a new agent for another task."))
             return
         }
+        if !isBusy { applyQueuedAgentIfIdle() }
         let startsTurn = !isBusy
         let epoch = connectionEpoch
         flushDeltas()
+        let handoffItems = meta.needsProviderContext == true ? items : []
         let isFirstMessage = !items.contains { if case .user = $0.content { true } else { false } }
         append(TranscriptItem(id: UUID().uuidString, content: .user(text: input.text, images: input.images)))
         if isFirstMessage {
@@ -146,7 +150,13 @@ public final class SessionController: Identifiable {
                 try Task.checkCancellation()
                 guard epoch == connectionEpoch else { throw CancellationError() }
                 let agent = try await connectedAgent()
-                try await agent.send(input)
+                let handoff = meta.needsProviderContext == true
+                let outgoing = handoff ? ProviderHandoff.input(input, history: handoffItems, task: meta.agentTask?.prompt) : input
+                try await agent.send(outgoing)
+                if handoff, epoch == connectionEpoch {
+                    meta.needsProviderContext = nil
+                    onChange?(self)
+                }
             } catch is CancellationError {
                 if await agent?.hasActiveTurn() == true { await agent?.interrupt() }
                 else {
@@ -198,13 +208,65 @@ public final class SessionController: Identifiable {
         Task { await agent?.update(settings: settings) }
     }
 
+    /// Retains the app conversation, draft and worktree, but never reuses another provider's resume ID.
+    @discardableResult public func switchAgent(to kind: AgentKind) -> Bool {
+        guard !isBusy, meta.agent != kind, meta.agentTask?.workspace?.status != .discarded else { return false }
+        disconnect()
+        meta.queuedAgent = nil
+        if meta.agentTask != nil { meta.agentHandle = ProjectChat.handle(for: meta) }
+        meta.previousProviderCostUSD = meta.totalCostUSD
+        meta.agent = kind
+        meta.conversationID = nil
+        meta.model = nil; meta.effort = nil; meta.serviceTier = nil
+        meta.needsProviderContext = hasStarted ? true : nil
+        context = nil; todos = []; approvals = []
+        if hasStarted {
+            append(TranscriptItem(id: UUID().uuidString, content: .notice(Notice(level: .info,
+                text: "Switched to \(kind.shortName). Your next message continues with recent conversation context in the same workspace."))))
+        }
+        meta.updatedAt = Date()
+        onChange?(self)
+        return true
+    }
+
+    @discardableResult public func requestAgentSwitch(to kind: AgentKind) -> Bool {
+        guard meta.agentTask?.workspace?.status != .discarded else { return false }
+        if isBusy {
+            meta.queuedAgent = kind == meta.agent ? nil : kind
+            onChange?(self)
+            return true
+        }
+        meta.queuedAgent = nil
+        let changed = switchAgent(to: kind)
+        if !changed { onChange?(self) }
+        return true
+    }
+
+    public func cancelAgentSwitch() {
+        guard meta.queuedAgent != nil else { return }
+        meta.queuedAgent = nil
+        onChange?(self)
+    }
+
+    private func applyQueuedAgentIfIdle() {
+        guard !isBusy, let next = meta.queuedAgent else { return }
+        meta.queuedAgent = nil
+        if !switchAgent(to: next) { onChange?(self) }
+    }
+
     public func rename(_ title: String) {
         meta.title = title
         onChange?(self)
     }
 
+    public func recordVerification(_ record: TaskVerificationRecord) {
+        meta.taskVerification = record
+        onChange?(self)
+    }
+
     public func updateAgentWorkspace(_ workspace: AgentWorkspace) {
         meta.agentTask?.workspace = workspace
+        if workspace.status == .discarded { meta.queuedAgent = nil }
         onChange?(self)
     }
 
@@ -216,7 +278,7 @@ public final class SessionController: Identifiable {
         await agent?.shutdown()
         agent = nil
         approvals.removeAll()
-        setPhase(.idle)
+        setPhase(.idle, appliesQueuedSwitch: false)
     }
 
     /// Drops the running agent so the next message starts one with fresh credentials.
@@ -248,6 +310,7 @@ public final class SessionController: Identifiable {
         let events = agent.events
         eventTask = Task { [weak self] in
             for await event in events {
+                guard !Task.isCancelled, self?.connectionEpoch == epoch else { break }
                 self?.apply(event)
             }
         }
@@ -321,6 +384,8 @@ public final class SessionController: Identifiable {
             if approvals.isEmpty, phase == .waitingForUser { setPhase(.running) }
         case .todosUpdated(let todos):
             self.todos = todos
+            meta.taskPlan = todos
+            onChange?(self)
         case .notice(let notice):
             addNotice(notice)
         case .contextUsage(let usage):
@@ -338,7 +403,7 @@ public final class SessionController: Identifiable {
         }
     }
 
-    private func setPhase(_ phase: AgentPhase) {
+    private func setPhase(_ phase: AgentPhase, appliesQueuedSwitch: Bool = true) {
         // The CLI reports `running` again right after an approval, and that must not restart
         // the clock for the turn.
         if phase != .idle, turnStartedAt == nil { turnStartedAt = Date() }
@@ -352,6 +417,10 @@ public final class SessionController: Identifiable {
             disconnectsWhenIdle = false
             disconnect()
         }
+        if phase == .idle, appliesQueuedSwitch, meta.queuedAgent != nil {
+            // Run after the current event/error handler has recorded its final output.
+            Task { [weak self] in self?.applyQueuedAgentIfIdle() }
+        }
     }
 
     private func finishTurn(_ summary: TurnSummary) {
@@ -360,7 +429,7 @@ public final class SessionController: Identifiable {
         // are background work that really is still running, such as a sub-agent or a server.
         if summary.outcome != .completed { closeOpenTools() }
         append(TranscriptItem(id: UUID().uuidString, content: .turnEnd(summary)))
-        if let cost = summary.totalCostUSD { meta.totalCostUSD = cost }
+        if let cost = summary.totalCostUSD { meta.totalCostUSD = (meta.previousProviderCostUSD ?? 0) + cost }
         meta.updatedAt = Date()
         changeCount += 1
         onChange?(self)

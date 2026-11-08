@@ -11,10 +11,15 @@ results or verification of the sample project's code.
 | [Spaces and view tabs](#spaces-and-view-tabs) | Project navigation, spaces and the labeled Views row. |
 | [Project Chat](#project-chat) | A project channel alongside agent conversations and their latest results. |
 | [Agent outcomes](#agent-outcomes) | Task names, completed results, failures and stopped work. |
+| [Agent task pages](#agent-task-pages) | Plans, reported edits, actual verification output and deliverables. |
+| [Task queue and activity](#task-queue-and-activity) | Waiting work, explicit resume controls and a persistent outcome inbox. |
+| [Research](#research) | A source-backed answer and an implementation task linked from a finding. |
+| [Connections](#connections) | Searchable catalog, setup actions and honest connection states. |
 | [Needs attention](#needs-attention) | A focused list of tasks that need intervention. |
 | [Code editor](#code-editor) | File navigation, editor tabs and syntax highlighting in light appearance. |
 | [Browser preview](#browser-preview) | A local project preview inside the workspace. |
 | [Code-health reviews](#code-health-reviews) | A published sample review with source links and next steps. |
+| [API playground](#api-playground) | Searchable requests, a request editor and a local HTTP response. |
 | [Side-by-side workspace](#side-by-side-workspace) | Chat and Code visible together. |
 | [Stacked workspace](#stacked-workspace) | Chat above Code, with a horizontal divider. |
 
@@ -48,6 +53,56 @@ to rename it later; its @mention remains stable.
 ![Agents with three named sample tasks, their result previews, rename buttons and outcome labels](images/agents.jpg)
 
 [Guide: launch and review task agents](workspace.md#launch-and-review-task-agents)
+
+## Agent task pages
+
+Choose **Task details** to follow the latest reported plan, current activity, blockers, file
+changes, verification and deliverables in one scrollable page. This capture shows a preloaded
+sample plan and deliverables alongside a real passing Go test run from the disposable fixture.
+The test result applies to that fixture run, not the sample SwiftUI changes.
+
+![Light agent task page showing plan steps, a reported file edit, a dated passing test result and published deliverables](images/agent-task.jpg)
+
+[Guide: task agents and verification](workspace.md#launch-and-review-task-agents)
+
+## Task queue and activity
+
+Choose **Queue task** in New Agent to save work for the next available slot. Pause, reorder or
+cancel waiting tasks; after restarting Marika, choose **Resume queue** to allow saved work to
+start. This disposable fixture was restarted with one waiting task, which remained paused.
+
+![Dark task queue with one saved documentation task, Resume queue and reorder controls](images/task-queue.jpg)
+
+**Activity** keeps approvals, completed and failed turns, and queue launch failures together.
+Open the associated chat, task page or queue, and mark events read. These outcomes came from
+synthetic local runners; the missing-first-commit failure was exercised through the real
+worktree setup path, then retried after creating the fixture's initial commit.
+
+![Dark task activity inbox showing completed synthetic tasks and a queue prerequisite failure](images/task-activity.jpg)
+
+[Guide: task queue and activity](workspace.md#task-queue-and-activity)
+
+## Research
+
+Research keeps the answer beside its supporting sources in wide panes and places sources below
+the answer in compact splits. Findings offer **Create task** for a reviewable implementation
+proposal, then **Open task** after launch. The report shown here was preloaded for UI testing;
+it was not produced by a live research call during capture.
+
+![Dark Research workspace with an answer, supporting source excerpt and a finding linked to its implementation task](images/research.jpg)
+
+[Guide: Research](tools.md#research)
+
+## Connections
+
+Search the catalog or switch to configured connections. **Connect** reviews expected access;
+**Test connection** checks discovery without calling server tools. This screenshot shows a
+configured Context7 endpoint whose status remains **Not checked**, with Linear and Notion
+available to connect. No external account was authorized during capture.
+
+![Light Connections settings with search, configured Context7 status and Linear and Notion connection actions](images/connections.jpg)
+
+[Guide: connections](workspace.md#playbooks-and-mcp-connections)
 
 ## Needs attention
 
@@ -89,6 +144,17 @@ The report below is a preloaded sample about the demo view's missing error state
 ![Published sample code-health review with one finding, a source link and separate inventory counts](images/code-health.jpg)
 
 [Guide: code-health reviews](tools.md#code-health-reviews)
+
+## API playground
+
+Search by method, name or route, edit a request, then send it without leaving the project.
+The response pane has Body, Headers and Raw tabs, status, timing and copy controls. Compact
+split panes replace the sidebar with a request picker. This screenshot shows a real HTTP 200
+response from a temporary loopback server serving synthetic task data.
+
+![Light API workspace with six sample requests, GET request controls and a JSON response](images/api-playground.jpg)
+
+[Guide: API collections and project environments](tools.md#api-collections-and-project-environments)
 
 ## Side-by-side workspace
 

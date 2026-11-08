@@ -258,13 +258,11 @@ private struct UserMessage: View {
                     }
                 }
                 if !text.isEmpty {
-                    Text(text)
-                        .font(Theme.body)
-                        .lineSpacing(3)
-                        .textSelection(.enabled)
+                    SelectableMessageText(text, markdown: false, fillsWidth: false)
                         .padding(.horizontal, 16)
                         .padding(.vertical, 11)
                         .background(Theme.messageBubble, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    CopyButton(text: text).accessibilityLabel("Copy your message")
                 }
             }
         }
@@ -275,20 +273,16 @@ private struct AssistantMessage: View {
     @Environment(AppModel.self) private var model
     let text: String
     let session: SessionController
-    @State private var isHovering = false
     @State private var commandError: String?
 
     var body: some View {
-        MarkdownView(text: text, onRunCommand: { command in
-            do { try model.runChatCommand(command, sessionID: session.id) }
-            catch { commandError = error.localizedDescription }
-        }, runCommandsDisabled: session.isBusy)
-            .overlay(alignment: .bottomTrailing) {
-                CopyButton(text: text)
-                    .opacity(isHovering ? 1 : 0)
-                    .offset(y: 20)
-            }
-            .onHover { isHovering = $0 }
+        VStack(alignment: .leading, spacing: 8) {
+            MarkdownView(text: text, onRunCommand: { command in
+                do { try model.runChatCommand(command, sessionID: session.id) }
+                catch { commandError = error.localizedDescription }
+            }, runCommandsDisabled: session.isBusy, nativeSelection: true)
+            CopyButton(text: text).accessibilityLabel("Copy entire reply")
+        }
             .alert("Couldn't run command", isPresented: Binding(get: { commandError != nil }, set: { if !$0 { commandError = nil } })) {
                 Button("OK") { commandError = nil }
             } message: { Text(commandError ?? "") }

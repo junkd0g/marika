@@ -88,6 +88,7 @@ struct RootView: View {
         .sheet(item: Binding(get: { model.projectSettingsID.flatMap(model.project(id:)) }, set: { if $0 == nil { model.projectSettingsID = nil } })) { project in
             ProjectToolsView(project: project, initialSection: model.projectSettingsSection).environment(model)
         }
+        .modifier(TaskSheets(model: model))
         .sheet(isPresented: $model.showsCommandPalette, onDismiss: {
             let action = model.pendingPaletteAction
             model.pendingPaletteAction = nil
@@ -162,6 +163,7 @@ private struct ProjectWorkspaceView: View {
                     if visible(.api) {
                         place(ProjectAPIView(project: project), panel: .api, size: geometry.size)
                     }
+                    if visible(.research) { place(ProjectResearchView(project: project), panel: .research, size: geometry.size) }
                     if visible(.pipelines) {
                         place(ProjectPipelinesView(project: project), panel: .pipelines, size: geometry.size)
                     }

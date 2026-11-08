@@ -13,6 +13,9 @@ struct MCPConnectionsView: View {
     @State private var importText = ""
     @State private var error: String?
     @State private var advanced = false
+    @State private var catalogSelection: ConnectionCatalogEntry?
+    @State private var query = ""
+    @State private var showsCatalog = true
     @State private var reports: [String: MCPConnectionReport] = [:]
     @State private var failures: [String: String] = [:]
     @State private var checks: [String: Task<Void, Never>] = [:]
@@ -26,7 +29,7 @@ struct MCPConnectionsView: View {
         VStack(alignment: .leading, spacing: 15) {
             HStack {
                 VStack(alignment: .leading, spacing: 5) {
-                    Text("MCP servers").font(.system(size: 18, weight: .semibold))
+                    Text("Connections").font(.system(size: 18, weight: .semibold))
                     Text("Connect this project's agents to external tools and data.").font(.system(size: 12)).foregroundStyle(.secondary)
                 }
                 Spacer()
@@ -39,10 +42,23 @@ struct MCPConnectionsView: View {
             }
             Text("Changes apply on the next agent connection after you save. Testing starts a temporary connection and lists capabilities; it does not call any tools.")
                 .font(.system(size: 11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            TextField("Search connections", text: $query).textFieldStyle(.roundedBorder).accessibilityLabel("Search connections")
+            Picker("Connections", selection: $showsCatalog) {
+                Text("Catalog").tag(true)
+                Text("Configured (\(servers.count))").tag(false)
+            }.pickerStyle(.segmented)
             if let error { Label(error, systemImage: "exclamationmark.triangle").font(.system(size: 12)).foregroundStyle(Theme.attention).textSelection(.enabled) }
             if let configurationError {
                 Label(configurationError + " Open Advanced JSON to correct it.", systemImage: "exclamationmark.triangle")
                     .font(.system(size: 12)).foregroundStyle(Theme.attention)
+            } else if showsCatalog {
+                ForEach(ConnectionCatalogEntry.entries.filter { $0.matches(query) }) { entry in
+                    if let configured = entry.configuredServer(in: servers) { serverCard(configured) }
+                    else { catalogCard(entry) }
+                }
+                if ConnectionCatalogEntry.entries.filter({ $0.matches(query) }).isEmpty {
+                    Text("No catalog matches. Use Add server for another service.").foregroundStyle(.secondary).padding(.vertical, 12)
+                }
             } else if servers.isEmpty {
                 VStack(spacing: 10) {
                     Image(systemName: "point.3.connected.trianglepath.dotted").font(.system(size: 28, weight: .light)).foregroundStyle(Color.accentColor)
@@ -51,7 +67,10 @@ struct MCPConnectionsView: View {
                     Button("Add server") { editing = MCPServerDraft() }
                 }.frame(maxWidth: .infinity).padding(.vertical, 25).surface()
             } else {
-                ForEach(servers) { server in serverCard(server) }
+                ForEach(servers.filter { query.isEmpty || ($0.name + " " + $0.summary).localizedStandardContains(query) }) { server in serverCard(server) }
+                if !query.isEmpty, !servers.contains(where: { ($0.name + " " + $0.summary).localizedStandardContains(query) }) {
+                    Text("No configured connections match your search.").foregroundStyle(.secondary)
+                }
             }
             DisclosureGroup("Advanced JSON", isExpanded: $advanced) {
                 TextEditor(text: $configuration).font(.system(size: 11, design: .monospaced)).frame(height: 220)
@@ -62,10 +81,34 @@ struct MCPConnectionsView: View {
                 }.padding(.top, 5)
             }.font(.system(size: 12)).padding(.top, 3)
         }
+        .sheet(item: $catalogSelection) { entry in
+            VStack(alignment: .leading, spacing: 16) {
+                Text("Connect \(entry.name)").font(.title2.bold())
+                Text(entry.summary)
+                Label("Access to review", systemImage: "lock.shield").font(.headline)
+                Text(entry.permissions).fixedSize(horizontal: false, vertical: true)
+                Text(entry.endpoint).font(.caption.monospaced()).foregroundStyle(.secondary).textSelection(.enabled)
+                Link("Official setup guide", destination: URL(string: entry.documentation)!)
+                Text(entry.usesOAuth ? "Connect opens the service's sign-in page. Credentials stay in Keychain. Save Project Settings to keep this connection." : "Connect adds the server. Use Test connection to check access, then Save Project Settings.")
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                if let error { Text(error).foregroundStyle(Theme.attention) }
+                HStack {
+                    Button("Cancel") { catalogSelection = nil }
+                    Spacer()
+                    Button("Connect") {
+                        do {
+                            configuration = try MCPConfigurationEditor.save(entry.server, in: configuration)
+                            catalogSelection = nil; showsCatalog = false; query = ""; error = nil
+                            if entry.usesOAuth { signIn(entry.server) }
+                        } catch { self.error = error.localizedDescription }
+                    }.buttonStyle(.borderedProminent)
+                }
+            }.padding(24).frame(width: 480)
+        }
         .sheet(item: $editing) { draft in
             MCPServerEditor(draft: draft) { server in
                 configuration = try MCPConfigurationEditor.save(server, replacing: draft.originalName, in: configuration)
-                reports[server.name] = nil; failures[server.name] = nil; error = nil; editing = nil
+                reports[server.name] = nil; failures[server.name] = nil; error = nil; editing = nil; showsCatalog = false; query = ""
             }
         }
         .sheet(isPresented: $importing) {
@@ -81,7 +124,7 @@ struct MCPConnectionsView: View {
                         do {
                             var result = configuration
                             for server in try MCPConfigurationEditor.servers(in: importText) { result = try MCPConfigurationEditor.save(server, in: result) }
-                            configuration = result; importText = ""; error = nil; importing = false
+                            configuration = result; importText = ""; error = nil; importing = false; showsCatalog = false; query = ""
                         } catch { self.error = error.localizedDescription }
                     }.buttonStyle(.borderedProminent)
                 }
@@ -109,6 +152,23 @@ struct MCPConnectionsView: View {
         #if DEBUG
         .background(DebugViewMarker(name: "mcp-connections"))
         #endif
+    }
+
+    private func catalogCard(_ entry: ConnectionCatalogEntry) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(entry.name).font(.system(size: 14, weight: .semibold))
+                    Text(entry.category).font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer()
+                Button("Connect") { error = nil; catalogSelection = entry }.buttonStyle(.borderedProminent)
+                    .accessibilityLabel("Connect " + entry.name)
+            }
+            Text(entry.summary)
+            Text(entry.usesOAuth ? "Not connected · Browser sign-in" : "Not configured · Public documentation").font(.caption).foregroundStyle(.secondary)
+            DisclosureGroup("Permissions") { Text(entry.permissions).font(.caption).foregroundStyle(.secondary).padding(.top, 5) }
+        }.padding(14).frame(maxWidth: .infinity, alignment: .leading).surface()
     }
 
     private func serverCard(_ server: MCPServerConfiguration) -> some View {
@@ -161,15 +221,17 @@ struct MCPConnectionsView: View {
                 }
             }.font(.system(size: 11)).controlSize(.small)
             if let failure = failures[server.name] { Text(failure).font(.system(size: 11)).foregroundStyle(Theme.attention).textSelection(.enabled) }
-            if server.transport != "stdio" { authorizationRow(server) }
+            if server.transport != "stdio", ConnectionCatalogEntry.entries.first(where: { $0.configuredServer(in: [server]) != nil })?.usesOAuth != false { authorizationRow(server) }
             if let report = reports[server.name] {
-                DisclosureGroup("Server details and tools") {
+                DisclosureGroup("Permissions and tools (\(report.tools.count))") {
                     VStack(alignment: .leading, spacing: 9) {
+                        Text("Access labels are reported by the server. They describe tools, not an additional permission restriction.").font(.caption).foregroundStyle(.secondary)
                         Text("\(report.server) \(report.version) · MCP \(report.protocolVersion)").font(.system(size: 10.5)).foregroundStyle(.secondary)
                         if report.resources > 0 || report.prompts > 0 { Text("\(report.resources) resources · \(report.prompts) prompts").font(.system(size: 11)).foregroundStyle(.secondary) }
                         ForEach(report.tools) { tool in
                             VStack(alignment: .leading, spacing: 3) {
                                 Text(tool.name).font(.system(size: 11, weight: .medium, design: .monospaced))
+                                Text(tool.permissionsSummary + (tool.openWorld == true ? " · External services" : "")).font(.caption2).foregroundStyle(.secondary)
                                 if !tool.description.isEmpty { Text(tool.description).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(3) }
                             }.frame(maxWidth: .infinity, alignment: .leading)
                         }

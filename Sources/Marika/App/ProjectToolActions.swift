@@ -70,6 +70,7 @@ extension AppModel {
         scheduler?.cancel()
         scheduler = Task { [weak self] in
             while !Task.isCancelled {
+                await self?.runTaskQueues()
                 await self?.runSchedules()
                 try? await Task.sleep(for: .seconds(30))
             }

@@ -24,6 +24,12 @@ struct ProjectAgentsView: View {
     }
 
     var body: some View {
+        if let selected = model.selectedAgentTaskIDs[project.id], tasks.contains(where: { $0.id == selected }) {
+            AgentTaskDetailView(project: project, sessionID: selected)
+        } else { taskList }
+    }
+
+    private var taskList: some View {
         VStack(spacing: 0) {
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: 20) { heading.fixedSize(); Spacer(minLength: 0); filters }
@@ -80,6 +86,10 @@ struct ProjectAgentsView: View {
     private var heading: some View {
         VStack(alignment: .leading, spacing: 5) {
             Text("Agents").font(.system(size: 20, weight: .semibold))
+            HStack {
+                Button("Queue (\((model.project(id: project.id)?.taskQueue?.pendingCount ?? 0) + (model.project(id: project.id)?.taskQueue?.items.count { $0.state == .failed } ?? 0)))", systemImage: "list.bullet.clipboard") { model.taskQueueProjectID = project.id }
+                Button("Activity (\((model.project(id: project.id)?.taskActivity ?? []).count { !$0.isRead }))", systemImage: "bell") { model.taskActivityProjectID = project.id }
+            }.controlSize(.small)
             Button("Review plans and results") { model.showExperience("Artifacts", project: project) }.buttonStyle(.link).font(.caption)
             Text("\(activeCount) active · \(attentionCount) need attention · \(tasks.count) in this project")
                 .font(.system(size: 12)).foregroundStyle(.secondary)
@@ -131,34 +141,30 @@ private struct AgentTaskCard: View {
                     Text(text).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(2)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                HStack(spacing: 8) {
-                    Text(meta.agent.shortName + " · " + (meta.agentTask?.workspace == nil ? "Shared files" : "Isolated worktree"))
-                        .font(.system(size: 11)).foregroundStyle(.secondary)
-                        .lineLimit(1).truncationMode(.middle)
-                    if meta.agentTask?.parentSessionID != nil {
-                        Image(systemName: "arrow.triangle.branch").foregroundStyle(.tertiary)
-                            .help("Started from a chat")
-                    }
-                    Spacer(minLength: 4)
-                    if let workspace = meta.agentTask?.workspace {
-                        if workspace.status == .ready || workspace.status == .reviewed {
-                            Button(workspace.status == .reviewed ? "Review complete" : "Review Changes") { Task { await model.openAgentReview(meta.id) } }
-                                .disabled(controller?.isBusy == true)
-                        } else {
-                            Text(workspace.status == .applied ? "Applied" : "Discarded").font(.system(size: 11)).foregroundStyle(.secondary)
-                        }
-                    }
-                    if controller?.isBusy == true {
-                        Button("Stop", role: .destructive) { controller?.interrupt() }
-                    }
-                    Button(controller?.phase == .waitingForUser ? "Review Approval" : "Open Chat") {
-                        model.openAgentChat(meta.id)
-                    }
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 8) { taskContext; Spacer(minLength: 4); taskActions }
+                    VStack(alignment: .leading, spacing: 10) { taskContext; taskActions }
                 }
                 .controlSize(.small)
             }
         }
         .padding(16)
+    }
+    private var taskContext: some View {
+        Text((controller?.meta.agent ?? meta.agent).shortName + " · " + (meta.agentTask?.workspace == nil ? "Shared files" : "Isolated worktree"))
+            .font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+    }
+    private var taskActions: some View {
+        HStack(spacing: 8) {
+            if let workspace = meta.agentTask?.workspace {
+                if workspace.status == .ready || workspace.status == .reviewed {
+                    Button(workspace.status == .reviewed ? "Review complete" : "Review Changes") { Task { await model.openAgentReview(meta.id) } }.disabled(controller?.isBusy == true)
+                } else { Text(workspace.status == .applied ? "Applied" : "Discarded").font(.caption).foregroundStyle(.secondary) }
+            }
+            if controller?.isBusy == true { Button("Stop", role: .destructive) { controller?.interrupt() } }
+            Button(controller?.phase == .waitingForUser ? "Review Approval" : "Open Chat") { model.openAgentChat(meta.id) }
+            Button("Task details") { model.selectedAgentTaskIDs[meta.projectID] = meta.id }
+        }
     }
 }
 
@@ -166,6 +172,11 @@ struct LaunchAgentView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
     let project: Project
+    var initialPrompt = ""
+    var initialName = ""
+    var parentSessionID: UUID?
+    var researchReference: ResearchTaskReference?
+    var onLaunched: ((SessionController) -> Void)?
     @State private var agent: AgentKind = .claude
     @State private var selectedModel = ""
     @State private var mode: ApprovalMode = .ask
@@ -237,14 +248,15 @@ struct LaunchAgentView: View {
                 Text("Other agents can keep working.").font(.system(size: 11)).foregroundStyle(.secondary)
                 Spacer()
                 Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
+                Button("Queue task") { enqueue() }.disabled(isLaunching || prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 Button(isLaunching ? "Launching…" : "Launch Agent", action: launch)
                     .buttonStyle(.borderedProminent).keyboardShortcut(.return, modifiers: .command)
                     .disabled(isLaunching || prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
         }
         .padding(24).frame(width: 590)
-        .onAppear { agent = model.workspace.preferences.defaultAgent; taskFocused = true }
-        .task { isGitProject = await Git(environment: model.gitEnvironment).snapshot(at: project.url).isRepository }
+        .onAppear { agent = model.workspace.preferences.defaultAgent; prompt = initialPrompt; name = initialName; taskFocused = true }
+        .task { isGitProject = await Git(environment: model.gitEnvironment).snapshot(at: project.url).isRepository; if isGitProject == false { isolated = false } }
         .onChange(of: agent) { _, _ in selectedModel = "" }
     }
 
@@ -257,10 +269,26 @@ struct LaunchAgentView: View {
             do {
                 let opensChat = model.projectTabs[project.id] == .conversation
                 let controller = try await model.launchAgent(in: project, agent: agent,
-                    settings: AgentSettings(model: selectedModel.isEmpty ? nil : selectedModel, mode: mode), prompt: task, isolated: isolated, name: name)
+                    settings: AgentSettings(model: selectedModel.isEmpty ? nil : selectedModel, mode: mode), prompt: task, parentSessionID: parentSessionID, isolated: isolated, name: name)
+                onLaunched?(controller)
                 if opensChat { model.openAgentChat(controller.id) }
                 else { model.showAgents(for: project) }
                 dismiss()
+            } catch { self.error = error.localizedDescription; isLaunching = false }
+        }
+    }
+
+    private func enqueue() {
+        isLaunching = true; error = nil
+        var task = prompt
+        if includeFile, let selectedFile { task += "\n\nStart with this project file: \(selectedFile)" }
+        Task {
+            do {
+                try await model.enqueueTask(in: project, agent: agent,
+                    settings: AgentSettings(model: selectedModel.isEmpty ? nil : selectedModel, mode: mode), prompt: task,
+                    name: name, isolated: isolated, parentSessionID: parentSessionID, research: researchReference)
+                model.selectedAgentTaskIDs[project.id] = nil
+                model.showAgents(for: project); dismiss()
             } catch { self.error = error.localizedDescription; isLaunching = false }
         }
     }

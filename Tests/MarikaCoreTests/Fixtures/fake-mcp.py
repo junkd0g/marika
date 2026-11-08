@@ -37,7 +37,7 @@ def reply(message):
     if method == 'tools/list':
         if message.get('params', {}).get('cursor') == 'next':
             return {'tools': [{'name': 'inspect_schema', 'description': 'Inspect a local fixture schema.'}]}
-        return {'tools': [{'name': 'read_file', 'description': 'Read a file in the project.'}], 'nextCursor': 'next'}
+        return {'tools': [{'name': 'read_file', 'description': 'Read a file in the project.', 'annotations': {'readOnlyHint': True, 'destructiveHint': False, 'openWorldHint': False}}], 'nextCursor': 'next'}
     if method == 'resources/list':
         return {'resources': [{'uri': 'fixture://schema', 'name': 'Schema'}]}
     if method == 'prompts/list':

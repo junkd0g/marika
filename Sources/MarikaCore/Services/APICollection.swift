@@ -13,6 +13,8 @@ public struct APIEndpoint: Codable, Hashable, Sendable, Identifiable {
     public var protoFile: String?
     public var importPaths: [String]?
     public var note: String?
+    /// Values entered in the playground, retained separately from the route template.
+    public var pathParameters: [String: String]?
     public var id: String {
         let route = method + " " + path.components(separatedBy: "?")[0]
         let operation = method == "GRAPHQL" ? route + " " + name : route

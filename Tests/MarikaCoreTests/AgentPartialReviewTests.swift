@@ -55,6 +55,31 @@ import Testing
         #expect(try await git(["branch", "--show-current"], root: root) == "main")
     }
 
+    @Test func applyingTheFullSourceBackedReviewUsesCanonicalRepositoryPaths() async throws {
+        let (root, managed, service, workspace, original) = try await setup()
+        defer { cleanup(root, managed) }
+        let updated = original.replacingOccurrences(of: "line 3\n", with: "accepted\n")
+        try change(updated, workspace: workspace)
+        let review = try await service.review(workspace, project: root)
+        #expect(!review.projectFiles.isEmpty)
+        let base = try await service.apply(review, workspace: workspace, to: root)
+        #expect(!base.isEmpty)
+        #expect(try String(contentsOf: root.appendingPathComponent("sample file.txt"), encoding: .utf8) == updated)
+        #expect(try await git(["diff", "--cached", "--name-only"], root: root).isEmpty)
+    }
+
+    @Test func pathCanonicalizationStillRejectsEscapesThroughParentSymlinks() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("review-boundary-\(UUID())")
+        let outside = FileManager.default.temporaryDirectory.appendingPathComponent("review-outside-\(UUID())")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: outside, withIntermediateDirectories: true)
+        defer { cleanup(root, outside) }
+        try Data("private".utf8).write(to: outside.appendingPathComponent("secret.txt"))
+        try FileManager.default.createSymbolicLink(at: root.appendingPathComponent("escape"), withDestinationURL: outside)
+        #expect(throws: AgentWorktreeError.self) { try AgentReviewFileState.capture("escape/secret.txt", root: root) }
+        #expect(throws: AgentWorktreeError.self) { try AgentReviewFileState.capture("../outside.txt", root: root) }
+    }
+
     @Test func newerProjectEditsBlockAnOldReviewWithoutLosingData() async throws {
         let (root, managed, service, workspace, original) = try await setup()
         defer { cleanup(root, managed) }

@@ -61,7 +61,7 @@ public struct ToolCall: Codable, Equatable, Sendable, Identifiable {
     }
 }
 
-public struct TodoItem: Codable, Equatable, Sendable, Identifiable {
+public struct TodoItem: Codable, Equatable, Hashable, Sendable, Identifiable {
     public enum Status: String, Codable, Sendable {
         case pending
         case inProgress

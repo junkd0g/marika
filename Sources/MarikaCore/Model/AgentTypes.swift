@@ -1,7 +1,6 @@
 import Foundation
 
-/// A coding agent Marika can drive. The agent is fixed per session, because a conversation's
-/// history lives inside that agent's own harness; the model can change at any time.
+/// A coding agent Marika can drive. Switching providers starts a fresh harness with a conversation handoff.
 public enum AgentKind: String, Codable, CaseIterable, Sendable, Identifiable {
     case claude
     case codex
@@ -89,7 +88,7 @@ public enum ApprovalMode: String, Codable, CaseIterable, Sendable, Identifiable 
 }
 
 /// The settings a session runs with. Any of them can change between turns.
-public struct AgentSettings: Codable, Equatable, Sendable {
+public struct AgentSettings: Codable, Equatable, Hashable, Sendable {
     public var model: String?
     public var effort: String?
     public var serviceTier: String?

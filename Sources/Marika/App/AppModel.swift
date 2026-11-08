@@ -80,6 +80,13 @@ final class AppModel {
     var visibleChatSessionIDs: Set<UUID> = []
     @ObservationIgnored var scheduler: Task<Void, Never>?
     var agentLaunchProjectID: UUID?
+    var selectedAgentTaskIDs: [UUID: UUID] = [:]
+    var selectedResearchIDs: [UUID: UUID] = [:]
+    var taskVerifications: [UUID: TaskVerificationWorkspace] = [:]
+    var taskQueueProjectID: UUID?
+    var taskActivityProjectID: UUID?
+    var isShuttingDown = false
+    @ObservationIgnored var runningTaskQueues = false
     var apiWorkspaces: [UUID: APIWorkspace] = [:]
     var pipelineRunners: [UUID: ProjectPipelineRunner] = [:]
     var previews: [UUID: ProjectPreview] = [:]
@@ -92,7 +99,7 @@ final class AppModel {
     var showsCommandPalette = false
     @ObservationIgnored var pendingPaletteAction: (() -> Void)?
     @ObservationIgnored private var launchingAgents: Set<UUID> = []
-    @ObservationIgnored private var launchingProjects: [UUID: UUID] = [:]
+    @ObservationIgnored private(set) var launchingProjects: [UUID: UUID] = [:]
     #if DEBUG
         @ObservationIgnored var agentFactoryOverride: SessionController.AgentFactory?
         @ObservationIgnored var completionOverride: String?
@@ -159,7 +166,7 @@ final class AppModel {
         case .code: editor(for: project).focusEditor()
         case .browser: _ = browser(for: project)
         case .terminal: ensureTerminal(for: project)
-        case .changes, .agents, .stats, .pipelines, .api: break
+        case .changes, .agents, .stats, .pipelines, .api, .research: break
         }
         projectTabs[project.id] = tab
     }
@@ -183,7 +190,7 @@ final class AppModel {
 
     @discardableResult
     func launchAgent(in project: Project, agent: AgentKind, settings: AgentSettings, prompt: String,
-                     parentSessionID: UUID? = nil, isolated: Bool = true, name: String? = nil) async throws -> SessionController {
+                     parentSessionID: UUID? = nil, isolated: Bool = true, name: String? = nil, queueID: UUID? = nil) async throws -> SessionController {
         let task = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !task.isEmpty else { throw AgentError.launchFailed("Describe what this agent should do.") }
         guard task.count <= 32_000 else { throw AgentError.launchFailed("Keep the agent task under 32,000 characters.") }
@@ -203,6 +210,7 @@ final class AppModel {
                                agentTask: AgentTask(prompt: task, parentSessionID: parentSessionID))
         meta.title = taskName.isEmpty ? AgentTaskName.suggested(from: task) : taskName
         meta.settings = settings
+        meta.agentTask?.queueID = queueID
         // A launched agent always gets a new chat; reusing an empty chat could replace a draft.
         launchingAgents.insert(meta.id)
         launchingProjects[meta.id] = project.id
@@ -215,7 +223,7 @@ final class AppModel {
                 throw error
             }
         }
-        guard !Task.isCancelled, self.project(id: project.id) != nil else {
+        guard !Task.isCancelled, !isShuttingDown, self.project(id: project.id) != nil else {
             if let workspace = meta.agentTask?.workspace { try? await worktreeService.discard(workspace, project: project.url) }
             throw AgentError.launchFailed("Agent setup was cancelled or the project was removed.")
         }
@@ -254,6 +262,10 @@ final class AppModel {
                 BrowserTools.text(String(decoding: try value.serialized(), as: UTF8.self))
             }
             switch name {
+            case "project_publish_research":
+                guard let id = args["researchID"]?.string.flatMap(UUID.init(uuidString:)) else { throw AgentError.launchFailed("Provide the assigned Research run ID.") }
+                try publishResearch(id: id, report: args["report"]?.string ?? "", callerID: callerID, projectID: projectID)
+                return BrowserTools.text("Research report saved. The user can review sources and create tasks from Research.")
             case "project_publish_artifact":
                 let artifact = try ProjectArtifact.validated(sessionID: callerID, title: args["title"]?.string ?? "", kind: args["kind"]?.string ?? "", body: args["body"]?.string ?? "")
                 saveArtifact(artifact, projectID: projectID)
@@ -428,6 +440,7 @@ final class AppModel {
         for project in workspace.projects { projectTabs[project.id] = project.layout?.panel ?? .conversation }
         if let project = workspace.preferredProject(in: workspace.selectedSpace.id) { openProject(project) }
         shellEnvironment = await ShellEnvironment.capture()
+        recoverTaskQueues()
         isReady = true
         await refreshAgents()
         startScheduler()
@@ -770,18 +783,15 @@ final class AppModel {
         return workspace.sessions.first { $0.id == id }?.title == "New session"
     }
 
-    /// Switches an empty session to another agent. A session that has started keeps its agent,
-    /// because the conversation lives inside that agent's own harness.
+    /// Switch providers without replacing the conversation or its isolated worktree.
     func setAgent(_ agent: AgentKind, for id: UUID) {
-        guard isUntouched(id), let index = workspace.sessions.firstIndex(where: { $0.id == id }) else { return }
-        workspace.sessions[index].agent = agent
-        workspace.sessions[index].model = nil
-        workspace.sessions[index].effort = nil
-        workspace.sessions[index].serviceTier = nil
-        let previous = controllers.removeValue(forKey: id)
-        previous?.disconnect()
-        Task { await open(id) }
-        scheduleSave()
+        if let controller = controllers[id] { controller.requestAgentSwitch(to: agent) }
+        else {
+            Task {
+                await open(id)
+                controllers[id]?.requestAgentSwitch(to: agent)
+            }
+        }
     }
 
     func open(_ id: UUID) async {
@@ -812,6 +822,7 @@ final class AppModel {
         controller.beforeTurn = { [weak self] session, input in try await self?.prepareTurn(session, input: input) }
         controller.afterTurn = { [weak self] session in await self?.completeTurn(session) }
         controllers[id] = controller
+        if controller.meta != meta { sessionChanged(controller) }
         if project(for: meta)?.chatReadDates?[id.uuidString] == nil { markChatRead(id) }
     }
 
@@ -916,14 +927,25 @@ final class AppModel {
             }
         }
         updateDockBadge()
+        let kind: TaskActivity.Kind
+        switch attention {
+        case .approvalNeeded: kind = .approval
+        case .turnFinished(.completed): kind = .completed
+        case .turnFinished(.failed): kind = .failed
+        case .turnFinished(.interrupted): kind = .stopped
+        }
+        let turnID = controller.items.last(where: { if case .user = $0.content { return $0.parentToolID == nil }; return false })?.id ?? "turn"
+        let eventID = controller.id.uuidString + "." + (kind == .approval ? controller.pendingApproval?.id ?? turnID : turnID) + "." + kind.rawValue
+        recordTaskActivity(TaskActivity(id: eventID, sessionID: controller.id, kind: kind, taskTitle: controller.meta.title), projectID: controller.meta.projectID)
+        if case .turnFinished = attention { Task { await runTaskQueues() } }
         guard !NSApp.isActive else { return }
         switch attention {
         case .approvalNeeded:
-            notify(title: "Needs your approval", body: controller.meta.title)
+            notify(title: "Needs your approval", body: controller.meta.title, projectID: controller.meta.projectID, eventID: eventID)
         case .turnFinished(.completed):
-            notify(title: "Finished", body: controller.meta.title)
+            notify(title: "Finished", body: controller.meta.title, projectID: controller.meta.projectID, eventID: eventID)
         case .turnFinished(.failed):
-            notify(title: "Stopped with an error", body: controller.meta.title)
+            notify(title: "Stopped with an error", body: controller.meta.title, projectID: controller.meta.projectID, eventID: eventID)
         case .turnFinished(.interrupted):
             break
         }
@@ -934,13 +956,14 @@ final class AppModel {
         NSApp.dockTile.badgeLabel = waiting > 0 ? "\(waiting)" : nil
     }
 
-    private func notify(title: String, body: String) {
-        guard Bundle.main.bundleIdentifier != nil else { return }
+    func notify(title: String, body: String, projectID: UUID, eventID: String) {
+        guard !NSApp.isActive, workspace.preferences.taskNotifications ?? true, Bundle.main.bundleIdentifier != nil else { return }
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { granted, _ in
             guard granted else { return }
             let content = UNMutableNotificationContent()
             content.title = title
             content.body = body
+            content.userInfo = ["projectID": projectID.uuidString, "eventID": eventID]
             UNUserNotificationCenter.current().add(
                 UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil))
         }
@@ -1130,9 +1153,10 @@ final class AppModel {
 
     @discardableResult
     func shutdown(saveChanges: Bool = true) async -> Bool {
+        isShuttingDown = true
         if workspaceLoadFailed { return true }
         for controller in controllers.values { dirtyTranscripts.insert(controller.id) }
-        if saveChanges, !(await save()) { return false }
+        if saveChanges, !(await save()) { isShuttingDown = false; return false }
         scheduler?.cancel()
         saveTask?.cancel()
         for runner in pipelineRunners.values { runner.stop() }
@@ -1152,7 +1176,7 @@ final class AppModel {
         if saved {
             for browser in browsers.values { browser.stop() }
             for terminal in terminals.values { terminal.shutdown() }
-        } else { startScheduler() }
+        } else { isShuttingDown = false; startScheduler() }
         return saved
     }
 }

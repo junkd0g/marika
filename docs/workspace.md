@@ -44,6 +44,10 @@ browser pages stay with the project. See the [split screenshots](screenshots.md#
 
 Chat includes a **#project** channel and direct conversations with the project's agents, with live status, unread replies and agent search. Type **@** to choose an agent, then send a message to its conversation. Drafts and attachments stay with each chat, and switching projects or tabs restores your last conversation. The outer sidebar remains project-only.
 
+Select text across a reply's paragraphs, lists and code blocks and press **⌘C** to copy it.
+The visible Copy button below a reply copies its entire Markdown source, including all paragraphs
+and code blocks. Your messages and individual code blocks also have their own Copy buttons.
+
 ## Run a proposed terminal command
 
 Shell blocks in assistant replies have a **▶ Run** button beside Copy. Click it to run the
@@ -60,11 +64,23 @@ execution happens when you click Run.
 
 ## Models, effort and speed
 
+Switch an existing conversation or task agent between **Claude Agent** and **Codex** from the
+composer's always-visible provider menu. During a running turn, the choice is queued until that
+turn finishes; the banner offers **Cancel switch**. The current provider continues handling the
+turn and any steering messages. The chat, draft, @mention and worktree stay with the same task;
+the new provider uses its default model, effort and speed with the existing permission mode.
+An unfinished queued choice is kept across app restarts and applied when the chat is idle.
+
+The next message starts a fresh provider conversation with the original task and recent visible
+messages and tool results as context. Older text may be omitted to fit the handoff size limit;
+private thinking and old image attachments are not transferred. Switching back works the same
+way. The visible conversation remains available locally, and the switch survives app restart.
+
 The chat composer has separate **model**, **reasoning effort**, and **speed** controls for Codex.
 Speed offers Standard plus the faster tiers advertised by the selected model, including Fast
 or Ultrafast when available. **Default speed** follows your Codex configuration. Each chat keeps
 its own choice across restarts; changes apply to the next turn. Narrow windows wrap the controls
-onto two rows so the speed selector remains accessible. Light and dark chat layouts use quiet
+onto additional rows so the selectors remain accessible. Light and dark chat layouts use quiet
 project navigation, neutral message bubbles, and a rounded composer.
 
 ## Search past conversations
@@ -89,6 +105,42 @@ editor drafts and refuses stale reviews; refresh if the project or agent's propo
 **Run tests** runs the relevant Go packages or the project's Swift, Rust, JavaScript or Python
 test command in the agent's worktree. Send review feedback and failed test output directly to
 that agent. Agents in non-Git folders share the project files. Up to four agent tasks can run at once.
+
+Choose **Task details** on an agent to see its current activity, approval or failure blockers,
+latest reported plan, changed files, verification and published deliverables together. Plans are
+kept across restarts. Successful tool edits provide an observed file list; an idle isolated task
+also loads its full worktree review. **Review changes** opens the existing hunk review.
+
+The task page's **Run tests** runs the detected project test command in that task's worktree or
+shared project folder. It is disabled while the agent is working. Its dated result and output
+are saved with the chat; later edits are not verified automatically. Commands observed in the
+transcript appear separately and are not treated as proof that tests passed. Expand deliverables
+to read published plans, walkthroughs and browser evidence, or open the full artifact review.
+
+## Task queue and activity
+
+Choose **Queue task** in **New Agent** to save work for the next free slot. Each project can run
+four task agents at once. The queue uses the chosen provider, model, permissions and isolation
+setting; work starts automatically while its queue is running. Open **Queue** in Agents, or
+**Task Queue** in the workspace menu or command palette, to pause/resume, reorder waiting work,
+cancel a waiting task or open a created agent.
+
+Pausing stops future starts and leaves running agents alone. A launch failure pauses the queue
+and shows the prerequisite or error. Fix it, select **Requeue**, then **Resume queue**. Queues
+reopen paused after restarting Marika. A launch interrupted before its outcome was saved is
+linked to an existing agent when possible; otherwise it needs explicit review and requeueing.
+The queue holds up to 50 pending/failed tasks and retains 30 recent starts or cancellations.
+Queued work runs while Marika is open and the Mac is awake.
+
+**Activity** in Agents keeps approvals, finished/failed/stopped tasks and queue launch failures.
+Open an entry to reach its chat, task page or queue. Mark entries read individually or together,
+and use **Unread** to focus on new events. The last 100 events and their read state are saved
+with the project, including events received while Marika is active.
+
+When Marika is in the background, task completion, failure and approval banners use macOS
+notification permission. Clicking a banner opens the relevant task or approval. **Settings →
+General → Task notification banners** controls banners; the activity inbox remains available
+when banners are disabled or macOS permission is denied.
 
 ## Task status and filters
 
@@ -130,10 +182,21 @@ are skipped and repeated local times run once. Keep the app running for schedule
 ## Playbooks and MCP connections
 
 Enabled project playbooks are sent to Claude and Codex on their next process connection. Import
-an existing SKILL.md or create instructions in the editor. Open **Project → MCP Servers** to add,
-edit, enable or disable servers for this project. Connect local commands or HTTP endpoints;
+an existing SKILL.md or create instructions in the editor. Open **Project → Connections** to add,
+edit, enable or disable connections for this project. The searchable catalog includes
+[Context7](https://context7.com/docs/resources/all-clients),
+[Linear](https://linear.app/docs/mcp) and
+[Notion](https://developers.notion.com/guides/mcp/get-started-with-mcp), using their documented
+remote endpoints. **Connect** shows the expected access and official setup guide before adding
+the connection; services that require OAuth continue to browser sign-in. Save Project Settings
+to keep the configuration. Use **Configured** to search existing servers, including custom ones.
+
+Connect custom local commands or HTTP endpoints with **Add server** or **Import JSON**;
 **Test connection** initializes a temporary connection and lists tools, resources and prompts
-without executing tools. Import existing `mcpServers` JSON or use Advanced JSON for extra options.
+without executing tools. Status distinguishes configured, disabled, signed-in and successfully
+tested connections. Expand **Permissions and tools** after a test to inspect server-reported
+read-only, write or destructive access. Missing annotations are labeled unspecified; those labels
+describe tools and do not impose an extra permission restriction. Use Advanced JSON for extra options.
 Use `${ENVIRONMENT_VARIABLE}` references for existing credentials. Changes reconnect idle agents
 and take effect after active work finishes. CLI-level skills and configured tools also remain
 available through their respective agent runtimes.

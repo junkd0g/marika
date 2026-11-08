@@ -1,6 +1,7 @@
 import AppKit
 import MarikaCore
 import SwiftUI
+import UserNotifications
 
 @main
 struct MarikaApp: App {
@@ -16,6 +17,7 @@ struct MarikaApp: App {
                     delegate.model = model
                     model.configureUpdater()
                     await model.bootstrap()
+                    delegate.openPendingTaskActivity()
                 }
                 .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
                     Task { await model.refreshAgents() }
@@ -39,10 +41,12 @@ struct MarikaApp: App {
     }
 }
 
-final class AppDelegate: NSObject, NSApplicationDelegate {
+@MainActor final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
     @MainActor var model: AppModel?
+    private var pendingActivity: (UUID, String)?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        UNUserNotificationCenter.current().delegate = self
         // Needed when running the bare binary during development. A bundled app already is one.
         NSApp.setActivationPolicy(.regular)
         if let icon = Theme.appIcon { NSApp.applicationIconImage = icon }
@@ -50,6 +54,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         #if DEBUG
             DebugDriver.startIfRequested(delegate: self)
         #endif
+    }
+
+    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
+        guard let project = response.notification.request.content.userInfo["projectID"] as? String,
+              let projectID = UUID(uuidString: project), let eventID = response.notification.request.content.userInfo["eventID"] as? String else { return }
+        await MainActor.run { self.pendingActivity = (projectID, eventID); self.openPendingTaskActivity() }
+    }
+
+    func openPendingTaskActivity() {
+        guard let model, model.isReady, let (projectID, eventID) = pendingActivity else { return }
+        pendingActivity = nil
+        model.openTaskActivity(eventID, projectID: projectID)
+        NSApp.activate()
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
@@ -206,7 +223,7 @@ struct MarikaCommands: Commands {
                 .keyboardShortcut("`", modifiers: .control).disabled(model.selectedProject == nil)
             Button("Project Settings…") { if let project = model.selectedProject { model.openProjectSettings(project) } }
                 .keyboardShortcut(",", modifiers: [.command, .shift]).disabled(model.selectedProject == nil)
-            Button("MCP Servers…") { if let project = model.selectedProject { model.openProjectSettings(project, section: "MCP") } }
+            Button("Connections…") { if let project = model.selectedProject { model.openProjectSettings(project, section: "MCP") } }
                 .disabled(model.selectedProject == nil)
             if let project = model.selectedProject {
                 ForEach(project.tools?.actions ?? []) { action in

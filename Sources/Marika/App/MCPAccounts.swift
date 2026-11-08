@@ -64,7 +64,7 @@ import Observation
             guard let key = Self.key(projectID: projectID, configuration: value) else { continue }
             guard let address = value["url"]?.string, let url = URL(string: address),
                   let token = try await credentials.token(key: key, server: url), var config = value.object else {
-                throw AgentError.launchFailed("Sign in to \(name) in Project → MCP Servers before connecting.")
+                throw AgentError.launchFailed("Sign in to \(name) in Project → Connections before connecting.")
             }
             let variable = "MARIKA_MCP_OAUTH_" + String(key.filter(\.isLetter).prefix(40)) + String(key.filter(\.isNumber).prefix(32))
             environment[variable] = token

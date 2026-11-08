@@ -40,7 +40,7 @@ struct ProjectToolsView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     ForEach(["Setup", "Schedules", "Skills", "MCP", "Memory", "Hooks", "Remote", "Editor"], id: \.self) { name in
                         Button { section = name } label: {
-                            Text(name).frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 10).padding(.vertical, 7)
+                            Text(name == "MCP" ? "Connections" : name).frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 10).padding(.vertical, 7)
                                 .background(section == name ? Color.accentColor.opacity(0.15) : Color.clear, in: RoundedRectangle(cornerRadius: 7))
                         }.buttonStyle(.plain).foregroundStyle(section == name ? Color.accentColor : .primary)
                     }
