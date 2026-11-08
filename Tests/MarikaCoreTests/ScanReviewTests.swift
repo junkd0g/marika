@@ -3,6 +3,65 @@ import Testing
 @testable import MarikaCore
 
 struct ScanReviewTests {
+    @Test func publishedReviewsStayCompleteDuringFollowUpConversationTurns() {
+        let session = UUID()
+        var scan = CodeScan(id: UUID(), date: .now, agentSessionID: session, files: 1,
+                            linesByLanguage: ["Swift": 1], markerLines: 0, skipped: 0, limited: false)
+        #expect(ScanReviewActivity(scans: [scan], sessionID: session, isBusy: true).isReviewing)
+        scan.review = ScanReview(summary: "Reviewed.", inspectedFiles: ["File.swift"], findings: [])
+        #expect(!ScanReviewActivity(scans: [scan], sessionID: session, isBusy: false).isReviewing)
+        #expect(!ScanReviewActivity(scans: [scan], sessionID: session, isBusy: true).isReviewing)
+        // Another worker can start while the previously published report stays visible.
+        #expect(ScanReviewActivity(scans: [scan], sessionID: UUID(), isBusy: true).isReviewing)
+    }
+
+    @Test func reviewActivityHandlesStartupAndStoppedUnpublishedScans() {
+        let session = UUID()
+        #expect(ScanReviewActivity(scans: [], sessionID: session, isBusy: true).isReviewing)
+        #expect(!ScanReviewActivity(scans: [], sessionID: nil, isBusy: true).isReviewing)
+        let scan = CodeScan(id: UUID(), date: .now, agentSessionID: session, files: 1,
+                            linesByLanguage: ["Swift": 1], markerLines: 0, skipped: 0, limited: false)
+        #expect(!ScanReviewActivity(scans: [scan], sessionID: session, isBusy: false).isReviewing)
+    }
+
+    @Test func unrelatedScansCannotRestartAPublishedReviewOrHideARerunFailure() {
+        let original = UUID(), other = UUID(), rerun = UUID()
+        var published = CodeScan(id: UUID(), date: .now, agentSessionID: original, files: 1,
+                                 linesByLanguage: ["Swift": 1], markerLines: 0, skipped: 0, limited: false)
+        published.review = ScanReview(summary: "Published.", inspectedFiles: ["File.swift"], findings: [])
+        let unrelated = CodeScan(id: UUID(), date: .now, agentSessionID: other, files: 1,
+                                 linesByLanguage: ["Swift": 1], markerLines: 0, skipped: 0, limited: false)
+        let history = [published, unrelated]
+        #expect(!ScanReviewActivity(scans: history, sessionID: original, isBusy: true).isReviewing)
+        #expect(ScanReviewActivity(scans: history, sessionID: other, isBusy: true).isReviewing)
+        let failure = ScanReviewActivity(scans: history, sessionID: rerun, isBusy: false, lastError: "Worker could not start")
+        #expect(!failure.isReviewing && failure.failure == "Worker could not start")
+        let followUp = ScanReviewActivity(scans: history, sessionID: original, isBusy: false, lastError: "Unrelated follow-up failed")
+        #expect(followUp.failure == nil)
+    }
+
+    @Test func rerunFailureIsVisibleEvenWhenOnlyAnOlderPublishedReportExists() {
+        var published = CodeScan(id: UUID(), date: .now, agentSessionID: UUID(), files: 1,
+                                 linesByLanguage: ["Swift": 1], markerLines: 0, skipped: 0, limited: false)
+        published.review = ScanReview(summary: "Published.", inspectedFiles: [], findings: [])
+        let status = ScanReviewActivity(scans: [published], sessionID: UUID(), isBusy: false, lastError: "Launch failed before scanning")
+        #expect(status.failure == "Launch failed before scanning")
+    }
+
+    @Test func theWorkersNewestScanControlsItsOwnRerunAndIncompleteState() {
+        let session = UUID()
+        var published = CodeScan(id: UUID(), date: .now, agentSessionID: session, files: 1,
+                                 linesByLanguage: ["Swift": 1], markerLines: 0, skipped: 0, limited: false)
+        published.review = ScanReview(summary: "Published.", inspectedFiles: [], findings: [])
+        var rerun = CodeScan(id: UUID(), date: .now, agentSessionID: session, files: 1,
+                            linesByLanguage: ["Swift": 1], markerLines: 0, skipped: 0, limited: false)
+        rerun.inventory = ScanInventory(sourceLines: 1, testLines: 0, testFiles: 0, generatedLines: 0,
+                                       generatedFiles: 0, excludedFiles: 0, modules: [:], largestFiles: [], markers: [])
+        #expect(ScanReviewActivity(scans: [published, rerun], sessionID: session, isBusy: true).isReviewing)
+        let stopped = ScanReviewActivity(scans: [published, rerun], sessionID: session, isBusy: false)
+        #expect(stopped.failure == "Inventory saved. The agent finished without publishing a code review.")
+    }
+
     @Test func inventorySeparatesMaintainedTestsGeneratedAndDependencies() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }

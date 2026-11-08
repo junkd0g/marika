@@ -375,6 +375,32 @@ struct CodeWorkspaceTests {
 }
 
 struct FileSearchTests {
+    @Test func emptyQueriesPreferMaintainedFilesWithoutHidingBuildOutput() {
+        let paths = ["build/readme-capture.log", "dist/app.js", "docs/README.md", "README.md", "Sources/Main.swift"]
+        let matches = FileSearch.matches(paths, query: "")
+        #expect(Array(matches.prefix(3)) == ["README.md", "docs/README.md", "Sources/Main.swift"])
+        #expect(Set(matches) == Set(paths))
+        #expect(FileSearch.matches(paths, query: "  ", limit: 1) == ["README.md"])
+        #expect(FileSearch.matches(paths, query: "", limit: 0).isEmpty)
+    }
+
+    @Test func readmeSearchPrefersExactStemsAndProjectSourcesOverBuildArtifacts() {
+        let paths = ["build/readme-capture.log", "build/readme-preview.html", "build/readme-render.html",
+                     "build/README.md", "docs/README.md", "README.md", "scripts/capture-readme.py"]
+        let matches = FileSearch.matches(paths, query: "README")
+        #expect(Array(matches.prefix(3)) == ["README.md", "docs/README.md", "build/README.md"])
+        #expect(matches.contains("build/readme-preview.html"))
+        #expect(FileSearch.matches(paths, query: "readme.md").first == "README.md")
+    }
+
+    @Test func equallyRelevantOutputFilesRankBelowSourceButExplicitPathsStillWork() {
+        let paths = ["build/Views/Main.swift", "Sources/Views/Main.swift", "dist/Main.swift", "Sources/Main.swift"]
+        #expect(FileSearch.matches(paths, query: "Main").prefix(2) == ["Sources/Main.swift", "Sources/Views/Main.swift"])
+        #expect(FileSearch.matches(paths, query: "build/Views/Main.swift").first == "build/Views/Main.swift")
+        #expect(FileSearch.matches(paths, query: "dist main").first == "dist/Main.swift")
+        #expect(FileSearch.matches(paths, query: "Main", limit: 1) == ["Sources/Main.swift"])
+    }
+
     @Test func filenamesRankBeforePathMatchesAndAbbreviationsWork() {
         let paths = ["CodeWorkspace/Other.swift", "Sources/CodeWorkspaceTests.swift", "Sources/CodeWorkspace.swift", "Notes/Workspace.md"]
         #expect(FileSearch.matches(paths, query: "CodeWorkspace.swift").first == "Sources/CodeWorkspace.swift")
@@ -382,6 +408,6 @@ struct FileSearchTests {
         #expect(FileSearch.matches(paths, query: "cws").contains("Sources/CodeWorkspace.swift"))
         #expect(FileSearch.matches(paths, query: "sources workspace tests") == ["Sources/CodeWorkspaceTests.swift"])
         #expect(FileSearch.matches(paths, query: "not-a-file").isEmpty)
-        #expect(FileSearch.matches(paths, query: "", limit: 2) == Array(paths.prefix(2)))
+        #expect(FileSearch.matches(paths, query: "", limit: 2) == ["CodeWorkspace/Other.swift", "Notes/Workspace.md"])
     }
 }

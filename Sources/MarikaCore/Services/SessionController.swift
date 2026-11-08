@@ -126,7 +126,10 @@ public final class SessionController: Identifiable {
         flushDeltas()
         let isFirstMessage = !items.contains { if case .user = $0.content { true } else { false } }
         append(TranscriptItem(id: UUID().uuidString, content: .user(text: input.text, images: input.images)))
-        if isFirstMessage { meta.title = Self.title(from: input.text) }
+        if isFirstMessage {
+            if meta.agentTask == nil { meta.title = Self.title(from: input.text) }
+            else if meta.title == "New session" { meta.title = AgentTaskName.suggested(from: input.text) }
+        }
         meta.updatedAt = Date()
         if meta.agent == .codex, !isBusy { runningMode = meta.mode }
         setPhase(.running)

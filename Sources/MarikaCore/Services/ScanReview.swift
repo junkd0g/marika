@@ -1,5 +1,24 @@
 import Foundation
 
+/// Publishing finishes a review even when its conversation continues with another task.
+public struct ScanReviewActivity: Equatable, Sendable {
+    public let isReviewing: Bool
+    public let failure: String?
+
+    public init(scans: [CodeScan], sessionID: UUID?, isBusy: Bool, lastError: String? = nil) {
+        guard let sessionID else { isReviewing = false; failure = nil; return }
+        // Other conversations can append scans to the same project's history.
+        let latest = scans.last { $0.agentSessionID == sessionID }
+        let published = latest?.review != nil
+        isReviewing = isBusy && !published
+        if !isBusy && !published {
+            if let lastError { failure = lastError }
+            else if latest?.inventory != nil { failure = "Inventory saved. The agent finished without publishing a code review." }
+            else { failure = nil }
+        } else { failure = nil }
+    }
+}
+
 public struct ScanFile: Codable, Hashable, Sendable, Identifiable {
     public var path: String
     public var lines: Int

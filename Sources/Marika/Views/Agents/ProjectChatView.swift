@@ -176,7 +176,7 @@ struct ProjectChatView: View {
                         Spacer(minLength: 0)
                         unreadBadge(agent.id)
                     }
-                    Text(preview(agent, controller: controller))
+                    Text(presence.preview ?? "Send a message")
                         .font(.system(size: 10.5)).foregroundStyle(.secondary).lineLimit(2)
                     HStack(spacing: 4) {
                         Text(agent.agent.shortName)
@@ -251,6 +251,8 @@ struct ProjectChatView: View {
                     .background(DebugViewMarker(name: "chat-open-jobs"))
                 #endif
             if selection.agentTask != nil {
+                Button { renameText = selection.title; renameTarget = selection.id } label: { Image(systemName: "pencil") }
+                    .buttonStyle(.plain).help("Rename agent").accessibilityLabel("Rename agent")
                 Button { Task { await model.openAgentReview(selection.id) } } label: { Image(systemName: "doc.text.magnifyingglass") }
                     .buttonStyle(.plain).help("Review this agent's changes")
                     .disabled(selection.agentTask?.workspace == nil || selection.agentTask?.workspace?.status == .discarded)
@@ -288,16 +290,6 @@ struct ProjectChatView: View {
         .help("Switch project channel or agent")
     }
 
-    private func preview(_ meta: SessionMeta, controller: SessionController?) -> String {
-        if let approval = controller?.pendingApproval { return "Approval needed: " + approval.title }
-        if controller?.isBusy == true { return controller?.activity ?? "Working on your request…" }
-        let message = controller?.items.reversed().compactMap { item -> String? in
-            guard item.parentToolID == nil, case .assistant(let text) = item.content else { return nil }
-            return text
-        }.first
-        return (message ?? meta.agentTask?.prompt ?? "Send a message").replacingOccurrences(of: "\n", with: " ")
-    }
-
     private func markReadIfVisible() {
         if isVisible && !showsJobs && NSApp.isActive { model.markChatRead(selection.id) }
     }
@@ -312,19 +304,14 @@ struct ProjectChatView: View {
 @MainActor private struct ChatPresence {
     var label: String
     var color: Color
+    var preview: String?
 
     init(meta: SessionMeta, controller: SessionController?) {
-        if meta.agentTask?.workspace?.status == .discarded {
-            label = "Archived"; color = .secondary
-        } else if controller?.pendingApproval != nil {
-            label = "Needs approval"; color = .orange
-        } else if controller?.isBusy == true {
-            label = "Working"; color = .green
-        } else if let last = controller?.items.last, case .turnEnd(let summary) = last.content, summary.outcome == .failed {
-            label = "Needs attention"; color = .orange
-        } else {
-            label = "Ready for a message"; color = .secondary
-        }
+        let presentation = AgentTaskPresentation(meta: controller?.meta ?? meta, items: controller?.items ?? [],
+                                                  phase: controller?.phase ?? .idle, approval: controller?.pendingApproval, activity: controller?.activity)
+        label = presentation.state.rawValue
+        color = presentation.state.color
+        preview = presentation.preview
     }
 }
 

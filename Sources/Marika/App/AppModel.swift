@@ -183,10 +183,12 @@ final class AppModel {
 
     @discardableResult
     func launchAgent(in project: Project, agent: AgentKind, settings: AgentSettings, prompt: String,
-                     parentSessionID: UUID? = nil, isolated: Bool = true) async throws -> SessionController {
+                     parentSessionID: UUID? = nil, isolated: Bool = true, name: String? = nil) async throws -> SessionController {
         let task = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !task.isEmpty else { throw AgentError.launchFailed("Describe what this agent should do.") }
         guard task.count <= 32_000 else { throw AgentError.launchFailed("Keep the agent task under 32,000 characters.") }
+        let taskName = name?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard taskName.count <= 80 else { throw AgentError.launchFailed("Keep the agent name under 80 characters.") }
         guard self.project(id: project.id) != nil else { throw AgentError.launchFailed("This project was removed.") }
         let parent = parentSessionID.flatMap { id in workspace.sessions.first { $0.id == id } }
         if parentSessionID != nil, parent == nil { throw AgentError.launchFailed("The parent chat was closed.") }
@@ -199,6 +201,7 @@ final class AppModel {
             active: Set(controllers.values.filter(\.isBusy).map(\.id)).union(launchingAgents))
         var meta = SessionMeta(projectID: project.id, agent: agent,
                                agentTask: AgentTask(prompt: task, parentSessionID: parentSessionID))
+        meta.title = taskName.isEmpty ? AgentTaskName.suggested(from: task) : taskName
         meta.settings = settings
         // A launched agent always gets a new chat; reusing an empty chat could replace a draft.
         launchingAgents.insert(meta.id)

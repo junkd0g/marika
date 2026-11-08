@@ -297,7 +297,7 @@ struct QuickOpenView: View {
         .onExitCommand { editor.showsQuickOpen = false }
         .task(id: query + "|" + String(editor.fileIndexRevision)) {
             var results = await editor.searchFiles(query)
-            if query.isEmpty {
+            if query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 let recent = editor.recentFilePaths.filter { editor.filePaths.contains($0) }
                 results = recent + results.filter { !recent.contains($0) }
             }

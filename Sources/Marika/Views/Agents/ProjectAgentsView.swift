@@ -4,21 +4,19 @@ import SwiftUI
 struct ProjectAgentsView: View {
     @Environment(AppModel.self) private var model
     let project: Project
-    @State private var filter: TaskFilter = .all
+    @State private var filter: AgentTaskFilter = .all
+    @State private var renameTarget: UUID?
+    @State private var renameText = ""
 
-    private enum TaskFilter: String, CaseIterable {
-        case all = "All", active = "Active", finished = "Finished"
+    private func presentation(_ task: SessionMeta) -> AgentTaskPresentation {
+        let controller = model.controllers[task.id]
+        return AgentTaskPresentation(meta: controller?.meta ?? task, items: controller?.items ?? [],
+                                     phase: controller?.phase ?? .idle, approval: controller?.pendingApproval, activity: controller?.activity)
     }
-
-    private var activeCount: Int { tasks.filter { model.controllers[$0.id]?.isBusy == true }.count }
+    private var activeCount: Int { tasks.filter { presentation($0).state.isActive }.count }
+    private var attentionCount: Int { tasks.filter { presentation($0).state.needsAttention }.count }
     private var visibleTasks: [SessionMeta] {
-        tasks.filter { task in
-            switch filter {
-            case .all: true
-            case .active: model.controllers[task.id]?.isBusy == true
-            case .finished: model.controllers[task.id]?.isBusy != true
-            }
-        }
+        tasks.filter { filter.includes(presentation($0).state) }
     }
 
     private var tasks: [SessionMeta] {
@@ -42,13 +40,15 @@ struct ProjectAgentsView: View {
                         .buttonStyle(.borderedProminent)
                 }
             } else if visibleTasks.isEmpty {
-                ContentUnavailableView("No \(filter.rawValue.lowercased()) agents", systemImage: "person.2",
+                ContentUnavailableView(filter == .needsAttention ? "No agents need attention" : "No \(filter.rawValue.lowercased()) agents", systemImage: "person.2",
                     description: Text("Choose All to see every agent in this project."))
             } else {
                 ScrollView {
                     LazyVStack(spacing: 0) {
                         ForEach(visibleTasks) { meta in
-                            AgentTaskCard(meta: meta, controller: model.controllers[meta.id])
+                            AgentTaskCard(meta: meta, controller: model.controllers[meta.id]) {
+                                renameText = model.controllers[meta.id]?.meta.title ?? meta.title; renameTarget = meta.id
+                            }
                             if meta.id != visibleTasks.last?.id { Divider().padding(.leading, 60) }
                         }
                     }
@@ -71,19 +71,24 @@ struct ProjectAgentsView: View {
         .task(id: tasks.map(\.id)) {
             for task in tasks { await model.open(task.id) }
         }
+        .alert("Rename agent", isPresented: Binding(get: { renameTarget != nil }, set: { if !$0 { renameTarget = nil } })) {
+            TextField("Agent name", text: $renameText)
+            Button("Save") { if let id = renameTarget { model.rename(id, to: renameText) }; renameTarget = nil }
+            Button("Cancel", role: .cancel) { renameTarget = nil }
+        } message: { Text("The agent's @mention stays the same.") }
     }
     private var heading: some View {
         VStack(alignment: .leading, spacing: 5) {
             Text("Agents").font(.system(size: 20, weight: .semibold))
             Button("Review plans and results") { model.showExperience("Artifacts", project: project) }.buttonStyle(.link).font(.caption)
-            Text("\(activeCount) active · \(tasks.count) in this project")
+            Text("\(activeCount) active · \(attentionCount) need attention · \(tasks.count) in this project")
                 .font(.system(size: 12)).foregroundStyle(.secondary)
         }
     }
     private var filters: some View {
         Picker("Show agents", selection: $filter) {
-            ForEach(TaskFilter.allCases, id: \.self) { Text($0.rawValue).tag($0) }
-        }.pickerStyle(.segmented).labelsHidden().frame(width: 210).controlSize(.small)
+            ForEach(AgentTaskFilter.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+        }.pickerStyle(.segmented).labelsHidden().frame(width: 340).controlSize(.small)
     }
 
 }
@@ -92,36 +97,13 @@ private struct AgentTaskCard: View {
     @Environment(AppModel.self) private var model
     let meta: SessionMeta
     let controller: SessionController?
-
-    private var latestOutcome: TurnSummary.Outcome? {
-        controller?.items.reversed().prefix { item in
-            if case .user = item.content { false } else { true }
-        }.compactMap { item in
-            if case .turnEnd(let summary) = item.content { summary.outcome } else { nil }
-        }.first
+    var rename: () -> Void
+    private var presentation: AgentTaskPresentation {
+        AgentTaskPresentation(meta: controller?.meta ?? meta, items: controller?.items ?? [], phase: controller?.phase ?? .idle,
+                              approval: controller?.pendingApproval, activity: controller?.activity)
     }
 
-    private var lastError: String? {
-        guard let last = controller?.items.last, case .notice(let notice) = last.content, notice.level == .error else { return nil }
-        return notice.text
-    }
-
-    private var state: String {
-        switch controller?.phase ?? .idle {
-        case .running: "Working"
-        case .waitingForUser: "Needs approval"
-        case .idle:
-            lastError != nil || latestOutcome == .failed ? "Failed" : latestOutcome == .completed ? "Completed" : latestOutcome == .interrupted ? "Stopped" : "Idle"
-        }
-    }
-
-    private var stateColor: Color {
-        if lastError != nil || latestOutcome == .failed { return .red }
-        if controller?.phase == .waitingForUser { return Theme.attention }
-        if controller?.phase == .running { return .accentColor }
-        if latestOutcome == .completed { return .green }
-        return .secondary
-    }
+    private var stateColor: Color { presentation.state.color }
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
@@ -133,15 +115,19 @@ private struct AgentTaskCard: View {
                 HStack(alignment: .firstTextBaseline) {
                     Text(controller?.meta.title ?? meta.title)
                         .font(.system(size: 13, weight: .semibold)).lineLimit(1)
+                        .help(controller?.meta.title ?? meta.title)
+                    Button(action: rename) { Image(systemName: "pencil") }
+                        .buttonStyle(.plain).foregroundStyle(.secondary).help("Rename agent")
+                        .accessibilityLabel("Rename " + (controller?.meta.title ?? meta.title))
                     Spacer(minLength: 8)
                     HStack(spacing: 5) {
                         if controller?.phase == .running { ProgressView().controlSize(.mini) }
                         else { Circle().fill(stateColor).frame(width: 5, height: 5) }
-                        Text(state).font(.system(size: 11))
+                        Text(presentation.state.rawValue).font(.system(size: 11))
                     }
                     .foregroundStyle(stateColor)
                 }
-                if let text = lastError ?? controller?.activity ?? meta.agentTask?.prompt {
+                if let text = presentation.preview {
                     Text(text).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(2)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
@@ -184,6 +170,7 @@ struct LaunchAgentView: View {
     @State private var selectedModel = ""
     @State private var mode: ApprovalMode = .ask
     @State private var prompt = ""
+    @State private var name = ""
     @State private var includeFile = false
     @State private var isolated = true
     @State private var isGitProject: Bool?
@@ -214,6 +201,10 @@ struct LaunchAgentView: View {
                 }
             }
             VStack(alignment: .leading, spacing: 7) {
+                TextField("Agent name (optional)", text: $name).textFieldStyle(.roundedBorder)
+                    .accessibilityLabel("Agent name")
+                Text(name.isEmpty ? "Suggested name: \(AgentTaskName.suggested(from: prompt))" : "You can rename the agent later.")
+                    .font(.caption).foregroundStyle(.secondary)
                 Text("Task").font(.system(size: 12, weight: .medium))
                 TextEditor(text: $prompt).font(.system(size: 13)).focused($taskFocused)
                     .scrollContentBackground(.hidden).padding(8)
@@ -266,7 +257,7 @@ struct LaunchAgentView: View {
             do {
                 let opensChat = model.projectTabs[project.id] == .conversation
                 let controller = try await model.launchAgent(in: project, agent: agent,
-                    settings: AgentSettings(model: selectedModel.isEmpty ? nil : selectedModel, mode: mode), prompt: task, isolated: isolated)
+                    settings: AgentSettings(model: selectedModel.isEmpty ? nil : selectedModel, mode: mode), prompt: task, isolated: isolated, name: name)
                 if opensChat { model.openAgentChat(controller.id) }
                 else { model.showAgents(for: project) }
                 dismiss()

@@ -28,7 +28,7 @@ Readable documentation, right beside your code. **Edit the source** and see chan
 | Split | Write and preview together |
 
 ![Project overview](images/overview.png)
-
+a
 ```swift
 let project = "Marika"
 print("Hello, \\(project)!")

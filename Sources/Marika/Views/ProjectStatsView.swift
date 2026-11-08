@@ -18,14 +18,24 @@ struct ProjectStatsView: View {
     private var agent: SessionController? { project.statsAgentID.flatMap { model.controllers[$0] } }
     private var history: [CodeScan] { project.scans ?? [] }
     private var scan: CodeScan? { history.first { $0.id == selectedScanID } ?? history.last }
-    private var active: Bool { launching || agent?.isBusy == true }
-    private var incompleteReview: String? {
-        guard let agent, !agent.isBusy else { return nil }
-        if let item = agent.items.last, case .notice(let notice) = item.content, notice.level == .error { return notice.text }
-        if let scan = history.last, scan.agentSessionID == agent.id, scan.inventory != nil, scan.review == nil {
-            return "Inventory saved. The agent finished without publishing a code review."
-        }
-        return nil
+    private var reviewActivity: ScanReviewActivity {
+        let lastError: String?
+        if let item = agent?.items.last, case .notice(let notice) = item.content, notice.level == .error { lastError = notice.text }
+        else { lastError = nil }
+        return ScanReviewActivity(scans: history, sessionID: agent?.id, isBusy: agent?.isBusy == true, lastError: lastError)
+    }
+    private var active: Bool { launching || reviewActivity.isReviewing }
+    private var reportConversation: SessionController? {
+        guard scan?.review != nil, let id = scan?.agentSessionID else { return nil }
+        return model.controllers[id]
+    }
+    private var incompleteReview: String? { reviewActivity.failure }
+    private var activityTitle: String {
+        if let failure { return failure }
+        if let incompleteReview { return incompleteReview }
+        if agent?.phase == .waitingForUser { return "Review needs your input" }
+        if scan?.review != nil { return "New review in progress" }
+        return agent?.activity ?? "Inspecting source and tests…"
     }
 
     var body: some View {
@@ -35,6 +45,15 @@ struct ProjectStatsView: View {
                 if active || failure != nil || incompleteReview != nil { activity }
                 if let scan {
                     review(scan)
+                    if let conversation = reportConversation, conversation.isBusy {
+                        HStack {
+                            Label("Review conversation is active", systemImage: "bubble.left.and.bubble.right")
+                                .font(.caption).foregroundStyle(.secondary)
+                            Spacer()
+                            Button("Open conversation") { model.openAgentChat(conversation.id) }
+                                .buttonStyle(.link).font(.caption)
+                        }
+                    }
                     if let inventory = scan.inventory {
                         metrics(inventory)
                         if let report = scan.review, !report.findings.isEmpty { findings(report) }
@@ -125,9 +144,12 @@ struct ProjectStatsView: View {
         HStack(spacing: 12) {
             if active { ProgressView().controlSize(.small) }
             VStack(alignment: .leading, spacing: 3) {
-                Text(failure ?? incompleteReview ?? (agent?.phase == .waitingForUser ? "Review needs your input" : agent?.activity ?? "Inspecting source and tests…"))
+                Text(activityTitle)
                     .font(.subheadline).lineLimit(2)
-                if active { Text("Findings appear here when the agent publishes its review.").font(.caption).foregroundStyle(.secondary) }
+                if active {
+                    Text(scan?.review != nil ? "The published review below stays available while the new review runs." : "Findings appear here when the agent publishes its review.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
             }
             Spacer(minLength: 0)
             if let agent {
@@ -141,11 +163,14 @@ struct ProjectStatsView: View {
     private func review(_ scan: CodeScan) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             if let review = scan.review {
-                HStack(spacing: 8) {
-                    Image(systemName: "text.magnifyingglass").foregroundStyle(.teal)
-                    Text("\(review.findings.count) findings").font(.headline)
+                HStack(alignment: .top, spacing: 8) {
+                    Label("Review published", systemImage: "checkmark.circle.fill")
+                        .font(.headline).foregroundStyle(.teal)
                     Spacer()
-                    Text("\(review.inspectedFiles.count) files inspected").font(.caption).foregroundStyle(.secondary)
+                    VStack(alignment: .trailing, spacing: 3) {
+                        Text("\(review.findings.count) \(review.findings.count == 1 ? "finding" : "findings")").font(.headline)
+                        Text("\(review.inspectedFiles.count) \(review.inspectedFiles.count == 1 ? "file" : "files") inspected").font(.caption).foregroundStyle(.secondary)
+                    }
                 }
                 Text(review.summary).font(.system(size: 14)).foregroundStyle(.secondary)
                     .lineLimit(showsFullSummary ? nil : 3).textSelection(.enabled)

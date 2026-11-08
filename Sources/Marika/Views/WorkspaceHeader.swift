@@ -9,6 +9,7 @@ struct WorkspaceHeader: View {
     var select: (AppModel.ProjectTab) -> Void
     var launchAgent: () -> Void
     @State private var hovered: AppModel.ProjectTab?
+    @State private var showsViewChooser = false
 
     var body: some View {
         GeometryReader { geometry in
@@ -142,19 +143,39 @@ struct WorkspaceHeader: View {
     private var navigation: some View {
         let strip = HStack(spacing: 4) {
             tabButton(.conversation).fixedSize(horizontal: true, vertical: false)
-            ScrollViewReader { scroll in
-                ScrollView(.horizontal) {
-                    HStack(spacing: 4) {
-                        ForEach(openTabs.filter { $0 != .conversation }, id: \.self) { tab in tabButton(tab).id(tab) }
-                    }.padding(.vertical, 3)
-                }
-                .scrollIndicators(.hidden)
-                .onChange(of: selection, initial: true) { _, tab in
-                    if tab != .conversation { scroll.scrollTo(tab, anchor: .center) }
+            GeometryReader { geometry in
+                ScrollViewReader { scroll in
+                    ScrollView(.horizontal) {
+                        HStack(spacing: 4) {
+                            ForEach(openTabs.filter { $0 != .conversation }, id: \.self) { tab in tabButton(tab).id(tab) }
+                            Spacer(minLength: 40).frame(height: 30)
+                        }
+                        .frame(minWidth: geometry.size.width, alignment: .leading).padding(.vertical, 3)
+                    }
+                    .scrollIndicators(.hidden)
+                    .onChange(of: selection, initial: true) { _, tab in
+                        if tab != .conversation { scroll.scrollTo(tab, anchor: .center) }
+                    }
                 }
             }
         }
         .frame(minWidth: 0, maxWidth: .infinity)
+        .background(MiddleClickTarget { showsViewChooser = true })
+        .help("Middle-click the tab bar to open a view")
+        .popover(isPresented: $showsViewChooser, arrowEdge: .bottom) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Open a view").font(.headline)
+                ForEach(ProjectPanel.allCases, id: \.self) { tab in
+                    Button { showsViewChooser = false; select(tab) } label: {
+                        HStack {
+                            Label(tab.title, systemImage: tab.symbol)
+                            Spacer()
+                            if openTabs.contains(tab) { Text("Open").foregroundStyle(.secondary).font(.caption) }
+                        }.contentShape(Rectangle())
+                    }.buttonStyle(.plain).padding(.vertical, 4)
+                }
+            }.padding(16).frame(width: 220)
+        }
         #if DEBUG
             return strip.background(DebugViewMarker(name: "workspace-tabs"))
         #else
@@ -197,6 +218,8 @@ struct WorkspaceHeader: View {
         .overlay { RoundedRectangle(cornerRadius: 7).strokeBorder(selected ? Theme.hairline : .clear) }
         .onHover { hovered = $0 ? tab : nil }
         .contextMenu {
+            Button("Open a view…") { showsViewChooser = true }
+            Divider()
             Button("Close Tab") { model.closeProjectTab(tab) }.disabled(tab == .conversation)
             Button("Close Other Tabs") { model.closeOtherProjectTabs(keeping: tab) }.disabled(openTabs.count < 2)
             Divider()
