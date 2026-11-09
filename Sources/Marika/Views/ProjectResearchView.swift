@@ -70,9 +70,13 @@ struct ProjectResearchView: View {
                     pending(run)
                 }
             } else {
-                ContentUnavailableView("Research before you build", systemImage: "books.vertical", description:
-                    Text("Compare libraries, investigate documentation, or study competitors. Your agent gathers sources and saves actionable findings here."))
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                GeometryReader { geometry in
+                    ScrollView {
+                        ContentUnavailableView("Research before you build", systemImage: "books.vertical", description:
+                            Text("Compare libraries, investigate documentation, or study competitors. Your agent gathers sources and saves actionable findings here."))
+                            .frame(maxWidth: .infinity, minHeight: geometry.size.height)
+                    }
+                }
             }
         }
         .background(Theme.canvas)

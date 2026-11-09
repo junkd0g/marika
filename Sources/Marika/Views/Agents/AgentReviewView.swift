@@ -21,9 +21,17 @@ struct AgentReviewView: View {
                 }
                 Spacer()
                 Button { dismiss() } label: { Image(systemName: "xmark") }.buttonStyle(.plain)
+                    #if DEBUG
+                        .background(DebugViewMarker(name: "agent-review-close"))
+                    #endif
             }.padding(20)
             Divider()
-            if let error { Text(error).font(.system(size: 12)).foregroundStyle(Theme.attention).padding(16) }
+            if let error {
+                Text(error).font(.system(size: 12)).foregroundStyle(Theme.attention).padding(16)
+                    #if DEBUG
+                        .background(DebugViewMarker(name: "agent-review-error"))
+                    #endif
+            }
             if let review {
                 if review.isEmpty {
                     ContentUnavailableView("No changes to apply", systemImage: "checkmark.circle")

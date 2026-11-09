@@ -35,7 +35,9 @@ public struct ProjectSpace: Codable, Equatable, Sendable, Identifiable {
         self.symbol = Self.symbols.contains(symbol) ? symbol : Self.symbols[0]
         self.lastProjectID = lastProjectID
         self.notes = notes; self.tickets = tickets; self.section = section
-        let prefix = String((ticketPrefix ?? self.name).uppercased().filter { $0.isASCII && ($0.isLetter || $0.isNumber) }.prefix(6))
+        let derived = String(self.name.uppercased().filter { $0.isASCII && ($0.isLetter || $0.isNumber) }.prefix(6))
+        // Collision suffixes are part of the saved identity, including after reordering.
+        let prefix = (ticketPrefix ?? derived).uppercased().filter { $0.isASCII && ($0.isLetter || $0.isNumber) }
         self.ticketPrefix = prefix.isEmpty ? "TASK" : prefix
         self.nextTicketNumber = max(1, nextTicketNumber)
     }

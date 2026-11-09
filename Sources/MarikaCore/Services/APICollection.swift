@@ -68,10 +68,27 @@ public struct APICollection: Codable, Hashable, Sendable {
 
     public static func parseHeaders(_ headers: String) throws -> [String: String] {
         var parsed: [String: String] = [:]
-        for raw in headers.split(whereSeparator: \.isNewline) {
-            let fields = raw.split(separator: ":", maxSplits: 1)
+        var names = Set<String>()
+        let whitespace = CharacterSet(charactersIn: " \t")
+        let token = CharacterSet(charactersIn: "!#$%&'*+-.^_`|~0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz")
+        for raw in headers.replacingOccurrences(of: "\r\n", with: "\n").split(separator: "\n") {
+            if raw.trimmingCharacters(in: whitespace).isEmpty { continue }
+            let fields = raw.split(separator: ":", maxSplits: 1, omittingEmptySubsequences: false)
             guard fields.count == 2 else { throw AgentError.launchFailed("Write one Name: value header per line.") }
-            parsed[String(fields[0])] = fields[1].trimmingCharacters(in: .whitespaces)
+            let name = fields[0].trimmingCharacters(in: whitespace)
+            let value = fields[1].trimmingCharacters(in: whitespace)
+            guard !name.isEmpty, name.unicodeScalars.allSatisfy({ token.contains($0) }) else {
+                throw AgentError.launchFailed("Header names can contain letters, numbers and HTTP token punctuation, without spaces.")
+            }
+            guard value.unicodeScalars.allSatisfy({ $0.value == 9 || ($0.value >= 32 && $0.value != 127) }) else {
+                throw AgentError.launchFailed("Header values cannot contain control characters.")
+            }
+            // URLRequest treats names case-insensitively. Reject duplicates rather than let
+            // dictionary iteration choose which value is sent.
+            guard names.insert(name.lowercased()).inserted else {
+                throw AgentError.launchFailed("Header \(name) is repeated. Use one line per header.")
+            }
+            parsed[name] = value
         }
         return parsed
     }

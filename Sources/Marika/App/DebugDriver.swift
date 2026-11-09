@@ -134,6 +134,19 @@
                 }
                 guard let scan = model.project(id: project.id)?.scans?.last, let review = scan.review else { throw DriverError("No code review was published") }
                 log("review findings=\(review.findings.count) sourceLines=\(scan.inventory?.sourceLines ?? 0)")
+            case "researchSection":
+                model.switchPanel(.research)
+                try await pause(0.2)
+                guard let window = window(), let root = window.contentView,
+                      let picker = marker(in: root, named: "research-sections") else { throw DriverError("Research sections not found") }
+                try click(picker, in: window, fractionX: (CGFloat(step["index"]?.int ?? 0) + 0.5) / 3)
+                try await pause(0.2)
+            case "apiLifecycleTest":
+                try await DebugAPIChecks.lifecycle(model, action: step["action"]?.string ?? "remove")
+                log("API lifecycle passed")
+            case "apiRequestsTest":
+                try await DebugAPIChecks.requests(model)
+                log("Local API requests passed")
             case "apiClickSend":
                 guard let window = window(), let view = window.contentView, let button = marker(in: view, named: "api-send") else { throw DriverError("Send control not found") }
                 try click(button, in: window)
@@ -448,7 +461,12 @@
                 try await editSpaceUI(name: step["name"]?.string ?? "Work", color: step["color"]?.string ?? "teal", model: model)
             case "spaceSwitch":
                 guard let space = model.workspace.spaces.first(where: { $0.name == step["name"]?.string }) else { throw DriverError("Space not found") }
+                if let root = window()?.contentView, let row = marker(in: root, named: "space-switch-" + space.id.uuidString) {
+                    row.scrollToVisible(row.bounds)
+                    try await pause(0.15)
+                }
                 try await run(["op": "clickMarker", "name": .string("space-switch-" + space.id.uuidString)], model)
+                guard model.selectedSpace.id == space.id else { throw DriverError("Space row did not select " + space.name) }
             case "spaceContentState":
                 let space = model.selectedSpace
                 let notes: [[String: Any]] = space.notes.map { note in ["id": note.id.uuidString, "title": note.title,
@@ -498,6 +516,27 @@
                     "spaces": model.workspace.spaces.map(\.name), "visibleProjects": model.spaceProjects.map(\.name),
                     "drafts": Dictionary(uniqueKeysWithValues: model.workspace.sessions.map { ($0.id.uuidString, $0.draft?.text ?? "") })]
                 log("spaces " + String(decoding: try JSONSerialization.data(withJSONObject: state, options: [.sortedKeys]), as: UTF8.self))
+            case "assertMarker":
+                let name = step["name"]?.string ?? ""
+                for _ in 0..<40 {
+                    let present = NSApp.windows.filter(\.isVisible).contains { $0.contentView.flatMap { marker(in: $0, named: name) } != nil }
+                    if present == (step["present"]?.bool ?? true) { return }
+                    try await pause(0.05)
+                }
+                throw DriverError("Unexpected visibility for " + name)
+            case "qaLayoutState":
+                guard let main = window(), let root = main.contentView else { throw DriverError("No QA window") }
+                root.layoutSubtreeIfNeeded()
+                let projectList = marker(in: root, named: "sidebar-project-list")
+                let widths = Dictionary(uniqueKeysWithValues: ProjectPanel.allCases.compactMap { panel -> (String, CGFloat)? in
+                    guard let tab = marker(in: root, named: "workspace-tab-" + panel.rawValue.lowercased()) else { return nil }
+                    return (panel.rawValue, tab.bounds.width)
+                })
+                let state: [String: Any] = ["space": model.selectedSpace.name, "section": model.selectedSpace.section.rawValue,
+                    "welcome": model.showsWelcome, "commandPanel": model.commandPanel?.rawValue ?? "",
+                    "windowWidth": root.bounds.width, "projectListHeight": projectList.map { min($0.bounds.height, $0.visibleRect.height) } ?? 0,
+                    "tabWidths": widths]
+                log("qaLayout " + String(decoding: try JSONSerialization.data(withJSONObject: state, options: [.sortedKeys]), as: UTF8.self))
             case "clickMarker":
                 let name = step["name"]?.string ?? ""
                 guard let target = NSApp.windows.filter(\.isVisible).compactMap({ window in window.contentView.flatMap { marker(in: $0, named: name) }.map { (window, $0) } }).first else { throw DriverError("Missing UI element: " + name) }
@@ -1169,8 +1208,10 @@
                             context: nil, characters: text, charactersIgnoringModifiers: text, isARepeat: false,
                             keyCode: code)
                     else { continue }
-                    window.sendEvent(event)
+                    if step["application"]?.bool == true { NSApp.postEvent(event, atStart: false) }
+                    else { window.sendEvent(event) }
                 }
+                if step["application"]?.bool == true { try await pause(0.15) }
             case "scroll":
                 // A real wheel event, so it counts as the user scrolling.
                 guard let window = window(),
@@ -1920,12 +1961,14 @@
             guard model.updates.status == .failed, model.updates.errorMessage != nil else { throw DriverError("Update error is hidden") }
             try snapshot(to: directory + "/updates-error.png", title: "Marika Updates")
             model.updates.releaseOverride = nil
-            await model.updates.check()
-            guard model.updates.status != .failed else { throw DriverError("GitHub update check failed: " + (model.updates.errorMessage ?? "unknown")) }
-            try snapshot(to: directory + "/updates-live.png", title: "Marika Updates")
-            log("GitHub release check: " + model.updates.status.rawValue)
+            if step["liveUpdates"]?.bool == true {
+                await model.updates.check()
+                guard model.updates.status != .failed else { throw DriverError("GitHub update check failed: " + (model.updates.errorMessage ?? "unknown")) }
+                try snapshot(to: directory + "/updates-live.png", title: "Marika Updates")
+                log("GitHub release check: " + model.updates.status.rawValue)
+            } else { log("Live GitHub release check skipped; enable MARIKA_LIVE_UPDATES=1 to run it") }
             updatesWindow.close()
-            log("Chat history and updates passed: cross-project local search, exact old-message jump, draft preservation, Latest, menu and shortcut binding, installed version, release notes, update states and live GitHub check")
+            log("Chat history and updates passed: cross-project local search, exact old-message jump, draft preservation, Latest, menu and shortcut binding, installed version, release notes and update states")
         }
 
         private static func window() -> NSWindow? {

@@ -22,6 +22,7 @@ struct ProjectKnowledgeView: View {
             Text("Approved documents, links and decisions are searchable by every project agent. Proposed memory changes wait for your review. Imported text is a saved snapshot.")
                 .font(.caption).foregroundStyle(.secondary)
             TextField("Search documents and decisions…", text: $query).textFieldStyle(.roundedBorder)
+                .background(SpaceContentMarker(name: "knowledge-search"))
             if let error { Text(error).foregroundStyle(Theme.attention).textSelection(.enabled) }
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
@@ -37,6 +38,7 @@ struct ProjectKnowledgeView: View {
                         ForEach(matches) { match in
                             VStack(alignment: .leading, spacing: 8) {
                                 Button(match.title) { selection = match.entryID }.font(.headline)
+                                    .background(SpaceContentMarker(name: "knowledge-result-" + match.entryID.uuidString))
                                 Text(match.excerpt).font(.callout).textSelection(.enabled)
                                 HStack { Text(match.citation).font(.caption.monospaced()); Spacer(); CopyButton(text: match.citation) }
                             }.padding(14).surface()
@@ -52,6 +54,7 @@ struct ProjectKnowledgeView: View {
                                     Text("Revision \(entry.revision) · " + entry.updatedAt.formatted(date: .abbreviated, time: .omitted)).font(.caption).foregroundStyle(.secondary)
                                 }.padding(14).frame(maxWidth: .infinity, alignment: .leading).surface().contentShape(Rectangle())
                             }.buttonStyle(.plain)
+                                .background(SpaceContentMarker(name: "knowledge-entry-" + entry.id.uuidString))
                         }
                     }
                 }.padding(.vertical, 8)
@@ -88,7 +91,8 @@ struct ProjectKnowledgeView: View {
     private func detail(_ entry: KnowledgeEntry) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Button("All knowledge") { selection = nil }
+                Button("All knowledge") { query = ""; selection = nil }
+                    .background(SpaceContentMarker(name: "knowledge-all"))
                 Spacer()
                 Button("Edit") { editing = KnowledgeEditorDraft(original: entry) }
                 Button("Remove", role: .destructive) {

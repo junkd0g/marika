@@ -22,6 +22,7 @@ struct ProjectChangesView: View {
     @State private var prBody = ""
     @State private var prTitle = ""
     @State private var showsHistory = false
+    @State private var repositoryReady = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -30,7 +31,7 @@ struct ProjectChangesView: View {
                 Text(project.editorURL.lastPathComponent).font(.caption).foregroundStyle(.secondary)
                 if busy { ProgressView().controlSize(.small) }
                 Spacer()
-                Button("History & branches") { showsHistory = true }
+                Button("History & branches") { showsHistory = true }.disabled(!repositoryReady)
                 Button("Refresh") { Task { await refresh() } }
                 Button("Terminal") { model.openTerminal() }
             }.padding(16)
@@ -96,7 +97,7 @@ struct ProjectChangesView: View {
                     .disabled(commitMessage.isEmpty || !changes.contains(where: \.staged))
                 Button("Push…") { confirmPush = true }
                 Button("Create PR…") { showPR = true }
-            }.padding(12)
+            }.padding(12).disabled(!repositoryReady)
         }.disabled(busy)
         .task(id: project.editorURL) { selected = nil; patch = nil; repository = RepositoryActions(root: project.editorURL, environment: model.gitEnvironment, runtime: project.runtime); await refresh() }
         .task(id: selected) { await load() }
@@ -146,11 +147,17 @@ struct ProjectChangesView: View {
         model.openAgentChat(meta.id)
     }
     private func refresh() async {
+        repositoryReady = false
         do {
             changes = try await repository?.changes() ?? []
+            repositoryReady = repository != nil
+            error = nil
             if !changes.contains(where: { $0.id == selected }) { selected = changes.first?.id }
             await load()
-        } catch { self.error = error.localizedDescription }
+        } catch {
+            changes = []; selected = nil; patch = nil
+            self.error = error.localizedDescription
+        }
     }
     private func load() async {
         guard let change = changes.first(where: { $0.id == selected }) else { patch = nil; return }
@@ -171,9 +178,12 @@ struct ProjectChangesView: View {
         busy = true
         defer { busy = false }
         do {
-            error = try await operation(); didFail = false
+            let response = try await operation()
+            error = response; didFail = false
             if let message = error?.trimmingCharacters(in: .whitespacesAndNewlines), message.hasPrefix("https://") { pullRequestURL = URL(string: message) }
-            await refresh(); return true
+            await refresh()
+            if error == nil { error = response }
+            return true
         }
         catch { self.error = error.localizedDescription; didFail = true; return false }
     }

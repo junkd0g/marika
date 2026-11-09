@@ -35,13 +35,17 @@ public struct SpaceNote: Codable, Equatable, Sendable, Identifiable {
     public var markdown: String {
         "# " + displayTitle + "\n\n" + blocks.map { block in
             switch block.kind {
-            case .text: block.text
-            case .heading: "## " + block.text
-            case .subheading: "### " + block.text
-            case .bullet: "- " + block.text.replacingOccurrences(of: "\n", with: "\n  ")
-            case .checklist: "- [\(block.checked ? "x" : " ")] " + block.text
-            case .quote: "> " + block.text.replacingOccurrences(of: "\n", with: "\n> ")
-            case .code: "```\n" + block.text + "\n```"
+            case .text: return block.text
+            case .heading: return "## " + block.text
+            case .subheading: return "### " + block.text
+            case .bullet: return "- " + block.text.replacingOccurrences(of: "\n", with: "\n  ")
+            case .checklist: return "- [\(block.checked ? "x" : " ")] " + block.text.replacingOccurrences(of: "\n", with: "\n  ")
+            case .quote: return "> " + block.text.replacingOccurrences(of: "\n", with: "\n> ")
+            case .code:
+                // Use a longer fence when a code sample itself contains Markdown fences.
+                let longestRun = block.text.split(omittingEmptySubsequences: true, whereSeparator: { $0 != "`" }).map(\.count).max() ?? 0
+                let fence = String(repeating: "`", count: max(3, longestRun + 1))
+                return fence + "\n" + block.text + "\n" + fence
             }
         }.joined(separator: "\n\n")
     }

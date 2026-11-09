@@ -42,21 +42,29 @@ steps=[s('wait',seconds=1.1),s('size',width=1240,height=820),s('agentsMock',seco
     s('previewStop'),s('agentsLaunch',agent='codex',task='Review the main view'),s('wait',seconds=.4),
     s('agentWorktreeEdit',path='Sources/Main.swift',text='import SwiftUI\n// Changed in isolated agent worktree\nstruct Main {}\n'),
     s('agentReview'),s('wait',seconds=.7),s('shot',path=str(root/'review.png'),sheet=True),s('reviewApply'),s('wait',seconds=.5),
-    s('layoutState'),s('checkpoint'),s('quit')]
+    s('assertMarker',name='agent-review-error'),s('layoutState'),
+    s('clickMarker',name='agent-review-close'),
+    s('agentWorktreeEdit',path='Sources/Main.swift',text='import SwiftUI\n// Needle: open this line\nstruct Main {}\n'),
+    s('agentWorktreeEdit',path='Sources/Theme.swift',text='import SwiftUI\n// Changed in isolated agent worktree\nenum Theme {}\n'),
+    s('agentReview'),s('wait',seconds=.5),s('reviewApply'),s('wait',seconds=.5),
+    s('assertMarker',name='agent-review-error',present=False),s('shortcut',key='3',exactMenu=True),
+    s('wait',seconds=.2),s('layoutState'),s('checkpoint'),s('quit')]
 lines=run(steps,'workflow')
 def records(lines, prefix): return [json.loads(l.split(prefix,1)[1]) for l in lines if prefix in l]
 layouts=records(lines,'[driver] layout ')
 assert layouts[0]['primary']=='Code' and layouts[0]['secondary']=='Browser',layouts
 assert layouts[1]['primary']=='Browser' and layouts[1]['secondary']=='Code',layouts
-assert '// local unsaved draft' in layouts[-1]['draft'] and layouts[-1]['conflict'],layouts[-1]
+assert '// local unsaved draft' in layouts[2]['draft'] and not layouts[2]['conflict'],layouts[2]
+assert '// local unsaved draft' in layouts[-1]['draft'] and not layouts[-1]['conflict'],layouts[-1]
 preview=records(lines,'[driver] preview ')[0]
 assert preview['state']=='running' and '127.0.0.1:' in preview['url'],preview
-assert 'Changed in isolated agent worktree' in (project/'Sources/Main.swift').read_text()
+assert 'Changed in isolated agent worktree' in (project/'Sources/Theme.swift').read_text()
+assert 'local unsaved draft' not in (project/'Sources/Main.swift').read_text()
 saved=json.loads((data/'workspace.json').read_text())
-assert saved['sessions'][-1]['agentTask']['workspace']['status']=='applied',saved['sessions'][-1]
+assert saved['sessions'][-1]['agentTask']['workspace']['status']=='reviewed',saved['sessions'][-1]
 restarted=run([s('wait',seconds=1.2),s('layoutState'),s('quit')],'restore')
 restored=records(restarted,'[driver] layout ')[0]
 assert restored['primary']=='Browser' and restored['secondary']=='Code',restored
-assert len(restored['files'])==2 and '// local unsaved draft' in restored['draft'] and restored['conflict'],restored
+assert len(restored['files'])==2 and '// local unsaved draft' in restored['draft'] and not restored['conflict'],restored
 assert restored['browserURLs'] and restored['browserURLs'][0].startswith('http://127.0.0.1:'),restored
 print('Complete workbench flow passed. Screenshots and logs:',root)

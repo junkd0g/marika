@@ -22,6 +22,7 @@ struct ProjectResearchHub: View {
         Picker("Research workspace", selection: Binding(get: { model.researchSections[project.id] ?? "Research" }, set: { model.researchSections[project.id] = $0 })) {
             Text("Research").tag("Research"); Text("Compare models").tag("Compare"); Text("Knowledge").tag("Knowledge")
         }.pickerStyle(.segmented).frame(maxWidth: 420)
+            .background(SpaceContentMarker(name: "research-sections"))
     }
     private var deliverables: some View { Button("Deliverables", systemImage: "doc.richtext") { model.showExperience("Artifacts", project: project) }.controlSize(.small) }
 }

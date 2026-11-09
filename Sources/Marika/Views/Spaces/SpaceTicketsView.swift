@@ -36,6 +36,11 @@ struct SpaceTicketsView: View {
                 SpaceTicketEditor(spaceID: spaceID, ticketID: ticket.id).environment(model)
             }
             .background(SpaceContentMarker(name: "space-tickets"))
+            .onChange(of: model.workspace.projects(in: spaceID).map(\.id), initial: true) {
+                if let projectID, !model.workspace.projects(in: spaceID).contains(where: { $0.id == projectID }) {
+                    self.projectID = nil
+                }
+            }
     }
     private var filters: some View {
         ViewThatFits(in: .horizontal) {

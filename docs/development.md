@@ -85,8 +85,9 @@ It restarts the app to verify that cookies, local storage, tabs and bookmarks pe
 the browser in dark and light appearances. It makes no AI requests.
 
 `python3 scripts/ui-history-updates.py` checks cross-project message search, older-message jumps,
-draft preservation, release notes and update states. It also makes one read-only request to the
-public GitHub releases endpoint; it sends no AI prompts or conversation data.
+draft preservation, release notes and update states using fixtures. Add `MARIKA_LIVE_UPDATES=1`
+to also check the public GitHub releases endpoint. The live request sends no AI prompts or
+conversation data and is optional so routine UI checks can run offline.
 
 `python3 scripts/ui-recovery.py` checks deleted-file drafts, backup recovery, corrupt-data
 protection, retrying failed transcript saves, and restoration of partial streaming output
@@ -112,7 +113,20 @@ It uses isolated data and synthetic agent output; no provider request is sent.
 controls, checks space isolation and archive/restore, and verifies autosave and section restoration
 after restart. It uses local fixtures without a provider account.
 
-`python3 scripts/ui-checks.py` runs the welcome, followups, workflow, Codex-style, smoke, recovery, project-tab, space, space-content and browser suites
+`python3 scripts/ui-navigation-qa.py` checks Help and project navigation from Notes and Tickets,
+disabled hidden-editor commands, single-line tab labels, and compact layouts with seven spaces.
+
+`python3 scripts/ui-deep-workflows.py` checks creating and editing notes from search results,
+native Return and Shift-Return behavior in text, list, checklist and code blocks,
+returning from Knowledge search to the full library, and API success, HTTP failure, cancellation,
+retry, project removal and shutdown. Requests use a disposable local HTTP server.
+
+The project and workbench suites also cover editor history, local drafts, and blocked application
+of agent changes over an unsaved file. The workbench then applies a non-overlapping change and
+checks that the original draft survives a restart.
+
+`python3 scripts/ui-checks.py` runs 15 suites: welcome, followups, workflow, Codex-style, smoke,
+recovery, project-tabs, spaces, space-content, navigation-qa, deep-workflows, projects, workbench, history-updates and browser
 serially. It isolates editor preferences and saved data, disables CLI account probing, and
 keeps fixture files, screenshots and logs in `build/ui-checks` (or `--artifacts PATH`).
 The macOS GitHub Actions workflow runs these native UI checks after core tests and app-bundle

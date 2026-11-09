@@ -14,6 +14,13 @@ struct SidebarView: View {
     }
 
     var body: some View {
+        GeometryReader { geometry in
+            let reserved: CGFloat = model.rateLimits.isEmpty ? 485 : 511
+            sidebar(spaceRows: max(1, min(4, Int((geometry.size.height - reserved) / 53))))
+        }
+    }
+
+    private func sidebar(spaceRows: Int) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 10) {
                 Image(systemName: model.selectedSpace.symbol).font(.system(size: 18, weight: .semibold))
@@ -92,7 +99,11 @@ struct SidebarView: View {
                 }
                 .padding(.horizontal, 10).padding(.bottom, 12)
             }
-            SpaceSwitcher { pendingSpaceDeletion = $0 }
+            .frame(minHeight: 80)
+            #if DEBUG
+                .background(DebugViewMarker(name: "sidebar-project-list"))
+            #endif
+            SpaceSwitcher(visibleRows: spaceRows) { pendingSpaceDeletion = $0 }
             UsageFooter()
         }
         .background(alignment: .topLeading) {
@@ -162,6 +173,7 @@ private struct SpaceMenuActions: View {
 
 private struct SpaceSwitcher: View {
     @Environment(AppModel.self) private var model
+    let visibleRows: Int
     let requestDeletion: (ProjectSpace) -> Void
 
     var body: some View {
@@ -185,7 +197,7 @@ private struct SpaceSwitcher: View {
                         }
                     }.padding(.horizontal, 10).padding(.vertical, 2)
                 }.scrollIndicators(.automatic)
-                    .frame(height: min(CGFloat(model.workspace.spaces.count) * 53 + 4, 211))
+                    .frame(height: CGFloat(min(model.workspace.spaces.count, visibleRows)) * 53 - 1)
                     .onChange(of: model.selectedSpace.id, initial: true) { _, id in scroll.scrollTo(id, anchor: .center) }
             }
         }.padding(.top, 10).padding(.bottom, 12)

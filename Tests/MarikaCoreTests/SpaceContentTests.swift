@@ -3,6 +3,31 @@ import Testing
 @testable import MarikaCore
 
 struct SpaceContentTests {
+    @Test func duplicateTicketPrefixesSurviveReorderingAndRestart() throws {
+        var workspace = Workspace()
+        let first = try #require({ workspace.createSpace(name: "Product", color: .blue, symbol: "book.fill") }())
+        let second = try #require({ workspace.createSpace(name: "Product", color: .teal, symbol: "book.fill") }())
+        _ = workspace.createTicket(in: first.id)
+        let ticket = try #require({ workspace.createTicket(in: second.id) }())
+        let prefixes = Dictionary(uniqueKeysWithValues: workspace.spaces.map { ($0.id, $0.ticketPrefix) })
+        _ = workspace.reorderSpace(second.id, offset: -1)
+        var restored = try JSONDecoder().decode(Workspace.self, from: JSONEncoder().encode(workspace))
+        restored.normalizeSpaces()
+        #expect(Dictionary(uniqueKeysWithValues: restored.spaces.map { ($0.id, $0.ticketPrefix) }) == prefixes)
+        let next = try #require({ restored.createTicket(in: second.id) }())
+        #expect(next.key == "\(second.ticketPrefix)-2")
+        #expect(restored.spaces.first { $0.id == second.id }?.tickets.first?.key == ticket.key)
+    }
+
+    @Test func markdownExportPreservesMultilineChecklistsAndNestedCodeFences() {
+        let note = SpaceNote(title: "Release", blocks: [
+            SpaceNoteBlock(kind: .checklist, text: "Check release\nInclude the changelog", checked: true),
+            SpaceNoteBlock(kind: .code, text: "```swift\nprint(\"example\")\n```"),
+        ])
+        #expect(note.markdown.contains("- [x] Check release\n  Include the changelog"))
+        #expect(note.markdown.contains("````\n```swift\nprint(\"example\")\n```\n````"))
+    }
+
     @Test func oldSpacesLoadWithEmptyContent() throws {
         let space = try JSONDecoder().decode(ProjectSpace.self, from: Data("""
         {"id":"\(UUID())","name":"Work","color":"violet","symbol":"briefcase.fill"}

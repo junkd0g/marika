@@ -3,6 +3,22 @@ import Testing
 @testable import MarikaCore
 
 struct APICollectionTests {
+    @Test func headersAcceptEmptyValuesAndPreserveColons() throws {
+        let fields = try APICollection.parseHeaders("  X-Empty:\r\nAuthorization: Bearer a:b\r\n\r\nX-Tab:\tvalue\t")
+        #expect(fields == ["X-Empty": "", "Authorization": "Bearer a:b", "X-Tab": "value"])
+    }
+
+    @Test func headersRejectInvalidNamesAndControlCharacters() {
+        for input in [": value", "Bad Name: value", "Bad(Name): value", "Héader: value", "X-Test: one\u{0}two", "X-Test: one\rtwo", "X-Test: one\u{7F}two"] {
+            #expect(throws: AgentError.self) { try APICollection.parseHeaders(input) }
+        }
+    }
+
+    @Test func headersRejectCaseInsensitiveDuplicates() {
+        #expect(throws: AgentError.self) { try APICollection.parseHeaders("X-Mode: first\nx-mode: second") }
+        #expect(throws: AgentError.self) { try APICollection.parseHeaders("Accept: first\nAccept: second") }
+    }
+
     @Test func sourceAndComposePathsStayInsideProject() throws {
         let temp = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let root = temp.appendingPathComponent("server")

@@ -125,6 +125,10 @@ import Observation
         }
     }
 
+    func cancelAll() {
+        for id in Array(runningRequests) { cancel(id) }
+    }
+
     func compose(_ action: [String], project: Project, environment: [String: String]) async {
         guard !busy, let plan = project.apiCollection, !(plan.composeFiles ?? []).isEmpty else { return }
         busy = true

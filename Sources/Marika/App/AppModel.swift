@@ -177,7 +177,7 @@ final class AppModel {
     }
 
     var commandPanel: ProjectPanel? {
-        guard selectedSpace.section == .projects else { return nil }
+        guard !showsWelcome, selectedSpace.section == .projects else { return nil }
         guard let id = selectedSession?.projectID else { return nil }
         let primary = projectTabs[id] ?? .conversation
         if let focused = focusedPanels[id], focused == primary || focused == layout(for: id).secondary { return focused }
@@ -267,6 +267,7 @@ final class AppModel {
 
     func openAgentChat(_ id: UUID) {
         guard let meta = workspace.sessions.first(where: { $0.id == id }) else { return }
+        showsWelcome = false
         if let index = workspace.spaces.firstIndex(where: { $0.id == project(for: meta)?.spaceID }) { workspace.spaces[index].section = .projects }
         chatHistoryFocus = nil
         if meta.agentTask == nil { rememberProjectConversation(meta) }
@@ -629,6 +630,7 @@ final class AppModel {
 
     func selectSpace(_ id: UUID) {
         guard workspace.activateSpace(id) else { return }
+        showsWelcome = false
         chatHistoryFocus = nil
         if let project = workspace.preferredProject(in: id) { openProject(project, showProject: false) }
         else { selectedSessionID = nil }
@@ -700,6 +702,7 @@ final class AppModel {
 
     func openProject(_ project: Project, tab: ProjectTab? = nil, showProject: Bool = true) {
         guard let current = self.project(id: project.id) else { return }
+        if showProject { showsWelcome = false }
         if showProject, let index = workspace.spaces.firstIndex(where: { $0.id == current.spaceID }) { workspace.spaces[index].section = .projects }
         let conversation = workspace.chat(for: current.id) ?? newSession(in: current)
         selectedSessionID = conversation.id
@@ -799,6 +802,7 @@ final class AppModel {
     func removeProject(_ project: Project) {
         Task {
             if !(await confirmClosingEditors(Array(repositoryEditors[project.id]?.values ?? [:].values))) { return }
+            apiWorkspaces.removeValue(forKey: project.id)?.cancelAll()
             terminals.removeValue(forKey: project.id)?.shutdown()
             debugTasks.removeValue(forKey: project.id)?.cancel()
             pipelineRunners.removeValue(forKey: project.id)?.stop()
@@ -1275,6 +1279,7 @@ final class AppModel {
         let saved = saveChanges ? await save() : true
         // Keep the browser usable if a failed final save returns the user to the app.
         if saved {
+            for api in apiWorkspaces.values { api.cancelAll() }
             for browser in browsers.values { browser.stop() }
             for terminal in terminals.values { terminal.shutdown() }
         } else { isShuttingDown = false; startScheduler() }

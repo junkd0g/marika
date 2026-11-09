@@ -14,7 +14,8 @@ struct SpaceNotesView: View {
     }
     private var selection: UUID? {
         let id = model.spaceNoteSelections[spaceID]
-        return notes.contains { $0.id == id } ? id : notes.first?.id
+        // Keep the editor open when an edit removes the selected note's search match.
+        return space.notes.contains { $0.id == id && $0.archived == archived } ? id : notes.first?.id
     }
     var body: some View {
         VStack(spacing: 0) {
@@ -23,10 +24,8 @@ struct SpaceNotesView: View {
                     .buttonStyle(WorkspaceButtonStyle(kind: .quiet))
                     .background(archived ? Theme.selection : .clear, in: RoundedRectangle(cornerRadius: 9))
                     .background(SpaceContentMarker(name: "space-note-show-archive"))
-                Button("New Note", systemImage: "plus") {
-                    archived = false; query = ""
-                    model.addSpaceNote(in: spaceID)
-                }.buttonStyle(WorkspaceButtonStyle(kind: .primary))
+                Button("New Note", systemImage: "plus", action: createNote)
+                    .buttonStyle(WorkspaceButtonStyle(kind: .primary))
                     .background(SpaceContentMarker(name: "space-note-new"))
             }
             Divider()
@@ -34,6 +33,7 @@ struct SpaceNotesView: View {
                 VStack(spacing: 0) {
                     WorkspaceSearchField(placeholder: "Search notes", text: $query).padding(12)
                         .accessibilityLabel("Search space notes")
+                        .background(SpaceContentMarker(name: "space-note-search"))
                     ScrollView {
                         LazyVStack(spacing: 4) {
                             ForEach(notes) { note in
@@ -66,12 +66,26 @@ struct SpaceNotesView: View {
                     } description: {
                         Text("Write plans, decisions and meeting notes for this space.")
                     } actions: {
-                        if !archived { Button("Create a Note") { model.addSpaceNote(in: spaceID) }.buttonStyle(WorkspaceButtonStyle(kind: .primary)) }
+                        if !archived {
+                            Button("Create a Note", action: createNote).buttonStyle(WorkspaceButtonStyle(kind: .primary))
+                                .background(SpaceContentMarker(name: "space-note-empty-create"))
+                        }
                     }.frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             }
         }.background(Theme.canvas)
             .background(SpaceContentMarker(name: "space-notes"))
+            .onChange(of: selection, initial: true) { _, id in model.spaceNoteSelections[spaceID] = id }
+            .onChange(of: query) {
+                if !notes.contains(where: { $0.id == model.spaceNoteSelections[spaceID] }) {
+                    model.spaceNoteSelections[spaceID] = notes.first?.id
+                }
+            }
+    }
+
+    private func createNote() {
+        archived = false; query = ""
+        model.addSpaceNote(in: spaceID)
     }
 }
 
@@ -128,6 +142,7 @@ private struct SpaceNoteEditor: View {
                 }
             }.frame(maxWidth: .infinity, maxHeight: .infinity)
                 .onAppear { titleFocused = note.title.isEmpty }
+                .background(NoteLineBreakHandler(isEditingBlock: focusedBlock != nil))
         }
     }
     private func blockRow(_ block: SpaceNoteBlock) -> some View {
@@ -191,6 +206,38 @@ private struct SpaceNoteEditor: View {
         update { note in
             guard let index = note.blocks.firstIndex(where: { $0.id == id }), note.blocks.indices.contains(index + offset) else { return }
             note.blocks.swapAt(index, index + offset)
+        }
+    }
+}
+
+/// Intercept Shift-Return before TextField submits and ends its editing session.
+/// Keep the native field editor so selection, undo and input methods still work.
+private struct NoteLineBreakHandler: NSViewRepresentable {
+    var isEditingBlock: Bool
+
+    func makeNSView(context: Context) -> KeyTarget { KeyTarget() }
+    func updateNSView(_ view: KeyTarget, context: Context) { view.isEditingBlock = isEditingBlock }
+    static func dismantleNSView(_ view: KeyTarget, coordinator: ()) { view.stopMonitoring() }
+
+    final class KeyTarget: NSView {
+        var isEditingBlock = false
+        private var monitor: Any?
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            stopMonitoring()
+            guard window != nil else { return }
+            monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+                guard let self, isEditingBlock, !isHiddenOrHasHiddenAncestor, let window, event.window === window,
+                      event.modifierFlags.intersection([.shift, .command, .control, .option]) == .shift,
+                      [36, 76].contains(event.keyCode), let editor = window.firstResponder as? NSTextView,
+                      editor.isFieldEditor, !editor.hasMarkedText() else { return event }
+                editor.insertNewlineIgnoringFieldEditor(nil)
+                return nil
+            }
+        }
+        func stopMonitoring() {
+            if let monitor { NSEvent.removeMonitor(monitor); self.monitor = nil }
         }
     }
 }

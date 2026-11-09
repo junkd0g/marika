@@ -123,7 +123,9 @@ struct WorkspaceHeader: View {
                 ScrollViewReader { scroll in
                     ScrollView(.horizontal) {
                         HStack(spacing: 4) {
-                            ForEach(openTabs.filter { $0 != .conversation }, id: \.self) { tab in tabButton(tab).id(tab) }
+                            ForEach(openTabs.filter { $0 != .conversation }, id: \.self) { tab in
+                                tabButton(tab).fixedSize(horizontal: true, vertical: false).id(tab)
+                            }
                             Spacer(minLength: 40).frame(height: 30)
                         }
                         .frame(minWidth: geometry.size.width, alignment: .leading).padding(.vertical, 3)
@@ -149,7 +151,7 @@ struct WorkspaceHeader: View {
             Button { select(tab) } label: {
                 HStack(spacing: 6) {
                     Image(systemName: tab.symbol).font(.system(size: 12, weight: .medium))
-                    Text(tab.title).font(.system(size: 11.5, weight: selected ? .semibold : .medium))
+                    Text(tab.title).font(.system(size: 11.5, weight: selected ? .semibold : .medium)).lineLimit(1)
                     if tab == .agents, activeAgents > 0 {
                         Text(String(activeAgents)).font(.system(size: 9, weight: .semibold)).monospacedDigit()
                             .padding(.horizontal, 4).padding(.vertical, 1).background(Theme.selection, in: Capsule())

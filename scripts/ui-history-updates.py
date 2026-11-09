@@ -23,7 +23,7 @@ for name, agent in [('Studio', 'codex'), ('Research', 'claude')]:
     spaces=[dict(id=personal, name='Personal', color='blue'), dict(id=work, name='Work', color='teal')])))
 steps = [dict(op='wait', seconds=1), dict(op='agentsMock', seconds=.1), dict(op='appearance', dark=True),
          dict(op='size', width=1100, height=760), dict(op='wait', seconds=.3),
-         dict(op='chatHistoryUpdatesTest', directory=str(root)), dict(op='quit')]
+         dict(op='chatHistoryUpdatesTest', directory=str(root), liveUpdates=os.environ.get('MARIKA_LIVE_UPDATES') == '1'), dict(op='quit')]
 # Bootstrap selects the most recent project; the test deliberately searches the other one.
 (root / 'steps.json').write_text(json.dumps(steps))
 log = root / 'driver.log'

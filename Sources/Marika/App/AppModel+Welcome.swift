@@ -12,6 +12,7 @@ extension AppModel {
     }
 
     func showWelcome() {
+        openSpaceSection(.projects)
         welcomeAgent = selectedSession?.agent ?? workspace.preferences.defaultAgent
         showsWelcome = true
     }
