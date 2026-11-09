@@ -224,7 +224,11 @@ private struct ProjectWorkspaceView: View {
     }
     private func place<V: View>(_ view: V, panel: ProjectPanel, size: CGSize) -> some View {
         let rect = bounds(panel, in: size)
-        return view.frame(width: rect.width, height: rect.height).clipped()
+        return view.frame(width: rect.width, height: rect.height)
+            .background(WorkspacePaneFocus(isVisible: visible(panel)) {
+                if model.focusedPanels[project.id] != panel { model.focusedPanels[project.id] = panel }
+            })
+            .clipped()
             .offset(x: rect.minX, y: rect.minY)
             .opacity(visible(panel) ? 1 : 0).allowsHitTesting(visible(panel)).accessibilityHidden(!visible(panel))
     }

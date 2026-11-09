@@ -43,9 +43,11 @@ final class AppModel {
         }
     }
     var composerFocusRequest = UUID()
+    var focusedPanels: [UUID: ProjectPanel] = [:]
     var projectTabs: [UUID: ProjectTab] = [:] {
         didSet {
             for (id, tab) in projectTabs where oldValue[id] != tab {
+                focusedPanels[id] = tab
                 guard let index = workspace.projects.firstIndex(where: { $0.id == id }) else { continue }
                 var layout = workspace.projects[index].layout ?? ProjectLayout()
                 layout.openTab(tab)
@@ -109,7 +111,7 @@ final class AppModel {
 
     func browser(for project: Project) -> BrowserWorkspace {
         if let existing = browsers[project.id] { return existing }
-        let browser = BrowserWorkspace(root: project.url, address: project.previewAddress)
+        let browser = BrowserWorkspace(root: project.url, address: project.previewAddress, identifier: project.id)
         if let saved = project.layout { browser.restore(saved) }
         browser.onStateChange = { [weak self] in self?.scheduleSave() }
         browser.onPresent = { [weak self] in
@@ -155,12 +157,25 @@ final class AppModel {
     }
 
     var activeEditor: CodeWorkspace? {
-        guard let projectID = selectedSession?.projectID, projectTabs[projectID] == .code || layout(for: projectID).secondary == .code else { return nil }
+        guard let projectID = selectedSession?.projectID, commandPanel == .code else { return nil }
         return editors[projectID]
+    }
+
+    var activeBrowser: BrowserWorkspace? {
+        guard let id = selectedSession?.projectID, commandPanel == .browser else { return nil }
+        return browsers[id]
+    }
+
+    var commandPanel: ProjectPanel? {
+        guard let id = selectedSession?.projectID else { return nil }
+        let primary = projectTabs[id] ?? .conversation
+        if let focused = focusedPanels[id], focused == primary || focused == layout(for: id).secondary { return focused }
+        return primary
     }
 
     func selectProjectTab(_ tab: ProjectTab) {
         guard let meta = selectedSession, let project = project(for: meta) else { return }
+        focusedPanels[project.id] = tab
         switch tab {
         case .conversation:
             openProject(project, tab: .conversation)
@@ -1141,6 +1156,7 @@ final class AppModel {
                 saved.browserURLs = browser.pages.map { $0.url?.absoluteString ?? "" }
                 saved.browserIndex = browser.pages.firstIndex { $0.id == browser.selectedPageID } ?? 0
                 saved.browserViewport = browser.viewport
+                saved.browserLibrary = browser.library
             }
             if selectedSession?.projectID == id { saved.showsInspector = showsInspector }
             workspace.projects[index].layout = saved

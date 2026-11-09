@@ -265,7 +265,7 @@
                 log("project tab \(model.projectTabs[meta.projectID]?.rawValue ?? "Conversation") browser=\(model.browsers[meta.projectID] != nil)")
             case "browserAddress":
                 guard let window = window(), let view = window.contentView,
-                      let field = textField(in: view, placeholder: "URL, localhost:3000, or project HTML file")
+                      let field = textField(in: view, placeholder: "Search or enter address")
                 else { throw DriverError("browser address field not found") }
                 window.makeFirstResponder(field)
                 guard let input = field.currentEditor() as? NSTextView else { throw DriverError("browser address field is not editable") }
@@ -678,7 +678,7 @@
                       page.string?.contains(step["contains"]?.string ?? "") == true
                 else { throw DriverError("PDF content is not loaded in the preview") }
                 log("PDF preview loaded: pages=\(document.pageCount) scale=\(pdf.scaleFactor)")
-            case "browserOpen", "browserTool", "browserMCP", "browserJS", "browserAttach", "browserState", "browserWait", "browserViewport", "browserNewTab":
+            case "browserOpen", "browserTool", "browserMCP", "browserJS", "browserAttach", "browserState", "browserWait", "browserViewport", "browserNewTab", "browserCheck", "browserFind", "browserMoveTab", "browserPrepareDownload", "browserSaveDownload":
                 guard let meta = model.selectedSession, let project = model.project(for: meta) else { throw DriverError("no project") }
                 let browser = model.browser(for: project)
                 switch step["op"]?.string {
@@ -690,8 +690,11 @@
                     let url = try BrowserAddress.resolve(step["url"]?.string ?? "", projectRoot: project.url)
                     browser.newPage(url: url)
                 case "browserWait":
+                    // A DOM click queues navigation after its JavaScript reply.
+                    try await pause(0.2)
                     let deadline = Date().addingTimeInterval(20)
                     while browser.selectedPage?.isLoading == true, Date() < deadline { try await pause(0.1) }
+                    try await pause(0.1)
                     if let error = browser.selectedPage?.navigationError { throw DriverError(error) }
                     if browser.selectedPage?.isLoading == true { throw DriverError("browser load timed out") }
                 case "browserTool", "browserMCP":
@@ -704,7 +707,42 @@
                     let types = result["content"]?.array?.compactMap { $0["type"]?.string } ?? []
                     log("browser tool \(step["name"]?.string ?? "") error=\(result["isError"]?.bool ?? false) types=\(types) text=\(result["content"]?.array?.compactMap { $0["text"]?.string }.joined().prefix(1600) ?? "")")
                 case "browserJS":
-                    _ = try await browser.selectedPage?.evaluate(step["script"]?.string ?? "return null;")
+                    let value = try await browser.selectedPage?.evaluate(step["script"]?.string ?? "return null;")
+                    if let expected = step["expect"], value != expected { throw DriverError("Unexpected browser script result: \(String(describing: value))") }
+                case "browserFind":
+                    browser.selectedPage?.findText = step["text"]?.string ?? ""
+                    browser.selectedPage?.find()
+                    try await pause(0.3)
+                case "browserPrepareDownload":
+                    guard let path = step["path"]?.string else { throw DriverError("Missing test destination") }
+                    BrowserDownload.destinationForTesting = URL(fileURLWithPath: path)
+                case "browserSaveDownload":
+                    let deadline = Date().addingTimeInterval(10)
+                    while browser.downloads.isEmpty, Date() < deadline { try await pause(0.1) }
+                    while browser.downloads.first?.isRunning == true, Date() < deadline { try await pause(0.1) }
+                    guard let path = step["path"]?.string,
+                          browser.downloads.first?.state == .completed else { throw DriverError("Download did not finish") }
+                    let destination = URL(fileURLWithPath: path)
+                    guard
+                          try String(contentsOf: destination, encoding: .utf8) == step["content"]?.string
+                    else { throw DriverError("Downloaded content was not saved correctly: \(browser.downloads.first?.status ?? "no download")") }
+                case "browserMoveTab":
+                    guard let first = browser.pages.first, let last = browser.pages.last else { throw DriverError("No tabs") }
+                    browser.moveTab(last.id, before: first.id)
+                    guard browser.pages.first?.id == last.id else { throw DriverError("Tab reorder failed") }
+                case "browserCheck":
+                    if let count = step["tabs"]?.int, browser.pages.count != count { throw DriverError("Expected \(count) browser tabs; got \(browser.pages.count)") }
+                    if let count = step["bookmarks"]?.int, browser.library.bookmarks.count != count { throw DriverError("Bookmarks not preserved") }
+                    if let count = step["history"]?.int, browser.library.history.count != count { throw DriverError("Unexpected history count: \(browser.library.history.count)") }
+                    if let title = step["title"]?.string, browser.selectedPage?.title != title { throw DriverError("Unexpected page title: \(browser.selectedPage?.title ?? "nil")") }
+                    if let found = step["found"]?.bool, browser.selectedPage?.findFound != found { throw DriverError("Find returned unexpected result") }
+                    if let zoom = step["zoom"]?.double, browser.selectedPage?.zoom != zoom { throw DriverError("Unexpected zoom") }
+                    if let error = step["hasError"]?.bool, (browser.selectedPage?.navigationError != nil) != error { throw DriverError("Unexpected navigation error") }
+                    if let placeholder = step["focusedField"]?.string {
+                        guard let root = window()?.contentView, let field = textField(in: root, placeholder: placeholder),
+                              let editor = field.currentEditor(), editor === window()?.firstResponder else { throw DriverError("Browser field is not focused: \(placeholder); responder=\(String(describing: window()?.firstResponder)); sheet=\(String(describing: window()?.attachedSheet)); windows=\(NSApp.windows.map { $0.title })") }
+                    }
+                    log("Browser checks passed")
                 case "browserAttach":
                     browser.comment = step["text"]?.string ?? ""
                     await browser.attachFeedback()
@@ -717,6 +755,10 @@
                     ]).serialized(), as: UTF8.self))
                 default: break
                 }
+            case "browserPolishChecks":
+                guard let browser = model.activeBrowser else { throw DriverError("Browser must be selected") }
+                try await BrowserPolishChecks.run(browser)
+                log("Browser favicon, download failure/retry/cancellation and website-data isolation checks passed")
             case "codeInsert":
                 guard let document = model.activeEditor?.selectedDocument,
                     let field = window()?.firstResponder as? CodeEditingTextView, field.documentID == document.id
@@ -916,8 +958,17 @@
                 }
                 if let menu = NSApp.mainMenu {
                     log("shortcut " + matchingItems(menu).map { "\($0.title): enabled=\($0.isEnabled)" }.joined(separator: ", "))
+                    // Synthetic NSMenu events can choose a shifted sibling (e.g.
+                    // Search Project instead of Find). Verify the exact binding
+                    // and invoke its native action when a check requests it.
+                    if step["exactMenu"]?.bool == true {
+                        guard let item = matchingItems(menu).first(where: \.isEnabled), let action = item.action,
+                              NSApp.sendAction(action, to: item.target, from: item)
+                        else { throw DriverError("No enabled menu action for shortcut \(key)") }
+                        return
+                    }
                 }
-                let codes: [String: UInt16] = ["1": 18, "2": 19, "3": 20, "4": 21, "5": 23, "6": 22, "7": 26, "8": 28, "9": 25, "[": 33, "]": 30, "\\": 42, "e": 14]
+                let codes: [String: UInt16] = ["1": 18, "2": 19, "3": 20, "4": 21, "5": 23, "6": 22, "7": 26, "8": 28, "9": 25, "[": 33, "]": 30, "\\": 42, "e": 14, "f": 3, "l": 37, "t": 17, "w": 13, "r": 15, "d": 2, "y": 16, "+": 24, "-": 27]
                 guard let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: flags,
                     timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber,
                     context: nil, characters: key, charactersIgnoringModifiers: key, isARepeat: false, keyCode: codes[key] ?? 0),

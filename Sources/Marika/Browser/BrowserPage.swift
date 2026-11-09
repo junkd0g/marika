@@ -12,16 +12,25 @@ final class BrowserPage: NSObject, Identifiable, WKNavigationDelegate, WKUIDeleg
     @ObservationIgnored private var observations: [NSKeyValueObservation] = []
     var url: URL? { didSet { workspace?.onStateChange?() } }
     var title = "New tab"
+    var favicon: NSImage?
+    @ObservationIgnored var faviconTask: Task<Void, Never>?
     var isLoading = false
     var progress = 0.0
     var canGoBack = false
     var canGoForward = false
     var navigationError: String?
     var isAnnotating = false
+    var zoom = 1.0 {
+        didSet { webView.pageZoom = zoom }
+    }
+    var findText = ""
+    var findFound: Bool?
+    @ObservationIgnored private var findGeneration = 0
 
-    init(workspace: BrowserWorkspace, dataStore: WKWebsiteDataStore) {
+    init(workspace: BrowserWorkspace, dataStore: WKWebsiteDataStore, configuration suppliedConfiguration: WKWebViewConfiguration? = nil) {
         self.workspace = workspace
-        let configuration = WKWebViewConfiguration()
+        let configuration = suppliedConfiguration ?? WKWebViewConfiguration()
+        configuration.userContentController = WKUserContentController()
         configuration.websiteDataStore = dataStore
         configuration.applicationNameForUserAgent = "Marika/0.1"
         configuration.mediaTypesRequiringUserActionForPlayback = .all
@@ -33,17 +42,49 @@ final class BrowserPage: NSObject, Identifiable, WKNavigationDelegate, WKUIDeleg
         webView.navigationDelegate = self
         webView.uiDelegate = self
         webView.isInspectable = true
+        webView.allowsBackForwardNavigationGestures = true
+        webView.allowsMagnification = true
         configuration.userContentController.add(self, contentWorld: .world(name: BrowserScripts.world), name: "marikaElement")
         observations = [
             webView.observe(\.url, options: [.new]) { [weak self] view, _ in MainActor.assumeIsolated {
                 if let url = view.url { self?.url = url }
             } },
-            webView.observe(\.title, options: [.new]) { [weak self] view, _ in MainActor.assumeIsolated { self?.title = view.title ?? "New tab" } },
+            webView.observe(\.title, options: [.new]) { [weak self] view, _ in MainActor.assumeIsolated {
+                self?.title = view.title.flatMap { $0.isEmpty ? nil : $0 } ?? view.url?.host ?? "New tab"
+                // WebKit can publish the document title after didFinish.
+                if let url = view.url, let title = view.title {
+                    self?.workspace?.library.updateTitle(for: url, to: title)
+                }
+            } },
             webView.observe(\.isLoading, options: [.new]) { [weak self] view, _ in MainActor.assumeIsolated { self?.isLoading = view.isLoading } },
             webView.observe(\.estimatedProgress, options: [.new]) { [weak self] view, _ in MainActor.assumeIsolated { self?.progress = view.estimatedProgress } },
             webView.observe(\.canGoBack, options: [.new]) { [weak self] view, _ in MainActor.assumeIsolated { self?.canGoBack = view.canGoBack } },
             webView.observe(\.canGoForward, options: [.new]) { [weak self] view, _ in MainActor.assumeIsolated { self?.canGoForward = view.canGoForward } },
         ]
+    }
+
+    func reload() {
+        if let url, navigationError != nil || webView.url == nil {
+            load(url)
+            return
+        }
+        navigationError = nil
+        webView.reload()
+    }
+
+    func changeZoom(_ delta: Double) { zoom = min(3, max(0.5, ((zoom + delta) * 10).rounded() / 10)) }
+
+    func find(backwards: Bool = false) {
+        findGeneration += 1
+        let generation = findGeneration
+        let configuration = WKFindConfiguration()
+        configuration.backwards = backwards
+        configuration.caseSensitive = false
+        configuration.wraps = true
+        webView.find(findText, configuration: configuration) { [weak self] result in
+            guard let self, generation == self.findGeneration else { return }
+            self.findFound = self.findText.isEmpty ? nil : result.matchFound
+        }
     }
 
     func load(_ url: URL) {
@@ -91,7 +132,12 @@ final class BrowserPage: NSObject, Identifiable, WKNavigationDelegate, WKUIDeleg
         if url.absoluteString == "about:blank" { decisionHandler(.allow); return }
         do {
             _ = try BrowserAddress.validate(url, projectRoot: root)
-            decisionHandler(.allow)
+            if navigationAction.shouldPerformDownload { decisionHandler(.download) }
+            else if navigationAction.navigationType == .linkActivated,
+                    navigationAction.modifierFlags.contains(.command) {
+                workspace?.newPage(url: url, select: navigationAction.modifierFlags.contains(.shift))
+                decisionHandler(.cancel)
+            } else { decisionHandler(.allow) }
         } catch {
             workspace?.errorMessage = error.localizedDescription
             decisionHandler(.cancel)
@@ -99,14 +145,21 @@ final class BrowserPage: NSObject, Identifiable, WKNavigationDelegate, WKUIDeleg
     }
 
     func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
+        faviconTask?.cancel()
+        favicon = nil
         navigationError = nil
         isLoading = true
         isAnnotating = false
+        findFound = nil
         if workspace?.selectedPageID == id { workspace?.clearFeedback() }
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         isLoading = false
+        if let loadedURL = webView.url { url = loadedURL }
+        title = webView.title.flatMap { $0.isEmpty ? nil : $0 } ?? url?.host ?? "New tab"
+        workspace?.recordVisit(self)
+        refreshFavicon()
         if workspace?.selectedPageID == id, let url = webView.url { workspace?.onNavigate?(url.absoluteString) }
     }
 
@@ -126,10 +179,27 @@ final class BrowserPage: NSObject, Identifiable, WKNavigationDelegate, WKUIDeleg
     func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration,
                  for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
         if let url = navigationAction.request.url, let workspace,
-            (try? BrowserAddress.validate(url, projectRoot: workspace.root)) != nil {
-            workspace.newPage(url: url)
+            (url.absoluteString == "about:blank" || (try? BrowserAddress.validate(url, projectRoot: workspace.root)) != nil) {
+            // WebKit must create the requested view with its supplied configuration
+            // for window.open, opener messaging and authentication popups to work.
+            return workspace.newPage(configuration: configuration).webView
         }
         return nil
+    }
+
+    func webViewDidClose(_ webView: WKWebView) { workspace?.close(self) }
+
+    func webView(_ webView: WKWebView, decidePolicyFor navigationResponse: WKNavigationResponse,
+                 decisionHandler: @escaping @MainActor @Sendable (WKNavigationResponsePolicy) -> Void) {
+        decisionHandler(navigationResponse.canShowMIMEType ? .allow : .download)
+    }
+
+    func webView(_ webView: WKWebView, navigationAction: WKNavigationAction, didBecome download: WKDownload) {
+        workspace?.startDownload(download)
+    }
+
+    func webView(_ webView: WKWebView, navigationResponse: WKNavigationResponse, didBecome download: WKDownload) {
+        workspace?.startDownload(download)
     }
 
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {

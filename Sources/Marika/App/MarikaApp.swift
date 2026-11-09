@@ -162,16 +162,50 @@ struct MarikaCommands: Commands {
             .disabled(model.activeEditor?.selectedDocument.map { !$0.isModified || $0.isSaving || $0.changedOnDisk } ?? true)
         }
         CommandGroup(after: .textEditing) {
-            Button("Find in File…") {
-                model.activeEditor?.findRequest += 1
+            Button(model.activeBrowser == nil ? "Find in File…" : "Find in Page…") {
+                if let browser = model.activeBrowser { browser.findRequest = UUID() }
+                else { model.activeEditor?.findRequest += 1 }
             }
             .keyboardShortcut("f")
-            .disabled(model.activeEditor?.selectedDocument?.isEditable != true)
+            .disabled(model.activeBrowser?.selectedPage?.url == nil && model.activeEditor?.selectedDocument?.isEditable != true)
+        }
+        CommandMenu("Browser") {
+            Group {
+                Button("New Browser Tab") { model.activeBrowser?.newTab() }.keyboardShortcut("t")
+                Button("Close Browser Tab") {
+                    if let browser = model.activeBrowser, let page = browser.selectedPage { browser.close(page) }
+                }.keyboardShortcut("w")
+                Button("Reopen Closed Browser Tab") { model.activeBrowser?.reopenClosedTab() }
+                    .keyboardShortcut("t", modifiers: [.command, .shift]).disabled(model.activeBrowser?.closedTabs.isEmpty != false)
+                Divider()
+                Button("Open Location…") { model.activeBrowser?.addressFocusRequest = UUID() }.keyboardShortcut("l")
+                Button("Reload Page") { model.activeBrowser?.selectedPage?.reload() }.keyboardShortcut("r")
+                Button("Stop Loading") { model.activeBrowser?.selectedPage?.webView.stopLoading() }
+                    .keyboardShortcut(.escape, modifiers: []).disabled(model.activeBrowser?.selectedPage?.isLoading != true)
+                Divider()
+                Button("Previous Browser Tab") { model.activeBrowser?.selectAdjacentTab(-1) }
+                    .keyboardShortcut("[", modifiers: [.command, .shift])
+                Button("Next Browser Tab") { model.activeBrowser?.selectAdjacentTab(1) }
+                    .keyboardShortcut("]", modifiers: [.command, .shift])
+                Divider()
+                Button("Bookmark This Page") { model.activeBrowser?.toggleBookmark() }.keyboardShortcut("d")
+                Button("Show Browser History") { model.activeBrowser?.showsHistory.toggle() }.keyboardShortcut("y")
+                Divider()
+                Button("Zoom In") { model.activeBrowser?.selectedPage?.changeZoom(0.1) }.keyboardShortcut("+")
+                Button("Zoom Out") { model.activeBrowser?.selectedPage?.changeZoom(-0.1) }.keyboardShortcut("-")
+                Button("Actual Size") { model.activeBrowser?.selectedPage?.zoom = 1 }
+            }.disabled(model.activeBrowser == nil)
         }
         CommandMenu("Navigate") {
-            Button("Previous Project Tab") { model.selectAdjacentProjectTab(-1) }
+            Button(model.activeBrowser == nil ? "Previous Project Tab" : "Previous Browser Tab") {
+                if let browser = model.activeBrowser { browser.selectAdjacentTab(-1) }
+                else { model.selectAdjacentProjectTab(-1) }
+            }
                 .keyboardShortcut(.tab, modifiers: [.control, .shift]).disabled(model.selectedProject == nil)
-            Button("Next Project Tab") { model.selectAdjacentProjectTab(1) }
+            Button(model.activeBrowser == nil ? "Next Project Tab" : "Next Browser Tab") {
+                if let browser = model.activeBrowser { browser.selectAdjacentTab(1) }
+                else { model.selectAdjacentProjectTab(1) }
+            }
                 .keyboardShortcut(.tab, modifiers: .control).disabled(model.selectedProject == nil)
             Button("Close Project Tab") {
                 if let project = model.selectedProject { model.closeProjectTab(model.layout(for: project.id).panel) }
@@ -195,12 +229,18 @@ struct MarikaCommands: Commands {
                     .disabled(model.selectedSession == nil)
             }
             Divider()
-            Button("Back") { model.activeEditor?.goBack() }
+            Button("Back") {
+                if let browser = model.activeBrowser { browser.selectedPage?.webView.goBack() }
+                else { model.activeEditor?.goBack() }
+            }
                 .keyboardShortcut("[")
-                .disabled(model.activeEditor?.canGoBack != true)
-            Button("Forward") { model.activeEditor?.goForward() }
+                .disabled(model.activeBrowser.map { $0.selectedPage?.canGoBack != true } ?? (model.activeEditor?.canGoBack != true))
+            Button("Forward") {
+                if let browser = model.activeBrowser { browser.selectedPage?.webView.goForward() }
+                else { model.activeEditor?.goForward() }
+            }
                 .keyboardShortcut("]")
-                .disabled(model.activeEditor?.canGoForward != true)
+                .disabled(model.activeBrowser.map { $0.selectedPage?.canGoForward != true } ?? (model.activeEditor?.canGoForward != true))
             Divider()
             Button("Focus Files") { model.showCode(focusFiles: true) }
                 .keyboardShortcut("e", modifiers: [.command, .shift])
@@ -213,10 +253,10 @@ struct MarikaCommands: Commands {
             Divider()
             Button("Previous File") { model.activeEditor?.selectAdjacentDocument(-1) }
                 .keyboardShortcut("[", modifiers: [.command, .shift])
-                .disabled((model.activeEditor?.documents.count ?? 0) < 2)
+                .disabled(model.activeBrowser != nil || (model.activeEditor?.documents.count ?? 0) < 2)
             Button("Next File") { model.activeEditor?.selectAdjacentDocument(1) }
                 .keyboardShortcut("]", modifiers: [.command, .shift])
-                .disabled((model.activeEditor?.documents.count ?? 0) < 2)
+                .disabled(model.activeBrowser != nil || (model.activeEditor?.documents.count ?? 0) < 2)
         }
         CommandMenu("Project") {
             Button("Terminal") { model.openTerminal() }

@@ -39,11 +39,12 @@ public struct ProjectLayout: Codable, Equatable, Hashable, Sendable {
     public var browserURLs: [String] = []
     public var browserIndex = 0
     public var browserViewport = "Desktop"
+    public var browserLibrary = BrowserLibrary()
     public init() {}
 
     private enum CodingKeys: String, CodingKey {
         case panel, secondary, openTabs, stacked, splitFraction, showsInspector, showsNavigator, navigatorWidth
-        case files, selectedFile, browserURLs, browserIndex, browserViewport
+        case files, selectedFile, browserURLs, browserIndex, browserViewport, browserLibrary
     }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -60,6 +61,7 @@ public struct ProjectLayout: Codable, Equatable, Hashable, Sendable {
         browserURLs = try c.decodeIfPresent([String].self, forKey: .browserURLs) ?? []
         browserIndex = try c.decodeIfPresent(Int.self, forKey: .browserIndex) ?? 0
         browserViewport = try c.decodeIfPresent(String.self, forKey: .browserViewport) ?? "Desktop"
+        browserLibrary = try c.decodeIfPresent(BrowserLibrary.self, forKey: .browserLibrary) ?? BrowserLibrary()
         if secondary == panel { secondary = nil }
         normalizeTabs()
     }

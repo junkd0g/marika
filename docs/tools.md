@@ -6,16 +6,38 @@ The Views row opens each tool as a tab. Tools that do not fit in a narrow window
 
 ## Browser and local previews
 
-Open **Browser** (⇧⌘B) to preview a running local server or a project HTML file. It has page tabs,
-back/forward navigation, desktop/tablet/mobile widths, and WebKit's Inspect Element menu. Start
+Open **Browser** (⇧⌘B) to browse websites, search with DuckDuckGo, or preview a local server or
+project HTML file. The address bar suggests your project's bookmarks and recent pages. Drag tabs
+to reorder them; right-click a tab to duplicate, reload, or close other tabs. Command-click a link
+to open it in a background tab (add Shift to switch to it). The browser also supports downloads,
+file uploads, website dialogs, trackpad back/forward gestures, and WebKit's Inspect Element menu.
+
+Use **⌘L** for the address bar, **⌘T** for a new tab, **⌘W** to close it, **⇧⌘T** to reopen a closed
+tab, **⌘R** to reload, **⌘F** to find on the page, **⌘D** to bookmark, and **⌘Y** for history.
+**⌘[ / ⌘]** go back/forward; **⇧⌘[ / ⇧⌘]** switch browser tabs. These shortcuts apply while
+the browser pane has focus. Zoom controls and bookmarks are also in the **•••** menu.
+History keeps the most recent 100 distinct pages per project; clearing it leaves bookmarks intact.
+The library window searches history and bookmarks, lets you rename or change bookmark addresses,
+and lists stored website data. Use **Website Data** to remove one site's cookies, cache and local
+storage, or clear all website data for this project. Removal asks for confirmation and can sign you out.
+Open pages can save fresh data after removal.
+
+In split views, browser and editor shortcuts follow the pane you last clicked or focused.
+Middle-click a browser tab to close it. Site icons load through the page's own session, with no
+third-party icon service. Downloads show byte progress, can be cancelled, and offer **Retry** for
+ordinary HTTP GET downloads. Retrying starts the transfer again and preserves an existing destination
+until the new transfer succeeds; downloads made from forms should be started again from the page.
+
+The footer provides desktop/tablet/mobile widths and visual feedback tools. Start
 a detected development server with **⇧⌘R**, or enter a custom command and address in preview settings. The browser opens when the server responds. Select an element or
 capture a screenshot to add feedback to the current message draft for review before sending.
 
 Marika provides eight browser tools to newly started Claude and Codex agent processes through
 the bundled `MarikaBrowserMCP` helper. Agents can inspect, screenshot, navigate, click, fill, scroll,
 and switch tabs in the same browser you see. Local previews are enabled by default; other sites
-need access enabled from **Agent access** in the browser toolbar. Each project has a separate,
-temporary browsing profile. The preview uses native WebKit.
+need access enabled from **••• → Agent Access**. Each project has a separate, persistent WebKit
+profile: cookies and sign-ins survive restarts, along with open tabs, bookmarks and history.
+Site permissions for agents remain separate from signing in to a website.
 
 ## Research
 

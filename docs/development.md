@@ -73,6 +73,17 @@ It uses temporary data and mock agents, and captures light and dark layouts.
 opening, reusing and closing project tool tabs, split cleanup, per-project tab restoration,
 and preservation of active agents and unsaved files.
 
+`python3 scripts/ui-browser.py` uses a local HTTP fixture and isolated project data to check browser
+menu actions and shortcut bindings, navigation, popups, tab closing/reopening, reordering, find,
+zoom, bookmarks, history, downloaded file contents, failed and cancelled download retries, favicons,
+and project website-data isolation/removal. Download destinations are injected through a debug-only
+hook. `python3 scripts/ui-browser.py --interactive` leaves an isolated test app and local server open
+for native input checks. Pointer-based tab dragging and middle-click closing, split-pane Find shortcuts,
+bookmark editing, native upload selection, JavaScript dialogs, and a real Save dialog were checked
+through the running app. Trackpad back/forward gestures still require a physical hardware check.
+It restarts the app to verify that cookies, local storage, tabs and bookmarks persist, and captures
+the browser in dark and light appearances. It makes no AI requests.
+
 `python3 scripts/ui-history-updates.py` checks cross-project message search, older-message jumps,
 draft preservation, release notes and update states. It also makes one read-only request to the
 public GitHub releases endpoint; it sends no AI prompts or conversation data.

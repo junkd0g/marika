@@ -1,6 +1,29 @@
 import Foundation
 
 public enum BrowserAddress {
+    /// Human address-bar input may be a search. Agent navigation remains URL-only.
+    public static func resolveOmnibox(_ input: String, projectRoot: URL) throws -> URL {
+        let text = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { throw BrowserError.message("Enter an address or search term.") }
+        if text.contains("://") || text.hasPrefix("/") || text.hasPrefix("./") || text.hasPrefix("../")
+            || FileManager.default.fileExists(atPath: projectRoot.appendingPathComponent(text).path) {
+            return try resolve(text, projectRoot: projectRoot)
+        }
+        let authority = String(text.split(separator: "/", maxSplits: 1).first ?? "")
+        let host = authority.split(separator: ":", maxSplits: 1).first.map(String.init) ?? ""
+        if !text.contains(where: \.isWhitespace),
+           host.contains(".") || host.lowercased() == "localhost" || authority.hasPrefix("[") {
+            return try resolve(text, projectRoot: projectRoot)
+        }
+        // Do not silently turn an executable or unsupported scheme into a search.
+        if !text.contains(where: \.isWhitespace), text.contains(":") {
+            return try resolve(text, projectRoot: projectRoot)
+        }
+        var search = URLComponents(string: "https://duckduckgo.com/")!
+        search.queryItems = [URLQueryItem(name: "q", value: text)]
+        return search.url!
+    }
+
     public static func resolve(_ input: String, projectRoot: URL) throws -> URL {
         let text = input.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { throw BrowserError.message("Enter a URL or a project HTML file.") }
@@ -10,8 +33,12 @@ public enum BrowserAddress {
         }
         var candidate = text
         if !text.contains("://") {
-            let local = text.hasPrefix("localhost") || text.hasPrefix("127.0.0.1") || text.hasPrefix("[::1]")
-            if !local, text.contains(":") { throw BrowserError.message("Use an http, https, or project file URL.") }
+            let parsed = URL(string: "http://" + text)
+            let local = parsed.map(isLocal) == true
+            let authority = text.prefix { !"/?#".contains($0) }
+            if authority.contains(":"), !authority.hasPrefix("["), parsed?.port == nil {
+                throw BrowserError.message("Use an http, https, or project file URL.")
+            }
             candidate = (local ? "http://" : "https://") + text
         }
         guard let url = URL(string: candidate), url.host != nil || url.isFileURL else {

@@ -18,6 +18,16 @@ final class BrowserWorkspace {
     var annotation: JSONValue?
     var comment = ""
     var viewport = "Desktop" { didSet { onStateChange?() } }
+    var library = BrowserLibrary() { didSet { onStateChange?() } }
+    var addressFocusRequest = UUID()
+    var findRequest = UUID()
+    var showsHistory = false
+    var librarySection = "History"
+    private(set) var websiteRecords: [WKWebsiteDataRecord] = []
+    private(set) var isClearingWebsiteData = false
+    var showsDownloads = false
+    private(set) var downloads: [BrowserDownload] = []
+    private(set) var closedTabs: [URL] = []
     var allowsLocalAgentAccess = true
     var allowedOrigins: Set<String> = []
     private(set) var isCapturing = false
@@ -27,13 +37,15 @@ final class BrowserWorkspace {
     @ObservationIgnored var onFeedback: ((String, Data) async -> Void)?
     @ObservationIgnored var onAgentTool: ((UUID, JSONValue) async -> JSONValue)?
     @ObservationIgnored var onAgentEvidence: ((UUID, String, String, Data) async -> Void)?
-    @ObservationIgnored private let dataStore = WKWebsiteDataStore.nonPersistent()
+    @ObservationIgnored private let dataStore: WKWebsiteDataStore
     @ObservationIgnored private var bridges: [String: BrowserBridgeServer] = [:]
     @ObservationIgnored private var configurations: [String: BrowserMCPConfiguration] = [:]
     @ObservationIgnored private var bridgeTasks: [String: Task<BrowserMCPConfiguration, Error>] = [:]
 
-    init(root: URL, address: String? = nil) {
+    init(root: URL, address: String? = nil, identifier: UUID? = nil) {
         self.root = root
+        // Each project retains its own sign-ins without sharing cookies with other projects.
+        dataStore = identifier.map { WKWebsiteDataStore(forIdentifier: $0) } ?? .nonPersistent()
         let page = newPage()
         if let address, let url = try? BrowserAddress.resolve(address, projectRoot: root) { page.load(url) }
     }
@@ -41,8 +53,9 @@ final class BrowserWorkspace {
     var selectedPage: BrowserPage? { pages.first { $0.id == selectedPageID } }
 
     func restore(_ layout: ProjectLayout) {
+        library = layout.browserLibrary
         guard !layout.browserURLs.isEmpty else { return }
-        for page in Array(pages) { close(page) }
+        for page in Array(pages) { close(page, remember: false) }
         // close() keeps one empty tab available.
         for (index, address) in layout.browserURLs.enumerated() {
             if index > 0 { newPage() }
@@ -54,31 +67,89 @@ final class BrowserWorkspace {
     var canUseAgent: Bool { selectedPage?.url.map(agentAllowed) ?? false }
 
     @discardableResult
-    func newPage(url: URL? = nil) -> BrowserPage {
-        let page = BrowserPage(workspace: self, dataStore: dataStore)
+    func newPage(url: URL? = nil, configuration: WKWebViewConfiguration? = nil, select: Bool = true) -> BrowserPage {
+        let page = BrowserPage(workspace: self, dataStore: dataStore, configuration: configuration)
         pages.append(page)
-        selectedPageID = page.id
+        if select { selectedPageID = page.id }
         if let url { page.load(url) }
         onStateChange?()
         return page
     }
 
-    func close(_ page: BrowserPage) {
+    func close(_ page: BrowserPage, remember: Bool = true) {
         guard let index = pages.firstIndex(where: { $0.id == page.id }) else { return }
+        if remember, let url = page.url {
+            closedTabs.append(url)
+            closedTabs = Array(closedTabs.suffix(20))
+        }
         page.webView.stopLoading()
+        page.faviconTask?.cancel()
         page.webView.configuration.userContentController.removeScriptMessageHandler(forName: "marikaElement", contentWorld: .world(name: BrowserScripts.world))
         pages.remove(at: index)
         if selectedPageID == page.id { selectedPageID = pages.isEmpty ? nil : pages[min(index, pages.count - 1)].id }
-        if pages.isEmpty { newPage() }
+        if pages.isEmpty { newTab() }
         onStateChange?()
     }
 
     func navigate(_ address: String) {
         do {
-            let url = try BrowserAddress.resolve(address, projectRoot: root)
+            let url = try BrowserAddress.resolveOmnibox(address, projectRoot: root)
             (selectedPage ?? newPage()).load(url)
             errorMessage = nil
         } catch { errorMessage = error.localizedDescription }
+    }
+
+    func newTab() {
+        newPage()
+        addressFocusRequest = UUID()
+    }
+
+    func reopenClosedTab() {
+        guard let url = closedTabs.popLast() else { return }
+        newPage(url: url)
+    }
+
+    func selectAdjacentTab(_ offset: Int) {
+        guard let index = pages.firstIndex(where: { $0.id == selectedPageID }), !pages.isEmpty else { return }
+        selectedPageID = pages[(index + offset % pages.count + pages.count) % pages.count].id
+    }
+
+    func moveTab(_ id: UUID, before targetID: UUID, after: Bool = false) {
+        guard id != targetID, let from = pages.firstIndex(where: { $0.id == id }),
+              pages.contains(where: { $0.id == targetID }) else { return }
+        let page = pages.remove(at: from)
+        let target = pages.firstIndex { $0.id == targetID }!
+        pages.insert(page, at: target + (after ? 1 : 0))
+        onStateChange?()
+    }
+
+    func toggleBookmark() {
+        guard let page = selectedPage, let url = page.url else { return }
+        library.toggleBookmark(BrowserLocation(url: url, title: page.title))
+    }
+
+    func recordVisit(_ page: BrowserPage) {
+        guard let url = page.url, (try? BrowserAddress.validate(url, projectRoot: root)) != nil else { return }
+        library.record(BrowserLocation(url: url, title: page.title))
+    }
+
+    func startDownload(_ download: WKDownload) {
+        downloads.insert(BrowserDownload(download, workspace: self), at: 0)
+    }
+
+    func showLibrary(_ section: String) { librarySection = section; showsHistory = true }
+
+    func refreshWebsiteData() async {
+        websiteRecords = await dataStore.dataRecords(ofTypes: WKWebsiteDataStore.allWebsiteDataTypes())
+            .sorted { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
+    }
+
+    func removeWebsiteData(_ records: [WKWebsiteDataRecord]) async {
+        guard !isClearingWebsiteData, !records.isEmpty else { return }
+        isClearingWebsiteData = true
+        defer { isClearingWebsiteData = false }
+        await dataStore.removeData(ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(), for: records)
+        await refreshWebsiteData()
     }
 
     func agentAllowed(_ url: URL) -> Bool {
@@ -181,12 +252,14 @@ final class BrowserWorkspace {
     }
 
     func stop() {
+        for download in downloads where download.isRunning { download.cancel() }
         for task in bridgeTasks.values { task.cancel() }
         for bridge in bridges.values { bridge.stop() }
         bridgeTasks.removeAll()
         bridges.removeAll()
         configurations.removeAll()
         for page in pages {
+            page.faviconTask?.cancel()
             page.webView.stopLoading()
             page.webView.configuration.userContentController.removeScriptMessageHandler(forName: "marikaElement", contentWorld: .world(name: BrowserScripts.world))
         }
