@@ -118,6 +118,8 @@ struct TranscriptView: View {
                     }.buttonStyle(.link).font(.system(size: 12)).frame(maxWidth: .infinity)
                 } else if session.isBusy {
                     WorkingIndicator(session: session)
+                } else if let summary = TaskCompletionSummary(items: session.items) {
+                    TaskCompletionCard(session: session, summary: summary)
                 }
             }
             .scrollTargetLayout()

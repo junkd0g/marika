@@ -21,6 +21,8 @@ enum Theme {
     static let selection = Color.primary.opacity(0.07)
     static let messageBubble = adaptive(light: 0xF0F0F0, dark: 0x303030)
     static let ink = adaptive(light: 0x202020, dark: 0xEEEEEE)
+    static let action = adaptive(light: 0x6254D9, dark: 0x6959DF)
+    static let field = adaptive(light: 0xFFFFFF, dark: 0x242426)
 
     private static func adaptive(light: UInt32, dark: UInt32) -> Color {
         Color(nsColor: NSColor(name: nil) { appearance in

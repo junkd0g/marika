@@ -46,3 +46,18 @@ jobs:
           codesign --verify --deep --strict build/Marika.app
       - name: Verify signed update packaging with temporary keys
         run: python3 scripts/test-update-package.py
+      - name: Run native UI regressions with isolated fixtures
+        run: |
+          swift build
+          python3 scripts/ui-checks.py --artifacts "${{ runner.temp }}/marika-ui-checks"
+      - name: Retain native UI failure screenshots and logs
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: native-ui-diagnostics
+          path: |
+            ${{ runner.temp }}/marika-ui-checks/**/*.log
+            ${{ runner.temp }}/marika-ui-checks/**/*.png
+            ${{ runner.temp }}/marika-ui-checks/**/*.json
+          if-no-files-found: ignore
+          retention-days: 7

@@ -24,6 +24,7 @@ extension AppModel {
     }
     func switchPanel(_ tab: ProjectPanel) {
         guard let project = selectedProject else { return }
+        openSpaceSection(.projects)
         var saved = layout(for: project.id)
         saved.openTab(tab)
         updateLayout(saved, for: project.id)
@@ -77,6 +78,12 @@ extension AppModel {
         let preview = ProjectPreview()
         preview.onReady = { [weak self] url in
             guard let self, let current = self.project(id: project.id) else { return }
+            if let target = self.previewRecoveryTargets.removeValue(forKey: project.id) {
+                guard let page = self.browsers[project.id]?.pages.first(where: { $0.id == target.pageID }),
+                      page.url == target.address, let reload = PreviewRecovery.reloadURL(target.address, server: url) else { return }
+                page.load(reload)
+                return
+            }
             self.browser(for: current).navigate(url.absoluteString)
             if self.selectedProject?.id == project.id { self.switchPanel(.browser) }
         }
@@ -97,12 +104,20 @@ extension AppModel {
         }
         runner.run(job, root: project.url, environment: gitEnvironment, image: image)
     }
-    func runPreview(for project: Project? = nil) {
-        guard let project = project ?? selectedProject else { return }
+    func runPreview(for project: Project? = nil, recovering page: BrowserPage? = nil) {
+        guard let project = (project ?? selectedProject).flatMap({ self.project(id: $0.id) }) else { return }
         guard let configuration = project.previewConfiguration ?? ProjectPreview.detect(at: project.url) else {
             openPreviewSettings(for: project); return
         }
-        preview(for: project).start(configuration, at: project.url, environment: gitEnvironment)
+        let preview = preview(for: project)
+        guard !preview.isActive else { return }
+        if let page {
+            guard let url = page.url,
+                  browsers[project.id]?.pages.contains(where: { $0 === page }) == true,
+                  PreviewRecovery.matches(url, configuration: configuration, runningAddress: preview.address) else { return }
+            previewRecoveryTargets[project.id] = (page.id, url)
+        } else { previewRecoveryTargets[project.id] = nil }
+        preview.start(configuration, at: project.url, environment: gitEnvironment)
     }
     func savePreviewConfiguration(_ config: PreviewConfiguration, for project: Project) {
         updateProject(project.id) { $0.previewConfiguration = config }

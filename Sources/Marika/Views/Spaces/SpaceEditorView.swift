@@ -42,32 +42,33 @@ struct SpaceEditorView: View {
                     .frame(width: 44, height: 44).background(color.tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
                 VStack(alignment: .leading, spacing: 4) {
                     Text(spaceID == nil ? "New space" : "Edit space").font(.system(size: 19, weight: .semibold))
-                    Text("A place for projects that belong together.").font(.system(size: 12)).foregroundStyle(.secondary)
+                    Text("A place for projects, notes and tickets.").font(.system(size: 12)).foregroundStyle(.secondary)
                 }
             }
-            VStack(alignment: .leading, spacing: 7) {
-                Text("Name").font(.system(size: 12, weight: .medium))
-                TextField("Space name", text: $name).textFieldStyle(.roundedBorder).focused($nameFocused)
+            WorkspaceFormField(title: "Name") {
+                TextField("e.g. Product, Personal, Research", text: $name)
+                    .textFieldStyle(.plain).focused($nameFocused).workspaceControl(focused: nameFocused, height: 42)
                     .onSubmit(save).accessibilityLabel("Space name")
                 if name.trimmingCharacters(in: .whitespacesAndNewlines).count > 40 {
                     Text("Use 40 characters or fewer.").font(.caption).foregroundStyle(Theme.attention)
                 }
             }
             VStack(alignment: .leading, spacing: 9) {
-                Text("Icon").font(.system(size: 12, weight: .medium))
+                Text("Icon").font(.system(size: 11, weight: .medium)).foregroundStyle(.secondary)
                 HStack(spacing: 6) {
                     ForEach(ProjectSpace.symbols, id: \.self) { choice in
                         Button { symbol = choice } label: {
-                            Image(systemName: choice).font(.system(size: 15)).frame(width: 36, height: 34)
+                            Image(systemName: choice).font(.system(size: 15)).frame(width: 38, height: 38)
                                 .foregroundStyle(symbol == choice ? color.tint : .secondary)
-                                .background(symbol == choice ? color.tint.opacity(0.12) : .clear, in: RoundedRectangle(cornerRadius: 7))
+                                .background(symbol == choice ? color.tint.opacity(0.12) : .clear, in: RoundedRectangle(cornerRadius: 9))
+                                .overlay { RoundedRectangle(cornerRadius: 9).strokeBorder(symbol == choice ? color.tint.opacity(0.4) : Theme.hairline) }
                         }.buttonStyle(.plain).accessibilityLabel("Space icon " + choice)
                             .accessibilityAddTraits(symbol == choice ? [.isSelected] : [])
                     }
                 }
             }
             VStack(alignment: .leading, spacing: 9) {
-                Text("Color").font(.system(size: 12, weight: .medium))
+                Text("Color").font(.system(size: 11, weight: .medium)).foregroundStyle(.secondary)
                 HStack(spacing: 12) {
                     ForEach(ProjectSpaceColor.allCases, id: \.self) { choice in
                         Button { color = choice } label: {
@@ -82,16 +83,17 @@ struct SpaceEditorView: View {
                     }
                 }
             }
+            Divider()
             HStack {
                 Spacer()
-                Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
+                Button("Cancel") { dismiss() }.buttonStyle(WorkspaceButtonStyle(kind: .secondary)).keyboardShortcut(.cancelAction)
                 Button(spaceID == nil ? "Create Space" : "Save") { save() }
-                    .buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction).disabled(!validName)
+                    .buttonStyle(WorkspaceButtonStyle(kind: .primary)).keyboardShortcut(.defaultAction).disabled(!validName)
                     #if DEBUG
                         .background(DebugViewMarker(name: "space-editor-save"))
                     #endif
             }.padding(.top, 2)
-        }.padding(24).frame(width: 420).background(Theme.canvas)
+        }.padding(28).frame(width: 440).background(Theme.canvas)
             .onAppear { nameFocused = true }
         #if DEBUG
             .background(DebugViewMarker(name: "space-editor"))
@@ -114,11 +116,11 @@ struct SpaceEmptyView: View {
                 .background(model.selectedSpace.color.tint.opacity(0.1), in: RoundedRectangle(cornerRadius: 22))
             VStack(spacing: 8) {
                 Text(model.selectedSpace.name).font(.system(size: 25, weight: .semibold))
-                Text("Add a project to this space.").font(.system(size: 14)).foregroundStyle(.secondary)
+                Text("Start with notes, tickets, or a project.").font(.system(size: 14)).foregroundStyle(.secondary)
             }
             HStack(spacing: 10) {
                 Button { model.chooseProject() } label: { Label("Open Project", systemImage: "folder.badge.plus") }
-                    .buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction)
+                    .buttonStyle(WorkspaceButtonStyle(kind: .primary)).keyboardShortcut(.defaultAction)
                 if !model.workspace.projects.isEmpty {
                     Menu("Move Existing Project") {
                         ForEach(model.workspace.spaces.filter { $0.id != model.selectedSpace.id }) { space in
@@ -130,7 +132,8 @@ struct SpaceEmptyView: View {
                                 }
                             }
                         }
-                    }
+                    }.menuStyle(.borderlessButton).menuIndicator(.hidden)
+                        .workspaceControl(height: 36)
                 }
             }.controlSize(.large).fixedSize(horizontal: true, vertical: false).padding(.top, 4)
             Text("Open a folder or drop one here · ⌘O").font(.system(size: 11)).foregroundStyle(.secondary)

@@ -2,7 +2,7 @@
 
 [← Back to Marika](../README.md)
 
-Open **Code** from the Views row or press **⌘2**. Editor state and unsaved drafts stay with each project and attached repository.
+Open **Code** from the **+** menu in the tab row or press **⌘2**. Editor state and unsaved drafts stay with each project and attached repository.
 
 ## Files, drafts and editor preferences
 
@@ -89,7 +89,7 @@ history, graphs, blame, branch switching, stash operations, and three-way merge 
 
 ## Review, stage, commit and push
 
-Open **Changes** from the **Views** row or press **⌘8** to review staged and working-tree changes. Stage or
+Open **Changes** from the **+** menu in the tab row or press **⌘8** to review staged and working-tree changes. Stage or
 unstage a file or individual hunk, revert working changes after confirmation, and click a line
 number to add feedback to the current chat draft. Commit the staged changes, push the branch,
 and create a pull request with GitHub CLI. Push and PR creation run only when you choose them.

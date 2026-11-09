@@ -46,7 +46,11 @@ struct MarikaApp: App {
     private var pendingActivity: (UUID, String)?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        UNUserNotificationCenter.current().delegate = self
+        // UserNotifications requires an app bundle; a bare SwiftPM executable has no
+        // bundle proxy and can raise an Objective-C exception before the UI opens.
+        if Bundle.main.bundleURL.pathExtension == "app" {
+            UNUserNotificationCenter.current().delegate = self
+        }
         // Needed when running the bare binary during development. A bundled app already is one.
         NSApp.setActivationPolicy(.regular)
         if let icon = Theme.appIcon { NSApp.applicationIconImage = icon }
@@ -117,6 +121,13 @@ struct MarikaCommands: Commands {
                 Task { await model.updates.check() }
             }
             Button("Release Notes…") { openWindow(id: "updates") }
+        }
+        CommandGroup(replacing: .help) {
+            Button("Getting Started…") {
+                openWindow(id: "main")
+                model.showWelcome()
+            }
+            .disabled(!model.isReady || model.workspaceLoadFailed)
         }
         CommandGroup(replacing: .newItem) {
             Button("Open Project…") { model.chooseProject() }

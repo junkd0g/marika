@@ -9,6 +9,7 @@ import UserNotifications
 final class AppModel {
     typealias ProjectTab = ProjectPanel
     let updates = AppUpdates()
+    let signIns: [AgentKind: AgentSignIn] = [.claude: AgentSignIn(), .codex: AgentSignIn()]
 
     private(set) var workspace = Workspace()
     private(set) var controllers: [UUID: SessionController] = [:]
@@ -17,6 +18,9 @@ final class AppModel {
     private(set) var rateLimits: [AgentKind: RateLimitSnapshot] = [:]
     private(set) var isReady = false
     private(set) var isRefreshingAgents = false
+    var showsWelcome = false
+    var welcomeAgent: AgentKind = .claude
+    private(set) var hasAnthropicAPIKey = false
     private(set) var workspaceLoadFailed = false
     private(set) var storageError: String?
     var storageRecoveryNotice: String?
@@ -82,6 +86,7 @@ final class AppModel {
     var visibleChatSessionIDs: Set<UUID> = []
     @ObservationIgnored var scheduler: Task<Void, Never>?
     var agentLaunchProjectID: UUID?
+    var spaceNoteSelections: [UUID: UUID] = [:]
     var selectedAgentTaskIDs: [UUID: UUID] = [:]
     @ObservationIgnored var synthesizingComparisons: Set<UUID> = []
     var researchSections: [UUID: String] = [:]
@@ -94,8 +99,11 @@ final class AppModel {
     var apiWorkspaces: [UUID: APIWorkspace] = [:]
     var pipelineRunners: [UUID: ProjectPipelineRunner] = [:]
     var previews: [UUID: ProjectPreview] = [:]
+    @ObservationIgnored var previewRecoveryTargets: [UUID: (pageID: UUID, address: URL)] = [:]
     var previewProjectID: UUID?
     var reviewAgentID: UUID?
+    var taskCompletionID: UUID?
+    @ObservationIgnored var taskCompletionAction: (() -> Void)?
     var agentReviews: [UUID: AgentReviewWorkspace] = [:]
     var showsProjectSearch = false
     var showsChatHistorySearch = false
@@ -107,6 +115,8 @@ final class AppModel {
     #if DEBUG
         @ObservationIgnored var agentFactoryOverride: SessionController.AgentFactory?
         @ObservationIgnored var completionOverride: String?
+        @ObservationIgnored var agentStatusOverride: [AgentKind: AgentStatus]?
+        @ObservationIgnored var signInOpenOverride: ((URL) -> Bool)?
     #endif
 
     func browser(for project: Project) -> BrowserWorkspace {
@@ -167,6 +177,7 @@ final class AppModel {
     }
 
     var commandPanel: ProjectPanel? {
+        guard selectedSpace.section == .projects else { return nil }
         guard let id = selectedSession?.projectID else { return nil }
         let primary = projectTabs[id] ?? .conversation
         if let focused = focusedPanels[id], focused == primary || focused == layout(for: id).secondary { return focused }
@@ -198,6 +209,7 @@ final class AppModel {
 
     func showAgents(for preferredProject: Project? = nil, launch: Bool = false) {
         guard let project = preferredProject ?? selectedSession.flatMap(project(for:)) ?? spaceProjects.first else { return }
+        openSpaceSection(.projects)
         if selectedSession?.projectID != project.id {
             openProject(project)
         }
@@ -255,6 +267,7 @@ final class AppModel {
 
     func openAgentChat(_ id: UUID) {
         guard let meta = workspace.sessions.first(where: { $0.id == id }) else { return }
+        if let index = workspace.spaces.firstIndex(where: { $0.id == project(for: meta)?.spaceID }) { workspace.spaces[index].section = .projects }
         chatHistoryFocus = nil
         if meta.agentTask == nil { rememberProjectConversation(meta) }
         rememberChat(meta)
@@ -491,7 +504,12 @@ final class AppModel {
             return
         }
         for project in workspace.projects { projectTabs[project.id] = project.layout?.panel ?? .conversation }
-        if let project = workspace.preferredProject(in: workspace.selectedSpace.id) { openProject(project) }
+        if let project = workspace.preferredProject(in: workspace.selectedSpace.id) { openProject(project, showProject: false) }
+        if workspace.preferences.welcomeCompleted == nil {
+            workspace.preferences.welcomeCompleted = !workspace.projects.isEmpty || workspace.spaces.count > 1
+        }
+        showsWelcome = workspace.preferences.welcomeCompleted == false
+        welcomeAgent = workspace.preferences.defaultAgent
         shellEnvironment = await ShellEnvironment.capture()
         recoverTaskQueues()
         isReady = true
@@ -503,6 +521,11 @@ final class AppModel {
     /// focus, which is how a sign-in finished in Terminal gets noticed.
     func refreshAgents(force: Bool = false) async {
         #if DEBUG
+            if let agentStatusOverride {
+                statuses = agentStatusOverride
+                for agent in AgentKind.allCases { signIns[agent]?.update(status: statuses[agent] ?? AgentStatus()) }
+                return
+            }
             // Documentation captures use fixture conversations, not the local CLI account.
             if ProcessInfo.processInfo.environment["MARIKA_DEMO"] == "1" { return }
         #endif
@@ -514,6 +537,8 @@ final class AppModel {
         lastAgentRefresh = Date()
         isRefreshingAgents = true
         defer { isRefreshingAgents = false }
+        // Installing a CLI can change the login shell's PATH after Marika was opened.
+        if force { shellEnvironment = await ShellEnvironment.capture() }
         await withTaskGroup(of: Void.self) { group in
             for agent in AgentKind.allCases {
                 group.addTask { await self.refresh(agent) }
@@ -522,6 +547,7 @@ final class AppModel {
     }
 
     private func refresh(_ agent: AgentKind) async {
+        defer { signIns[agent]?.update(status: statuses[agent] ?? AgentStatus()) }
         let environment = environment(for: agent)
         guard let executable = locate(agent, in: environment) else {
             statuses[agent] = AgentStatus(readiness: .notInstalled)
@@ -568,6 +594,7 @@ final class AppModel {
         case .claude:
             let billing = workspace.preferences.claudeBilling
             let key = billing == .apiKey ? Keychain.read(account: Keychain.anthropicAPIKey) : nil
+            if billing == .apiKey { hasAnthropicAPIKey = key != nil }
             return ClaudeCLI.environment(base: shellEnvironment, billing: billing, apiKey: key)
         case .codex:
             return shellEnvironment
@@ -603,7 +630,7 @@ final class AppModel {
     func selectSpace(_ id: UUID) {
         guard workspace.activateSpace(id) else { return }
         chatHistoryFocus = nil
-        if let project = workspace.preferredProject(in: id) { openProject(project) }
+        if let project = workspace.preferredProject(in: id) { openProject(project, showProject: false) }
         else { selectedSessionID = nil }
         scheduleSave()
     }
@@ -671,8 +698,9 @@ final class AppModel {
         selectedSessionID.flatMap { id in workspace.sessions.first { $0.id == id } }
     }
 
-    func openProject(_ project: Project, tab: ProjectTab? = nil) {
+    func openProject(_ project: Project, tab: ProjectTab? = nil, showProject: Bool = true) {
         guard let current = self.project(id: project.id) else { return }
+        if showProject, let index = workspace.spaces.firstIndex(where: { $0.id == current.spaceID }) { workspace.spaces[index].section = .projects }
         let conversation = workspace.chat(for: current.id) ?? newSession(in: current)
         selectedSessionID = conversation.id
         showsInspector = current.layout?.showsInspector ?? true
@@ -718,6 +746,7 @@ final class AppModel {
     }
 
     func addProject(at url: URL) {
+        if workspace.projects.isEmpty && workspace.spaces.count == 1 { showsWelcome = true }
         let path = FilePath.resolved(url.path)
         if let existing = workspace.projects.first(where: { FilePath.resolved($0.path) == path }) {
             openProject(existing)
@@ -774,6 +803,7 @@ final class AppModel {
             debugTasks.removeValue(forKey: project.id)?.cancel()
             pipelineRunners.removeValue(forKey: project.id)?.stop()
             previews.removeValue(forKey: project.id)?.stop()
+            previewRecoveryTargets[project.id] = nil
             for key in ideWorkspaces.keys.filter({ $0.hasPrefix(project.id.uuidString) }) {
                 if let ide = ideWorkspaces.removeValue(forKey: key) { await ide.shutdown() }
             }
@@ -818,6 +848,7 @@ final class AppModel {
     }
 
     func newSessionInCurrentProject() {
+        openSpaceSection(.projects)
         if let project = selectedSession.flatMap(project(for:)) ?? spaceProjects.first {
             newSession(in: project)
         } else {
@@ -1028,30 +1059,35 @@ final class AppModel {
     /// Runs the agent's own sign-in in Terminal. The whole flow belongs to the official CLI, so
     /// Marika never sees a password or token.
     func signIn(_ agent: AgentKind) {
-        guard let executable = statuses[agent]?.executable else { return }
-        // The status is stale from here on, so check again as soon as the user comes back.
         lastAgentRefresh = nil
-        let arguments = agent == .claude ? "auth login" : "login"
-        let quotedPath = executable.path.replacingOccurrences(of: "'", with: "'\\''")
-        let script = """
-            #!/bin/zsh -l
-            '\(quotedPath)' \(arguments)
-            echo
-            echo "When you're signed in, return to Marika. You can close this window."
-
-            """
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent("Marika sign-in.command")
-        do {
-            try script.write(to: url, atomically: true, encoding: .utf8)
-            try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: url.path)
-            NSWorkspace.shared.open(url)
-        } catch {
-            NSLog("Marika could not open Terminal for sign-in: %@", error.localizedDescription)
-        }
+        signIns[agent]?.start(agent: agent, executable: statuses[agent]?.executable, previousStatus: statuses[agent], open: { command in
+            #if DEBUG
+                if let signInOpenOverride { return signInOpenOverride(command) }
+            #endif
+            return NSWorkspace.shared.open(command)
+        }, verify: { [weak self] in
+            guard let self else { return .checking }
+            while isRefreshingAgents {
+                do { try await Task.sleep(for: .milliseconds(100)) } catch { return .checking }
+            }
+            guard !Task.isCancelled else { return .checking }
+            #if DEBUG
+                if agentStatusOverride != nil {
+                    await refreshAgents(force: true)
+                    return statuses[agent]?.readiness ?? .checking
+                }
+            #endif
+            isRefreshingAgents = true
+            defer { isRefreshingAgents = false }
+            shellEnvironment = await ShellEnvironment.capture()
+            await refresh(agent)
+            return statuses[agent]?.readiness ?? .checking
+        })
     }
 
     func setClaudeBilling(_ billing: ClaudeBilling) {
         guard workspace.preferences.claudeBilling != billing else { return }
+        signIns[.claude]?.stopWaiting()
         workspace.preferences.claudeBilling = billing
         scheduleSave()
         // Running sessions hold the old credentials in their environment.
@@ -1059,8 +1095,13 @@ final class AppModel {
         Task { await refresh(.claude) }
     }
 
-    func setAnthropicAPIKey(_ key: String) {
-        Keychain.write(key.trimmingCharacters(in: .whitespacesAndNewlines), account: Keychain.anthropicAPIKey)
+    func setAnthropicAPIKey(_ key: String) throws {
+        let key = key.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !key.isEmpty else { throw AgentError.launchFailed("Enter an API key before saving.") }
+        guard Keychain.write(key, account: Keychain.anthropicAPIKey) else {
+            throw AgentError.launchFailed("Couldn't save your API key to Keychain. Unlock your Keychain and try again.")
+        }
+        hasAnthropicAPIKey = true
         for controller in controllers.values where controller.meta.agent == .claude { controller.disconnectWhenIdle() }
     }
 
@@ -1105,11 +1146,14 @@ final class AppModel {
     }
 
     func scheduleSave() {
-        saveTask?.cancel()
+        // Coalesce changes without resetting the deadline: continuous edits or several
+        // streaming agents must still reach disk while work is in progress.
+        guard saveTask == nil else { return }
         saveTask = Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(400))
-            guard !Task.isCancelled else { return }
-            await self?.save()
+            guard !Task.isCancelled, let self else { return }
+            self.saveTask = nil
+            await self.save()
         }
     }
 
@@ -1209,11 +1253,13 @@ final class AppModel {
     @discardableResult
     func shutdown(saveChanges: Bool = true) async -> Bool {
         isShuttingDown = true
+        for flow in signIns.values { flow.stopWaiting() }
         if workspaceLoadFailed { return true }
         for controller in controllers.values { dirtyTranscripts.insert(controller.id) }
         if saveChanges, !(await save()) { isShuttingDown = false; return false }
         scheduler?.cancel()
         saveTask?.cancel()
+        saveTask = nil
         for runner in pipelineRunners.values { runner.stop() }
         for preview in previews.values { preview.stop() }
         for ide in ideWorkspaces.values { await ide.shutdown() }
@@ -1233,5 +1279,15 @@ final class AppModel {
             for terminal in terminals.values { terminal.shutdown() }
         } else { isShuttingDown = false; startScheduler() }
         return saved
+    }
+}
+
+extension AppModel {
+    @discardableResult func editSpaceContent<Result>(_ edit: (inout Workspace) -> Result) -> Result {
+        var updated = workspace
+        let result = edit(&updated)
+        workspace = updated
+        scheduleSave()
+        return result
     }
 }

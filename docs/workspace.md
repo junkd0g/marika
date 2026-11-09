@@ -6,22 +6,43 @@ Use spaces to group projects, keep conversations with their work, and launch Cla
 
 ## Spaces and project navigation
 
-Organize projects into **spaces** in the left sidebar. The colored icons at the bottom switch
-spaces; **+** creates one. Each space remembers its last project, chat, and editor state. New
+Organize projects into **spaces** in the left sidebar. Click anywhere on a named row in the
+**Spaces** list to switch; **+** creates one. The active space has a tinted row and checkmark.
+Each space remembers its last project, chat, and editor state. New
 projects belong to the current space. Right-click a project and choose **Move to Space**.
 Use a space's menu to edit its name, icon and color, change its position,
-or delete it. Deleting a space moves its projects to the space named in the confirmation;
-files and conversations are kept. Existing projects start in **Personal**. **⌃⌥← / ⌃⌥→** switch
+or delete it. Deleting a space moves its projects, notes and tickets to the space named in the confirmation;
+files, conversations and ticket IDs are kept. Existing projects start in **Personal**. **⌃⌥← / ⌃⌥→** switch
 spaces, and **Navigate → Switch Space** and the command palette list them by name. Running
-agents keep working when you switch, with activity dots on their space icons.
+agents keep working when you switch, with activity dots beside their spaces.
+
+## Notes and tickets in each space
+
+Select **Notes** or **Tickets** in the sidebar. They belong to the selected space and work even
+before it contains a project or a connected agent. Content saves automatically with the workspace;
+each space remembers which section you last opened.
+
+**Notes** are pages made of editable blocks. Create a note, give it a title, and use **Add Block**
+for text, headings, bullet lists, checklists, quotes or code. The block's menu changes its type,
+moves it up or down, duplicates it, or removes it. Return creates the next block; Shift-Return
+adds a line inside one. Pin notes, search titles and contents, or use **Copy Markdown** to export
+text through the clipboard. **Archive** hides a note; open the archive and choose **Restore**
+to bring it back.
+
+**Tickets** have a stable key, title, Markdown description, status, priority, type, assignee text,
+and optional project link. Switch between the board and list, search, or filter by priority and
+project. Use the card’s menu to move it between Backlog, To Do, In Progress and Done, or change its status
+in the editor. Archive/restore tickets without deleting their history. Ticket keys stay the same when
+a space is renamed or its content is moved. Moving a project to another space clears old ticket
+links to that project; the tickets stay in their own space.
+
+Notes and tickets are stored locally in Marika's workspace and included in its saved-data backup.
 
 ## Project tabs
 
-Use the named buttons in the **Views** row to open **Code**, **Stats**, **Browser**, **Agents**,
-**Changes**, **Terminal**, **Pipelines**, or **API** as a tab. Narrow windows keep **Code** and
-**Stats** visible and put additional tools in **More views** (**More** in compact layouts).
+Use the **+** menu in the tab row to open **Code**, **Stats**, **Browser**, **Agents**,
+**Changes**, **Terminal**, **Pipelines**, or **API**. The same menu is available at every window size.
 **Chat** stays pinned at the beginning. Opening a view again selects its existing tab.
-Middle-click a named view shortcut or tab to open that view directly, without a chooser.
 Each tool tab has an **×** to close it; its context menu can
 close other tabs or move it left or right. Each project remembers its open tabs, order and selected
 view across restarts. Closing a tool tab keeps unsaved editor files and running tasks available
@@ -29,7 +50,7 @@ when you reopen it. **⌃Tab / ⌃⇧Tab** cycle through open tabs; **⌘1–9**
 
 ## Split workspace
 
-Drag a view tab, or a button from **Views**, toward an edge of the workspace content. The outer
+Open a view from **+**, then drag its tab toward an edge of the workspace content. The outer
 quarter at each edge is a drop target; the center does not change the layout. A highlighted half
 shows the proposed placement. Drop at **left** or **right** for side-by-side views, or **top** or
 **bottom** to stack them. A split contains two different views; moving an existing pane retains

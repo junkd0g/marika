@@ -25,9 +25,9 @@ results or verification of the sample project's code.
 
 ## Spaces and view tabs
 
-Group projects into spaces in the sidebar. Open tools from **Views**, keep Chat pinned, and
-close or reorder tool tabs without discarding saved drafts. Middle-click a named view to open
-it directly; an existing tab is reused.
+Group projects into spaces in the sidebar. Open tools from **+** in the tab row, keep Chat pinned, and
+close or reorder tool tabs without discarding saved drafts. An existing tab is reused.
+Some screenshots show the earlier Views row; its tools now live in the **+** menu.
 
 ![Dark workspace with Work and Personal spaces, a Copper conversation, and labeled view shortcuts](images/workspace.png)
 
@@ -158,7 +158,7 @@ response from a temporary loopback server serving synthetic task data.
 
 ## Side-by-side workspace
 
-Drag a tab or a button from **Views** toward the left or right workspace edge to arrange a split.
+Open a view from **+**, then drag its tab toward the left or right workspace edge to arrange a split.
 A placement preview indicates the destination. The tab's context menu provides equivalent
 directional actions. Resize the result by dragging the divider.
 

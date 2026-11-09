@@ -115,4 +115,17 @@ lines = run('retry', retry_data,
              step('storageRetry'), step('storageState', label='retried'), step('quit')], block_and_repair)
 assert not records(lines, 'storage')[-1]['error'], records(lines, 'storage')[-1]
 assert 'second mock turn' in (transcripts / (sid.upper() + '.json')).read_text()
+
+stream_data, stream_sid = fixture('streaming')
+run('streaming', stream_data, [step('wait', seconds=1), step('streamingRecoveryTest'),
+                             step('exitWithoutSaving')])
+stream_file = stream_data / 'transcripts' / (stream_sid.upper() + '.json')
+stream_items = json.loads(stream_file.read_text())
+saved_answer = next(item['content']['assistant']['text'] for item in stream_items if item['id'] == 'stream-answer')
+assert 'stream checkpoint 0' in saved_answer
+assert not any('turnEnd' in item['content'] for item in stream_items), stream_items
+lines = run('streaming-restart', stream_data, [step('wait', seconds=1), step('state'), step('quit')])
+restored = records(lines, 'state')[0]
+assert restored['lastText'] == saved_answer and restored['phase'] == 'idle', restored
+assert restored['draft'].startswith('Draft changed while streaming '), restored
 print('Native recovery checks passed. Screenshots and logs:', root)

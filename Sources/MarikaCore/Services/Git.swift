@@ -68,6 +68,12 @@ public struct Git: Sendable {
         self.environment = environment
     }
 
+    /// Includes tracked files and untracked test inputs, excluding ignored build output.
+    public func verificationPaths(at directory: URL) async -> [String]? {
+        guard let paths = await run(["ls-files", "--cached", "--others", "--exclude-standard", "-z"], in: directory) else { return nil }
+        return Array(Set(paths.split(separator: "\0").map(String.init))).sorted()
+    }
+
     public func snapshot(at directory: URL) async -> GitSnapshot {
         guard repository(at: directory) != nil else { return GitSnapshot() }
         let branch = await run(["branch", "--show-current"], in: directory)?

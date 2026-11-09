@@ -185,6 +185,8 @@ public struct Preferences: Codable, Equatable, Sendable {
     public var defaultMode: ApprovalMode
     public var claudeBilling: ClaudeBilling
     public var taskNotifications: Bool?
+    /// Missing in older workspaces; existing projects skip first-run setup on upgrade.
+    public var welcomeCompleted: Bool?
 
     public init(defaultAgent: AgentKind = .claude, defaultMode: ApprovalMode = .ask, claudeBilling: ClaudeBilling = .subscription) {
         self.defaultAgent = defaultAgent

@@ -199,11 +199,13 @@ struct PreviewConsoleView: View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
                 Text("Project Preview").font(.system(size: 20, weight: .semibold))
-                Spacer(); Text(preview.state.rawValue.capitalized).foregroundStyle(.secondary)
+                Spacer(); PreviewStatusLabel(preview: preview)
                 Button { model.previewProjectID = nil } label: { Image(systemName: "xmark") }.buttonStyle(.plain)
             }
             TextField("Run command, e.g. npm run dev", text: $command).textFieldStyle(.roundedBorder)
+                .disabled(preview.isActive).accessibilityLabel("Preview run command")
             TextField("Preview URL, e.g. http://localhost:3000", text: $address).textFieldStyle(.roundedBorder)
+                .disabled(preview.isActive).accessibilityLabel("Preview URL")
             HStack {
                 Button(preview.isActive ? "Stop" : "Run Preview") {
                     if preview.isActive { preview.stop() }
@@ -212,21 +214,19 @@ struct PreviewConsoleView: View {
                         model.runPreview(for: model.project(id: project.id))
                     }
                 }.buttonStyle(.borderedProminent).disabled(command.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                if let url = preview.address {
-                    Button("Open Preview") { model.browser(for: project).navigate(url.absoluteString); model.switchPanel(.browser) }
+                if preview.state == .running {
+                    Button("Open Preview") { model.previewProjectID = nil; model.openRunningPreview(for: project) }
                 }
                 Spacer()
                 Button("Copy Logs") { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(preview.logs, forType: .string) }
             }
             if let error = preview.error { Text(error).font(.system(size: 12)).foregroundStyle(Theme.attention) }
-            ScrollViewReader { proxy in
-                ScrollView {
-                    Text(preview.logs.isEmpty ? "Server output will appear here." : preview.logs)
-                        .font(Theme.codeSmall).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
-                    Color.clear.frame(height: 1).id("end")
-                }.padding(12).background(Theme.canvas, in: RoundedRectangle(cornerRadius: 8))
-                .onChange(of: preview.logs) { _, _ in proxy.scrollTo("end", anchor: .bottom) }
+            if preview.portConflict != nil {
+                Text("No other process was stopped. Choose an unused port in both fields, then Run Preview.")
+                    .font(.system(size: 12)).foregroundStyle(.secondary)
             }
+            PreviewLogView(preview: preview)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
         }.padding(22).frame(width: 670, height: 470)
         .onAppear {
             let config = project.previewConfiguration ?? ProjectPreview.detect(at: project.url)

@@ -24,6 +24,7 @@
                     }
                 } catch {
                     log("FAILED: \(error)")
+                    await delegate.model?.shutdown(saveChanges: false)
                     exit(1)
                 }
             }
@@ -48,6 +49,8 @@
             var description: String
             init(_ description: String) { self.description = description }
         }
+
+        @MainActor private final class WindowTransition { var finished = false }
 
         private static func run(_ step: JSONValue, _ model: AppModel) async throws {
             switch step["op"]?.string {
@@ -194,6 +197,57 @@
                 sheet.makeFirstResponder(field)
                 guard let editor = field.currentEditor() as? NSTextView else { throw DriverError("tool query not editable") }
                 editor.insertText(step["text"]?.string ?? "", replacementRange: NSRange(location: 0, length: (editor.string as NSString).length))
+            case "taskCompletionFixture":
+                let session = try await current(model)
+                model.showsWelcome = false
+                model.switchPanel(.conversation)
+                session.apply(.tool(ToolCall(id: "workflow-edit", name: "edit", kind: .edit, title: "Update preview", detail: "",
+                    status: .succeeded, diff: [DiffFile(path: "index.html", newContent: "<h1>Updated preview</h1>")])))
+                session.apply(.textFinished(id: "workflow-result", text: "Updated the preview page. Review the file changes, then run checks and open the preview.", parentToolID: nil))
+                session.apply(.turnFinished(TurnSummary(outcome: .completed, durationMs: 1000)))
+            case "taskCompletionCheck":
+                let session = try await current(model)
+                let summary = TaskCompletionSummary(items: session.items)
+                guard summary?.changedFiles == ["index.html"] else { throw DriverError("Incorrect completion file summary") }
+                if let expected = step["verified"]?.bool {
+                    guard (session.meta.taskVerification?.succeeded == true) == expected else { throw DriverError("Unexpected verification result") }
+                }
+                if step["sheet"]?.bool == true {
+                    guard let sheet = window()?.attachedSheet, let root = sheet.contentView,
+                          marker(in: root, named: "task-completion-view") != nil else { throw DriverError("Completion sheet not shown") }
+                }
+                log("Completion summary and verification passed")
+            case "verificationStatus":
+                let session = try await current(model)
+                let checks = model.taskVerification(for: session.id)
+                let expected = step["status"]?.string ?? "current"
+                for _ in 0..<60 where String(describing: checks.status) != expected { try await pause(0.1) }
+                guard String(describing: checks.status) == expected else {
+                    throw DriverError("Expected verification " + expected + ", got " + String(describing: checks.status) + ": " + (checks.detail ?? ""))
+                }
+                if let succeeded = step["succeeded"]?.bool, session.meta.taskVerification?.succeeded != succeeded {
+                    throw DriverError("Unexpected recorded test result")
+                }
+                if step["incomplete"]?.bool == true, session.meta.taskVerification?.succeeded != nil {
+                    throw DriverError("A changed-during-run result must not stay passed")
+                }
+                log("verification " + checks.label)
+            case "verificationEdit":
+                let session = try await current(model)
+                guard let project = model.project(for: session.meta) else { throw DriverError("No project") }
+                let root = session.meta.agentTask?.workspace.map { URL(fileURLWithPath: $0.workingPath) } ?? project.url
+                let files = ProjectFiles(root: root)
+                let before = try await files.read(step["path"]?.string ?? "")
+                _ = try await files.write(step["text"]?.string ?? "", replacing: before)
+            case "taskVerificationWait":
+                let session = try await current(model)
+                for _ in 0..<600 where model.taskVerifications[session.id]?.running == true { try await pause(0.1) }
+                guard session.meta.taskVerification != nil else { throw DriverError("No verification result recorded") }
+            case "previewCheck":
+                guard let project = model.selectedProject else { throw DriverError("no project") }
+                let preview = model.preview(for: project)
+                if let state = step["state"]?.string, state != preview.state.rawValue { throw DriverError("Unexpected preview state: " + preview.state.rawValue) }
+                if let text = step["errorContains"]?.string, preview.error?.contains(text) != true { throw DriverError("Missing preview diagnostic") }
             case "previewConfig":
                 guard let project = model.selectedProject else { throw DriverError("no project") }
                 model.savePreviewConfiguration(PreviewConfiguration(command: step["command"]?.string ?? "", address: step["address"]?.string ?? "http://localhost:1"), for: project)
@@ -395,6 +449,49 @@
             case "spaceSwitch":
                 guard let space = model.workspace.spaces.first(where: { $0.name == step["name"]?.string }) else { throw DriverError("Space not found") }
                 try await run(["op": "clickMarker", "name": .string("space-switch-" + space.id.uuidString)], model)
+            case "spaceContentState":
+                let space = model.selectedSpace
+                let notes: [[String: Any]] = space.notes.map { note in ["id": note.id.uuidString, "title": note.title,
+                    "blocks": note.blocks.map { ["kind": $0.kind.rawValue, "text": $0.text, "checked": $0.checked] as [String: Any] },
+                    "archived": note.archived, "pinned": note.pinned] }
+                let tickets: [[String: Any]] = space.tickets.map { ticket in ["id": ticket.id.uuidString, "key": ticket.key,
+                    "title": ticket.title, "body": ticket.body, "status": ticket.status.rawValue, "priority": ticket.priority.rawValue,
+                    "assignee": ticket.assignee, "archived": ticket.archived, "projectID": ticket.projectID?.uuidString ?? ""] }
+                log("spaceContent " + String(decoding: try JSONSerialization.data(withJSONObject: ["space": space.name, "section": space.section.rawValue, "notes": notes, "tickets": tickets], options: [.sortedKeys]), as: UTF8.self))
+            case "spaceContentText":
+                guard let main = window(), let name = step["name"]?.string else { throw DriverError("Space text target missing") }
+                let targetWindow = main.attachedSheet ?? main
+                guard let root = targetWindow.contentView, let target = marker(in: root, named: name) else { throw DriverError("Space field not found: " + name) }
+                if name == "space-ticket-description", let editor = textViews(in: root).first(where: { $0.isEditable && !$0.isFieldEditor }) {
+                    guard targetWindow.makeFirstResponder(editor) else { throw DriverError("Ticket description did not receive focus") }
+                    try await pause(0.1)
+                } else {
+                    try click(target, in: targetWindow); try await pause(0.1)
+                }
+                guard let field = targetWindow.firstResponder as? NSTextView else { throw DriverError("Space text field is not focused: " + name) }
+                field.insertText(step["text"]?.string ?? "", replacementRange: NSRange(location: 0, length: (field.string as NSString).length))
+                try await pause(0.1)
+            case "spaceNoteBlock":
+                let space = model.selectedSpace
+                guard let id = model.spaceNoteSelections[space.id] ?? space.notes.first?.id else { throw DriverError("No note selected") }
+                let kind = SpaceNoteBlock.Kind(rawValue: step["kind"]?.string ?? "Text") ?? .text
+                if step["append"]?.bool == true { model.updateSpaceNote(id, in: space.id) { $0.blocks.append(SpaceNoteBlock(kind: kind)) } }
+                guard let block = model.note(id, in: space.id)?.blocks.last else { throw DriverError("No note block") }
+                model.updateSpaceNote(id, in: space.id) { note in
+                    if let index = note.blocks.firstIndex(where: { $0.id == block.id }) { note.blocks[index].kind = kind; note.blocks[index].checked = step["checked"]?.bool ?? false }
+                }
+                try await pause(0.1)
+                try await run(["op": "spaceContentText", "name": .string("space-note-block-" + block.id.uuidString), "text": step["text"] ?? ""], model)
+            case "spaceTicketFields":
+                let space = model.selectedSpace
+                guard let id = space.tickets.last?.id else { throw DriverError("No ticket") }
+                let linkedProjectID = model.spaceProjects.first?.id
+                model.updateSpaceTicket(id, in: space.id) { ticket in
+                    if let status = step["status"]?.string.flatMap(SpaceTicket.Status.init(rawValue:)) { ticket.status = status }
+                    if let priority = step["priority"]?.string.flatMap(SpaceTicket.Priority.init(rawValue:)) { ticket.priority = priority }
+                    if let assignee = step["assignee"]?.string { ticket.assignee = assignee }
+                    if step["linkProject"]?.bool == true { ticket.projectID = linkedProjectID }
+                }
             case "spacesState":
                 let state: [String: Any] = ["selectedSpace": model.selectedSpace.name,
                     "selectedProject": model.selectedProject?.name ?? "",
@@ -431,6 +528,81 @@
             case "agentsMock":
                 let seconds = step["seconds"]?.double ?? 1
                 model.agentFactoryOverride = { _ in DebugTaskAgent(seconds: seconds) }
+            case "welcomeStatus":
+                var statuses: [AgentKind: AgentStatus] = [:]
+                for agent in AgentKind.allCases {
+                    let value = step[agent.rawValue]?.string ?? "missing"
+                    let readiness: AgentStatus.Readiness
+                    switch value {
+                    case "ready": readiness = .ready
+                    case "signedOut": readiness = .signedOut
+                    case "checking": readiness = .checking
+                    case "unavailable": readiness = .unavailable("Couldn't check the account. Try again.")
+                    default: readiness = .notInstalled
+                    }
+                    statuses[agent] = AgentStatus(readiness: readiness,
+                        executable: value == "missing" || value == "checking" ? nil : URL(fileURLWithPath: step[agent.rawValue + "Executable"]?.string ?? "/fixture/" + agent.executableName))
+                }
+                model.agentStatusOverride = statuses
+                await model.refreshAgents(force: true)
+            case "welcomeShow": model.showWelcome()
+            case "welcomeUseReadyAgent":
+                guard let suggestion = model.welcomeSuggestedAgent else { throw DriverError("No ready agent suggestion") }
+                model.selectWelcomeAgent(suggestion)
+            case "signInFixture":
+                let agent = AgentKind(rawValue: step["agent"]?.string ?? "codex") ?? .codex
+                let failFirst = step["failFirst"]?.bool ?? false
+                let delay = step["seconds"]?.double ?? 0.5
+                var attempts = 0
+                model.signInOpenOverride = { [weak model] command in
+                    attempts += 1
+                    if failFirst && attempts == 1 { return false }
+                    Task { @MainActor in
+                        try? await Task.sleep(for: .seconds(delay))
+                        model?.agentStatusOverride?[agent]?.readiness = .ready
+                        try? Data("0\n".utf8).write(to: command.deletingLastPathComponent().appendingPathComponent("result"))
+                    }
+                    return true
+                }
+            case "signInStart": model.signIn(AgentKind(rawValue: step["agent"]?.string ?? "codex") ?? .codex)
+            case "signInState":
+                let agent = AgentKind(rawValue: step["agent"]?.string ?? "codex") ?? .codex
+                guard let flow = model.signIns[agent] else { throw DriverError("No sign-in flow") }
+                log("signIn " + String(decoding: try JSONSerialization.data(withJSONObject: ["phase": String(describing: flow.phase), "message": flow.message ?? ""], options: [.sortedKeys]), as: UTF8.self))
+            case "fullScreen":
+                guard let main = window() else { throw DriverError("No main window") }
+                let desired = step["enabled"]?.bool ?? true
+                if main.styleMask.contains(.fullScreen) != desired {
+                    let transition = WindowTransition()
+                    let observer = NotificationCenter.default.addObserver(forName: desired ? NSWindow.didEnterFullScreenNotification : NSWindow.didExitFullScreenNotification, object: main, queue: .main) { _ in
+                        MainActor.assumeIsolated { transition.finished = true }
+                    }
+                    defer { NotificationCenter.default.removeObserver(observer) }
+                    main.toggleFullScreen(nil)
+                    for _ in 0..<140 where !transition.finished { try await pause(0.05) }
+                    guard transition.finished else { throw DriverError("Full-screen transition did not finish") }
+                }
+                guard main.styleMask.contains(.fullScreen) == desired else { throw DriverError("Full-screen transition failed") }
+                try await pause(0.2)
+            case "toolbarCheck":
+                guard let main = window(), main.toolbar?.isVisible != true else { throw DriverError("An empty native toolbar is reserving space") }
+                log("Native toolbar removed; fullScreen=\(main.styleMask.contains(.fullScreen))")
+            case "welcomeAgent":
+                model.selectWelcomeAgent(AgentKind(rawValue: step["agent"]?.string ?? "") ?? .claude)
+            case "welcomeFinish":
+                let result = await model.finishWelcome(exploreOnly: step["explore"]?.bool ?? false)
+                if result != (step["succeeds"]?.bool ?? true) { throw DriverError("Unexpected setup completion result") }
+            case "welcomeState":
+                let state: [String: Any] = ["shown": model.showsWelcome, "agent": model.welcomeAgent.rawValue,
+                    "project": model.selectedProject?.name ?? "", "ready": model.welcomeChecklist.isReady,
+                    "completedSteps": model.welcomeChecklist.completedSteps,
+                    "completed": model.workspace.preferences.welcomeCompleted ?? false,
+                    "suggestedAgent": model.welcomeSuggestedAgent?.rawValue ?? "",
+                    "sessionAgent": model.selectedSession?.agent.rawValue ?? ""]
+                log("welcome " + String(decoding: try JSONSerialization.data(withJSONObject: state, options: [.sortedKeys]), as: UTF8.self))
+            case "streamingRecoveryTest":
+                try await DebugPersistenceChecks.streamingRecovery(model)
+                log("Continuous streaming and draft autosave passed")
             case "composerMock":
                 let session = try await current(model)
                 session.apply(.contextUsage(ContextUsage(usedTokens: 28_000, maxTokens: 128_000)))
@@ -1020,6 +1192,9 @@
             case "quit":
                 await model.shutdown()
                 exit(0)
+            case "exitWithoutSaving":
+                // Simulate a process exit without the normal final workspace/transcript save.
+                exit(0)
             default:
                 throw DriverError("unknown step: \(step)")
             }
@@ -1480,42 +1655,39 @@
             main.setContentSize(NSSize(width: 900, height: 600))
             model.showsInspector = true
             try await pause(0.3)
-            guard let root = main.contentView, let shortcuts = marker(in: root, named: "workspace-view-shortcuts") else {
-                throw DriverError("Named project view shortcuts are missing")
-            }
-            let viewport = shortcuts.convert(shortcuts.bounds, to: nil).insetBy(dx: -1, dy: -1)
-            for name in ["workspace-open-code", "workspace-open-stats", "workspace-more-views"] {
-                guard let control = marker(in: root, named: name), viewport.contains(control.convert(control.bounds, to: nil)) else {
-                    throw DriverError("Project view control is clipped with the inspector open: " + name)
-                }
+            guard let root = main.contentView, let header = marker(in: root, named: "workspace-header"),
+                  let addView = marker(in: root, named: "workspace-new-view"), header.bounds.height <= 43,
+                  header.convert(header.bounds, to: nil).contains(addView.convert(addView.bounds, to: nil)),
+                  marker(in: root, named: "workspace-view-shortcuts") == nil else {
+                throw DriverError("Single-row navigation is missing or clipped")
             }
             if let directory = step["directory"]?.string {
                 try snapshot(to: directory + "/project-views-narrow-inspector.png", title: nil)
             }
-            try await run(["op": "clickMarker", "name": "workspace-open-code"], model)
-            try await run(["op": "clickMarker", "name": "workspace-open-stats"], model)
-            try await run(["op": "clickMarker", "name": "workspace-open-code"], model)
+            try await run(["op": "shortcut", "key": "2", "exactMenu": true], model)
+            try await run(["op": "shortcut", "key": "0", "exactMenu": true], model)
+            try await run(["op": "shortcut", "key": "2", "exactMenu": true], model)
             model.showsInspector = false
             main.setContentSize(NSSize(width: 1240, height: 820))
             try await pause(0.3)
-            guard model.layout(for: project.id).openTabs == [.conversation, .code, .stats] else { throw DriverError("Opening an existing tool duplicated its tab") }
-            try await run(["op": "projectTabClick", "tab": "stats"], model)
+            guard model.layout(for: project.id).openTabs == [.conversation, .code, .research] else { throw DriverError("Opening an existing tool duplicated its tab") }
+            try await run(["op": "projectTabClick", "tab": "research"], model)
             try await pause(0.2)
             try await run(["op": "clickMarker", "name": "workspace-close-code"], model)
-            guard model.layout(for: project.id).panel == .stats,
-                  model.layout(for: project.id).openTabs == [.conversation, .stats], document.text == draft, document.isModified else {
+            guard model.layout(for: project.id).panel == .research,
+                  model.layout(for: project.id).openTabs == [.conversation, .research], document.text == draft, document.isModified else {
                 throw DriverError("Closing an inactive Code tab changed the selection or lost the file draft")
             }
-            try await run(["op": "clickMarker", "name": "workspace-open-code"], model)
+            try await run(["op": "shortcut", "key": "2", "exactMenu": true], model)
             try await pause(0.2)
             guard editor.selectedDocument?.id == document.id else { throw DriverError("Reopening Code lost the open editor") }
             try await run(["op": "clickMarker", "name": "workspace-close-code"], model)
-            guard model.layout(for: project.id).panel == .stats else { throw DriverError("Closing the active tab did not select its neighbor") }
-            try await run(["op": "clickMarker", "name": "workspace-open-agents"], model)
+            guard model.layout(for: project.id).panel == .research else { throw DriverError("Closing the active tab did not select its neighbor") }
+            try await run(["op": "shortcut", "key": "4", "exactMenu": true], model)
             try await pause(0.2)
             try await run(["op": "clickMarker", "name": "workspace-close-agents"], model)
             guard source.isBusy else { throw DriverError("Closing Agents interrupted its running agent") }
-            try await run(["op": "clickMarker", "name": "workspace-open-browser"], model)
+            try await run(["op": "shortcut", "key": "3", "exactMenu": true], model)
             model.setSplit(.code)
             try await pause(0.2)
             guard model.layout(for: project.id).openTabs.contains(.code) else { throw DriverError("Split tools must have a tab") }
@@ -1524,7 +1696,7 @@
             try await run(["op": "clickMarker", "name": "workspace-close-browser"], model)
             model.showCode()
             model.moveProjectTab(.code, offset: -1)
-            guard model.layout(for: project.id).openTabs == [.conversation, .code, .stats] else { throw DriverError("Tab order was not updated") }
+            guard model.layout(for: project.id).openTabs == [.conversation, .code, .research] else { throw DriverError("Tab order was not updated") }
             model.closeOtherProjectTabs(keeping: .code)
             guard model.layout(for: project.id).openTabs == [.conversation, .code] else { throw DriverError("Close Other Tabs did not keep Chat and the chosen tab") }
             try await pause(0.2)
@@ -1550,15 +1722,18 @@
                 try snapshot(to: directory + "/project-tabs-light-compact.png", title: nil)
             }
             guard await model.save() else { throw DriverError("Project tabs could not be saved") }
-            log("Project tabs: named view shortcuts at narrow widths, open/reuse, native select/close, split cleanup, running agent and unsaved editor preservation, ordering and per-project state passed")
+            log("Project tabs: single-row navigation at narrow widths, open/reuse, native select/close, split cleanup, running agent and unsaved editor preservation, ordering and per-project state passed")
         }
 
         private static func editSpaceUI(name: String, color: String, editing id: UUID? = nil, model: AppModel) async throws {
             guard let main = window() else { throw DriverError("No main window") }
+            main.makeKeyAndOrderFront(nil)
+            main.contentView?.layoutSubtreeIfNeeded()
             if let id { model.showSpaceEditor(id); try await pause(0.3) }
             else { try await run(["op": "clickMarker", "name": "space-create"], model) }
+            for _ in 0..<40 where main.attachedSheet == nil { try await pause(0.05) }
             guard let sheet = main.attachedSheet, let root = sheet.contentView,
-                  let field = textField(in: root, placeholder: "Space name") else { throw DriverError("Space editor did not open") }
+                  let field = textField(in: root, placeholder: "e.g. Product, Personal, Research") else { throw DriverError("Space editor did not open") }
             sheet.makeFirstResponder(field)
             guard let input = field.currentEditor() as? NSTextView else { throw DriverError("Space name is not editable") }
             input.insertText(name, replacementRange: NSRange(location: 0, length: (input.string as NSString).length))
@@ -1843,7 +2018,7 @@
             let capture = sheet ? target?.attachedSheet : target
             guard let view = capture?.contentView?.superview ?? capture?.contentView,
                 let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds)
-            else { throw DriverError("no window to capture") }
+            else { throw DriverError("no window to capture: \(NSApp.windows.map { "\($0.title) visible=\($0.isVisible) main=\($0.canBecomeMain) bounds=\($0.contentView?.bounds ?? .zero)" })") }
             view.cacheDisplay(in: view.bounds, to: bitmap)
             guard let data = bitmap.representation(using: .png, properties: [:]) else {
                 throw DriverError("could not encode the snapshot")

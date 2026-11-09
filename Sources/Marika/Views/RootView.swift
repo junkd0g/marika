@@ -48,6 +48,12 @@ struct RootView: View {
                     }
                 } else if !model.isReady {
                     Color.clear
+                } else if model.selectedSpace.section == .notes {
+                    SpaceNotesView(spaceID: model.selectedSpace.id).id(model.selectedSpace.id)
+                } else if model.selectedSpace.section == .tickets {
+                    SpaceTicketsView(spaceID: model.selectedSpace.id).id(model.selectedSpace.id)
+                } else if model.showsWelcome {
+                    WelcomeView()
                 } else if let meta = model.selectedSession, let project = model.project(for: meta) {
                     ProjectWorkspaceView(meta: meta, project: project)
                         .id(project.id)
@@ -70,6 +76,7 @@ struct RootView: View {
         }
         .font(.system(size: 12))
         .controlSize(.small)
+        .background(WorkspaceWindowChrome())
         .dropDestination(for: URL.self) { urls, _ in
             guard !model.workspaceLoadFailed else { return false }
             let folders = urls.filter { $0.hasDirectoryPath }
@@ -118,6 +125,7 @@ struct RootView: View {
             get: { model.workspace.sessions.first { $0.id == model.reviewAgentID } },
             set: { if $0 == nil { model.reviewAgentID = nil } }
         )) { session in AgentReviewView(session: session).environment(model) }
+        .modifier(TaskCompletionSheet(model: model))
         #if DEBUG
             .onReceive(NotificationCenter.default.publisher(for: DebugDriver.openSettingsRequest)) { _ in
                 openSettings()
@@ -156,7 +164,7 @@ private struct ProjectWorkspaceView: View {
                             panel: .code, size: geometry.size)
                     }
                     if let browser = model.browsers[project.id] {
-                        place(ProjectBrowserView(browser: browser, isVisible: visible(.browser)), panel: .browser, size: geometry.size)
+                        place(ProjectBrowserView(browser: browser, project: project, isVisible: visible(.browser)), panel: .browser, size: geometry.size)
                     }
                     if visible(.changes) { place(ProjectChangesView(project: project), panel: .changes, size: geometry.size) }
                     if let _ = model.terminals[project.id] { place(ProjectTerminalView(project: project, isVisible: visible(.terminal)), panel: .terminal, size: geometry.size) }
@@ -345,6 +353,7 @@ struct AgentStatusLine: View {
     private var status: AgentStatus { model.statuses[agent] ?? AgentStatus() }
 
     var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
         HStack(spacing: 7) {
             switch status.readiness {
             case .checking:
@@ -356,8 +365,7 @@ struct AgentStatusLine: View {
             case .signedOut:
                 Circle().fill(Theme.attention).frame(width: 7, height: 7)
                 Text("Not signed in").foregroundStyle(.secondary)
-                Button("Sign In…") { model.signIn(agent) }
-                    .controlSize(.small)
+                AgentSignInButton(agent: agent)
             case .unavailable(let reason):
                 Circle().fill(Theme.attention).frame(width: 7, height: 7)
                 Text(reason)
@@ -374,6 +382,8 @@ struct AgentStatusLine: View {
                         .controlSize(.small)
                 }
             }
+        }
+        AgentSignInFeedback(agent: agent)
         }
         .font(.system(size: 12))
     }

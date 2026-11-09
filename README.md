@@ -42,10 +42,19 @@ otherwise. You do not need a signing identity to build locally.
 
 ### 3. Open your first project
 
+On first launch, the Welcome checklist helps you install and sign in to one agent, choose a
+project folder, and open Chat with **Start Working**. **Explore in Editor** opens the project
+before an agent is connected. Return to the checklist through **Help → Getting Started**.
+If another agent is already ready, **Use Claude/Codex** switches setup to it. CLI sign-in
+shows waiting and verification progress, with **Check Again** and **Retry Sign In** when needed.
+
 1. Choose **Open Project** or press **⌘O**, then select a folder.
 2. Open **Settings → Agents** to check agent availability and sign-in status.
 3. Choose the provider, model and permission mode in Chat, then send your task.
-4. Click **Code**, **Browser**, **Stats**, or another button in the **Views** row to open its tab.
+4. Use **+** in the tab row to open **Code**, **Browser**, **Stats**, or another view. Keyboard shortcuts and dragging tabs into splits are supported.
+
+When a task finishes, **Review Work** brings reported files, recorded checks, and preview actions
+together. The Browser preview bar shows server status and opens logs beside the page.
 
 Permission modes differ between providers. See [approval modes](docs/approval-modes.md)
 for the behavior implemented by each runtime.
@@ -55,12 +64,15 @@ for the behavior implemented by each runtime.
 ### A place for each project
 
 **Spaces** group related projects in the sidebar. Choose a name, color and icon, then switch
-using the icons at the bottom. Each space remembers its last project; projects retain their
+using the named rows in the sidebar's Spaces list. Each space remembers its last project; projects retain their
 conversations, open tabs and editor drafts. Right-click a project to move it to another space.
 
-The **Views** row opens tools directly. **Chat** stays visible on the left; tool tabs can be
+Each space also has **Notes** with headings, checklists and other editable blocks, and **Tickets**
+with a board, priorities, assignees and project links. Both save automatically and support archive/restore.
+
+The **+** menu in the tab row opens tools. **Chat** stays visible on the left; tool tabs can be
 closed, reordered and reopened. Closing a tab keeps its unsaved files and running tasks.
-Middle-click a named view to open it directly. Drag a tab to a workspace edge to arrange a split,
+Keyboard shortcuts open views directly. Drag a tab to a workspace edge to arrange a split,
 or use the tab's directional **Split** context-menu actions.
 
 ### From a conversation to working code
@@ -96,7 +108,7 @@ through Marika's MCP bridge; access to external sites is controlled in the brows
 | **Pipelines** | Run supported GitHub Actions jobs locally or native Swift checks. |
 | **API** | Work with generated HTTP, GraphQL and gRPC collections and project environments. |
 
-In smaller windows, additional tools are under **More views** or **More**.
+Every tool remains available from the **+** menu at any window size.
 
 ## Useful shortcuts
 

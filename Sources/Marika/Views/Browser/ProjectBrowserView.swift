@@ -4,20 +4,31 @@ import SwiftUI
 import WebKit
 
 struct ProjectBrowserView: View {
+    @Environment(AppModel.self) private var model
     @Bindable var browser: BrowserWorkspace
+    let project: Project
     var isVisible: Bool
+    @State private var detectedPreview: PreviewConfiguration?
     @State private var address = ""
     @State private var hoveredTab: UUID?
     @State private var suggestionIndex: Int?
     @State private var showsSiteInfo = false
     @State private var showsFind = false
+    @State private var showsPreviewLogs = false
     @FocusState private var addressFocused: Bool
     @FocusState private var findFocused: Bool
 
     private var suggestions: [BrowserLocation] { browser.library.suggestions(for: address, limit: 5) }
+    private var canRecoverPreview: Bool {
+        PreviewRecovery.matches(browser.selectedPage?.url, configuration: project.previewConfiguration ?? detectedPreview,
+            runningAddress: model.previews[project.id]?.address)
+    }
 
     var body: some View {
         VStack(spacing: 0) {
+            if project.previewConfiguration != nil || detectedPreview != nil || model.previews[project.id] != nil {
+                previewBar
+            }
             tabs
             navigation.zIndex(10)
             GeometryReader { geometry in
@@ -46,13 +57,24 @@ struct ProjectBrowserView: View {
                 }
                 .font(.system(size: 12)).padding(10).background(Color.accentColor.opacity(0.08))
             }
-            pageContent
+            HStack(spacing: 0) {
+                pageContent
+                if showsPreviewLogs, let preview = model.previews[project.id] {
+                    Divider()
+                    PreviewLogView(preview: preview).frame(width: 270)
+                }
+            }
             Divider()
             footer
         }
         .background(Theme.canvas)
         .sheet(isPresented: $browser.showsHistory) { BrowserLibraryView(browser: browser) }
         .onAppear { syncAddress() }
+        .task(id: browser.selectedPage?.navigationError) {
+            let root = project.url
+            let detected = await Task.detached { ProjectPreview.detect(at: root) }.value
+            if !Task.isCancelled { detectedPreview = detected }
+        }
         .onChange(of: browser.selectedPageID) { _, _ in
             addressFocused = false
             syncAddress()
@@ -70,6 +92,35 @@ struct ProjectBrowserView: View {
         .onChange(of: isVisible) { _, visible in
             if !visible { addressFocused = false; findFocused = false }
         }
+    }
+
+    private var previewBar: some View {
+        let preview = model.previews[project.id]
+        return HStack(spacing: 10) {
+            PreviewStatusLabel(preview: preview)
+            if let port = preview?.address?.port {
+                Text(verbatim: ":\(port)").monospacedDigit().foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 4)
+            Button(preview?.isActive == true ? "Stop" : "Start") {
+                if let preview, preview.isActive { preview.stop() }
+                else { model.runPreview(for: project) }
+            }
+            Button(showsPreviewLogs ? "Hide Logs" : "Logs") {
+                _ = model.preview(for: project)
+                showsPreviewLogs.toggle()
+            }
+            .accessibilityLabel("Toggle preview logs")
+            #if DEBUG
+                .background(DebugViewMarker(name: "preview-toggle-logs"))
+            #endif
+            Button("Settings…") { model.openPreviewSettings(for: project) }
+        }
+        .font(.system(size: 11)).controlSize(.small)
+        .padding(.horizontal, 12).padding(.vertical, 7).background(Theme.panel)
+        #if DEBUG
+            .background(DebugViewMarker(name: "preview-status-bar"))
+        #endif
     }
 
     private var tabs: some View {
@@ -283,16 +334,48 @@ struct ProjectBrowserView: View {
                         Text("Couldn't load this page").font(.system(size: 20, weight: .semibold))
                         Text(browser.selectedPage?.url?.absoluteString ?? "").font(.system(size: 12)).textSelection(.enabled)
                         Text(error).font(.system(size: 12)).foregroundStyle(.secondary)
-                        if browser.selectedPage?.url.map(BrowserAddress.isLocal) == true {
+                        if canRecoverPreview {
+                            previewRecovery
+                        } else if browser.selectedPage?.url.map(BrowserAddress.isLocal) == true {
                             Text("Make sure your development server is running.").font(.system(size: 12)).foregroundStyle(.secondary)
                         }
-                        Button("Try Again") { browser.selectedPage?.reload() }.buttonStyle(.borderedProminent)
+                        if !canRecoverPreview {
+                            Button("Try Again") { browser.selectedPage?.reload() }.buttonStyle(.borderedProminent)
+                        }
                     }
                     .multilineTextAlignment(.center).padding(30)
                     .frame(maxWidth: .infinity, maxHeight: .infinity).background(Theme.canvas)
                 }
             }
         }.clipped()
+    }
+
+    private var previewRecovery: some View {
+        let preview = model.previews[project.id]
+        return VStack(spacing: 10) {
+            if preview?.state == .starting {
+                HStack { ProgressView().controlSize(.small); Text("Starting project preview…") }
+            } else if let error = preview?.error {
+                Text(error).foregroundStyle(Theme.attention).fixedSize(horizontal: false, vertical: true)
+            } else {
+                Text(preview?.state == .running ? "The project preview is running. Reload this page or check its logs." : "Your project's preview server is stopped. Start it to reopen this page.")
+                    .foregroundStyle(.secondary)
+            }
+            HStack(spacing: 12) {
+                Button(preview?.state == .failed ? "Retry Preview" : "Start Preview") {
+                    guard let page = browser.selectedPage else { return }
+                    model.runPreview(for: project, recovering: page)
+                }
+                .buttonStyle(.borderedProminent).disabled(preview?.isActive == true)
+                #if DEBUG
+                    .background(DebugViewMarker(name: "browser-start-project-preview"))
+                #endif
+                Button("Reload Page") { browser.selectedPage?.reload() }
+                    .disabled(preview?.state == .starting)
+            }
+            Button("Preview Settings & Logs…") { model.openPreviewSettings(for: project) }.buttonStyle(.link)
+        }
+        .font(.system(size: 12)).controlSize(.small)
     }
 
     private var startPage: some View {

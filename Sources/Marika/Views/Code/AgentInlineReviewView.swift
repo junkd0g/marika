@@ -4,6 +4,7 @@ import SwiftUI
 
 struct AgentInlineReviewView: View {
     @Bindable var review: AgentReviewWorkspace
+    var isVisible = true
 
     var body: some View {
         VStack(spacing: 0) {
@@ -61,6 +62,7 @@ struct AgentInlineReviewView: View {
         .background(Theme.canvas)
         .sheet(isPresented: $review.showsFeedback) { ReviewFeedbackView(review: review) }
         .task(id: review.agentIsBusy) { if !review.agentIsBusy { await review.refresh() } }
+        .task(id: isVisible) { if isVisible { await review.monitorTestFreshness() } }
         #if DEBUG
         .background(DebugViewMarker(name: "agent-inline-review"))
         #endif
@@ -103,7 +105,7 @@ struct AgentInlineReviewView: View {
                 .font(.system(size: 10)).monospacedDigit().foregroundStyle(.secondary)
             Divider().frame(height: 14)
             Button { review.runTests() } label: {
-                Label(review.testsRunning ? "Running tests…" : "Run tests", systemImage: review.testsRunning ? "hourglass" : "play.circle")
+                Label(review.testsRunning ? "Running tests…" : review.testResult != nil ? "Run Again" : "Run tests", systemImage: review.testsRunning ? "hourglass" : "play.circle")
             }.disabled(!review.canDecide).help("Run tests for the proposed code in the agent worktree")
             #if DEBUG
             .background(DebugViewMarker(name: "agent-review-tests"))
@@ -142,16 +144,16 @@ struct AgentInlineReviewView: View {
     private var testOutput: some View {
         VStack(spacing: 0) {
             HStack(spacing: 8) {
-                Image(systemName: review.testsRunning ? "hourglass" : review.testResult?.succeeded == true ? "checkmark.circle.fill" : "exclamationmark.circle")
-                    .foregroundStyle(review.testResult?.succeeded == true ? Color.green : .secondary)
-                Text(review.testsRunning ? "Running tests" : review.testResult?.succeeded == true ? "Tests passed" : "Test results").fontWeight(.medium)
+                Image(systemName: review.testsRunning ? "hourglass" : review.testIsCurrent && review.testResult?.succeeded == true ? "checkmark.circle.fill" : "exclamationmark.circle")
+                    .foregroundStyle(review.testIsCurrent && review.testResult?.succeeded == true ? Color.green : .secondary)
+                Text(review.testsRunning ? "Running tests" : review.testOutdated ? "Outdated" : !review.testIsCurrent && review.testResult != nil ? "Freshness unverified" : review.testResult?.succeeded == true ? "Tests passed" : "Test results").fontWeight(.medium)
                 Text("Agent worktree · \(review.testScope?.title ?? "")").foregroundStyle(.secondary).lineLimit(1)
                 Spacer()
                 if review.testsRunning { Button("Stop") { review.stopTests() } }
                 Button { review.showsTestOutput = false } label: { Image(systemName: "xmark") }.buttonStyle(.plain)
             }.font(.system(size: 11)).padding(10).background(Theme.chrome.opacity(0.5))
             ScrollView {
-                Text(review.testError ?? review.testResult?.output ?? "Waiting for test output…")
+                Text(review.testError ?? review.testFreshnessIssue ?? (review.testOutdated ? "Code changed since this run. Run tests again.\n\n" + (review.testResult?.output ?? "") : review.testResult?.output ?? "Waiting for test output…"))
                     .font(.system(size: 11, design: .monospaced)).textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading).padding(10)
             }

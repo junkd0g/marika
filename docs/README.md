@@ -27,8 +27,8 @@ macOS workspace. Start with the [screenshot tour](screenshots.md) to see the int
 
 1. Follow the [installation instructions](../README.md#get-started) and open a folder with **⌘O**.
 2. Check agent availability in **Settings → Agents**, then choose a provider and permissions in Chat.
-3. Use the **Views** row to open Code, Browser, Agents or another tool. Middle-click opens the
-   named view directly; opening an existing view selects its tab.
+3. Use **+** in the tab row to open Code, Browser, Agents or another tool.
+   Opening an existing view selects its tab.
 4. Drag a view tab to an edge of the workspace to split it with another view. Tab context menus
    also offer **Split left**, **right**, **top** and **bottom** actions.
 

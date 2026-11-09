@@ -74,11 +74,13 @@ public final class SessionController: Identifiable {
     @ObservationIgnored private var deltaOrder: [String] = []
     @ObservationIgnored private var deltas: [String: PendingDelta] = [:]
     @ObservationIgnored private var flushScheduled = false
+    @ObservationIgnored private var transcriptCheckpoint: Task<Void, Never>?
     @ObservationIgnored private var disconnectsWhenIdle = false
 
     /// Text arrives token by token. Batching it keeps long answers from re-rendering on every
     /// token without any visible lag.
     private static let flushInterval: Duration = .milliseconds(33)
+    private static let checkpointInterval: Duration = .seconds(1)
 
     public init(meta: SessionMeta, items: [TranscriptItem] = [], makeAgent: @escaping AgentFactory) {
         sessionID = meta.id
@@ -137,7 +139,7 @@ public final class SessionController: Identifiable {
         meta.updatedAt = Date()
         if meta.agent == .codex, !isBusy { runningMode = meta.mode }
         setPhase(.running)
-        onChange?(self)
+        notifyChange()
 
         let previousPreparation = preparation
         let sending = Task {
@@ -155,7 +157,7 @@ public final class SessionController: Identifiable {
                 try await agent.send(outgoing)
                 if handoff, epoch == connectionEpoch {
                     meta.needsProviderContext = nil
-                    onChange?(self)
+                    notifyChange()
                 }
             } catch is CancellationError {
                 if await agent?.hasActiveTurn() == true { await agent?.interrupt() }
@@ -190,11 +192,11 @@ public final class SessionController: Identifiable {
         switch decision {
         case .approvePlan(let nextMode):
             meta.mode = nextMode ?? .ask
-            onChange?(self)
+            notifyChange()
         case .denyWithFeedback(let feedback):
             // The user typed this, so it belongs in the conversation they can see.
             append(TranscriptItem(id: UUID().uuidString, content: .user(text: feedback, images: [])))
-            onChange?(self)
+            notifyChange()
         default:
             break
         }
@@ -204,7 +206,7 @@ public final class SessionController: Identifiable {
     public func update(settings: AgentSettings) {
         guard settings != meta.settings else { return }
         meta.settings = settings
-        onChange?(self)
+        notifyChange()
         Task { await agent?.update(settings: settings) }
     }
 
@@ -225,7 +227,7 @@ public final class SessionController: Identifiable {
                 text: "Switched to \(kind.shortName). Your next message continues with recent conversation context in the same workspace."))))
         }
         meta.updatedAt = Date()
-        onChange?(self)
+        notifyChange()
         return true
     }
 
@@ -233,41 +235,41 @@ public final class SessionController: Identifiable {
         guard meta.agentTask?.workspace?.status != .discarded else { return false }
         if isBusy {
             meta.queuedAgent = kind == meta.agent ? nil : kind
-            onChange?(self)
+            notifyChange()
             return true
         }
         meta.queuedAgent = nil
         let changed = switchAgent(to: kind)
-        if !changed { onChange?(self) }
+        if !changed { notifyChange() }
         return true
     }
 
     public func cancelAgentSwitch() {
         guard meta.queuedAgent != nil else { return }
         meta.queuedAgent = nil
-        onChange?(self)
+        notifyChange()
     }
 
     private func applyQueuedAgentIfIdle() {
         guard !isBusy, let next = meta.queuedAgent else { return }
         meta.queuedAgent = nil
-        if !switchAgent(to: next) { onChange?(self) }
+        if !switchAgent(to: next) { notifyChange() }
     }
 
     public func rename(_ title: String) {
         meta.title = title
-        onChange?(self)
+        notifyChange()
     }
 
     public func recordVerification(_ record: TaskVerificationRecord) {
         meta.taskVerification = record
-        onChange?(self)
+        notifyChange()
     }
 
     public func updateAgentWorkspace(_ workspace: AgentWorkspace) {
         meta.agentTask?.workspace = workspace
         if workspace.status == .discarded { meta.queuedAgent = nil }
-        onChange?(self)
+        notifyChange()
     }
 
     public func shutdown() async {
@@ -279,6 +281,8 @@ public final class SessionController: Identifiable {
         agent = nil
         approvals.removeAll()
         setPhase(.idle, appliesQueuedSwitch: false)
+        flushDeltas()
+        if transcriptCheckpoint != nil { notifyChange() }
     }
 
     /// Drops the running agent so the next message starts one with fresh credentials.
@@ -290,6 +294,8 @@ public final class SessionController: Identifiable {
         self.agent = nil
         eventTask?.cancel()
         eventTask = nil
+        flushDeltas()
+        if transcriptCheckpoint != nil { notifyChange() }
         Task { await agent?.shutdown() }
     }
 
@@ -338,17 +344,17 @@ public final class SessionController: Identifiable {
             reportedModel = model
             if meta.conversationID != id {
                 meta.conversationID = id
-                onChange?(self)
+                notifyChange()
             }
         case .conversationLost:
             meta.conversationID = nil
-            onChange?(self)
+            notifyChange()
         case .phaseChanged(let phase):
             setPhase(phase)
         case .modeChanged(let mode):
             if meta.mode != mode {
                 meta.mode = mode
-                onChange?(self)
+                notifyChange()
             }
         case .modeInForce(let mode):
             runningMode = mode
@@ -374,7 +380,7 @@ public final class SessionController: Identifiable {
                 if !diff.isEmpty { call.diff = diff }
             }
             // Long turns are saved as they go, not just when they end.
-            onChange?(self)
+            notifyChange()
         case .approvalRequested(let request):
             approvals.append(request)
             setPhase(.waitingForUser)
@@ -385,7 +391,7 @@ public final class SessionController: Identifiable {
         case .todosUpdated(let todos):
             self.todos = todos
             meta.taskPlan = todos
-            onChange?(self)
+            notifyChange()
         case .notice(let notice):
             addNotice(notice)
         case .contextUsage(let usage):
@@ -432,7 +438,7 @@ public final class SessionController: Identifiable {
         if let cost = summary.totalCostUSD { meta.totalCostUSD = (meta.previousProviderCostUSD ?? 0) + cost }
         meta.updatedAt = Date()
         changeCount += 1
-        onChange?(self)
+        notifyChange()
         onAttentionNeeded?(self, .turnFinished(summary.outcome))
         completion = Task { await afterTurn?(self) }
     }
@@ -450,7 +456,7 @@ public final class SessionController: Identifiable {
         if wasRunningCommand { text += ". A command it started may still be running." }
         addNotice(Notice(level: .error, text: text))
         setPhase(.idle)
-        onChange?(self)
+        notifyChange()
     }
 
     private func closeOpenTools() {
@@ -467,11 +473,13 @@ public final class SessionController: Identifiable {
     private func append(_ item: TranscriptItem) {
         itemIndex[item.id] = items.count
         items.append(item)
+        scheduleTranscriptCheckpoint()
     }
 
     private func upsert(id: String, parent: String?, content: TranscriptItem.Content) {
         if let position = itemIndex[id] {
             items[position].content = content
+            scheduleTranscriptCheckpoint()
         } else {
             append(TranscriptItem(id: id, parentToolID: parent, content: content))
         }
@@ -489,12 +497,14 @@ public final class SessionController: Identifiable {
         merged.finishedAt = existing.finishedAt
         if merged.diff.isEmpty { merged.diff = existing.diff }
         items[position].content = .tool(merged)
+        scheduleTranscriptCheckpoint()
     }
 
     private func updateTool(_ id: String, _ change: (inout ToolCall) -> Void) {
         guard let position = itemIndex[id], case .tool(var call) = items[position].content else { return }
         change(&call)
         items[position].content = .tool(call)
+        scheduleTranscriptCheckpoint()
     }
 
     private func removeItem(id: String) {
@@ -502,6 +512,7 @@ public final class SessionController: Identifiable {
         items.remove(at: position)
         itemIndex.removeAll(keepingCapacity: true)
         for (position, item) in items.enumerated() { itemIndex[item.id] = position }
+        scheduleTranscriptCheckpoint()
     }
 
     private func addNotice(_ notice: Notice) {
@@ -511,6 +522,7 @@ public final class SessionController: Identifiable {
             })
         {
             items[position].content = .notice(notice)
+            scheduleTranscriptCheckpoint()
         } else {
             append(TranscriptItem(id: UUID().uuidString, content: .notice(notice)))
         }
@@ -526,6 +538,24 @@ public final class SessionController: Identifiable {
     }
 
     // MARK: Delta batching
+
+    /// Checkpoint continuous output at a bounded rate, even when no tool or turn finishes.
+    /// Later edits share the existing deadline so a busy stream cannot postpone recovery.
+    private func scheduleTranscriptCheckpoint() {
+        guard transcriptCheckpoint == nil else { return }
+        transcriptCheckpoint = Task { [weak self] in
+            try? await Task.sleep(for: Self.checkpointInterval)
+            guard !Task.isCancelled, let self else { return }
+            self.flushDeltas()
+            self.notifyChange()
+        }
+    }
+
+    private func notifyChange() {
+        transcriptCheckpoint?.cancel()
+        transcriptCheckpoint = nil
+        onChange?(self)
+    }
 
     private func buffer(id: String, delta: String, isThinking: Bool, parent: String?) {
         if deltas[id] == nil {
@@ -552,8 +582,10 @@ public final class SessionController: Identifiable {
                 switch items[position].content {
                 case .assistant(let text):
                     items[position].content = .assistant(text: text + pending.text)
+                    scheduleTranscriptCheckpoint()
                 case .thinking(let text, let durationMs):
                     items[position].content = .thinking(text: text + pending.text, durationMs: durationMs)
+                    scheduleTranscriptCheckpoint()
                 default:
                     break
                 }

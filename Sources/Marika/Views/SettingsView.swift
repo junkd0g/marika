@@ -22,6 +22,7 @@ private struct AgentsSettings: View {
     @State private var apiKey = ""
     @State private var hasStoredKey = false
     @State private var showsKeySaved = false
+    @State private var apiKeyError: String?
 
     private var billing: Binding<ClaudeBilling> {
         Binding(
@@ -43,12 +44,25 @@ private struct AgentsSettings: View {
                     HStack {
                         SecureField(hasStoredKey ? "Key saved in your Keychain" : "Anthropic API key", text: $apiKey)
                         Button(showsKeySaved ? "Saved" : "Save") {
-                            model.setAnthropicAPIKey(apiKey)
-                            hasStoredKey = !apiKey.isEmpty
-                            apiKey = ""
-                            showsKeySaved = true
+                            do {
+                                try model.setAnthropicAPIKey(apiKey)
+                                hasStoredKey = true
+                                apiKey = ""
+                                apiKeyError = nil
+                                showsKeySaved = true
+                            } catch {
+                                showsKeySaved = false
+                                apiKeyError = error.localizedDescription
+                            }
                         }
-                        .disabled(apiKey.isEmpty)
+                        .disabled(apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    }
+                    .onChange(of: apiKey) { _, value in
+                        if !value.isEmpty { showsKeySaved = false }
+                        apiKeyError = nil
+                    }
+                    if let apiKeyError {
+                        Text(apiKeyError).font(.caption).foregroundStyle(.red)
                     }
                     Text("Charged per token by Anthropic at API rates. Stored only in your Keychain.")
                         .font(.caption)
@@ -91,8 +105,7 @@ private struct AgentRow: View {
                 AgentStatusLine(agent: agent, linksToSettings: false)
                 Spacer()
                 if status.readiness == .ready {
-                    Button("Switch Account…") { model.signIn(agent) }
-                        .controlSize(.small)
+                    AgentSignInButton(agent: agent, title: "Switch Account…")
                 }
             }
             Text(detail)

@@ -2,7 +2,7 @@
 
 [← Back to Marika](../README.md)
 
-The Views row opens each tool as a tab. Tools that do not fit in a narrow window are listed under **More views** or **More**.
+The **+** menu in the tab row opens each tool. Keyboard shortcuts remain available at every window size.
 
 ## Browser and local previews
 
@@ -31,6 +31,11 @@ until the new transfer succeeds; downloads made from forms should be started aga
 The footer provides desktop/tablet/mobile widths and visual feedback tools. Start
 a detected development server with **⇧⌘R**, or enter a custom command and address in preview settings. The browser opens when the server responds. Select an element or
 capture a screenshot to add feedback to the current message draft for review before sending.
+
+If a saved local page cannot connect to this project's detected or configured preview, use
+**Start Preview** on the error page. Marika starts the server and reloads the same tab and route.
+**Preview Settings & Logs** shows startup failures and lets you change the command or address.
+Pages for unrelated ports or external websites retain the normal **Try Again** action.
 
 Marika provides eight browser tools to newly started Claude and Codex agent processes through
 the bundled `MarikaBrowserMCP` helper. Agents can inspect, screenshot, navigate, click, fill, scroll,
@@ -198,3 +203,32 @@ needs. Jobs with recognized GitHub-only requirements are labeled in the picker�
 Swift packages also offer a native Mac test and release build. Marika’s own pipeline finishes by
 verifying the app signature. Each project keeps its latest 12 finished runs and the last 64 KB of
 output per run. Use **Run again** to repeat a job or **Ask agent about failure** to analyze its log.
+
+### Preview status and troubleshooting
+
+The workspace header shows preview status. In Browser, the preview bar provides Start/Stop,
+Settings, and a Logs toggle that keeps server output beside the page. Starting checks the configured
+local port first; an occupied port stops startup with an explanation. Marika does not terminate the
+other server. Change the port in both the command and URL, or stop that server, then retry.
+Commands that exit before readiness and servers that fail to respond within the startup deadline
+show a failure instead of staying in Starting indefinitely.
+
+### Reviewing completed work
+
+Finished chat turns offer **Review Work**, bringing the latest turn's reported files, recorded checks,
+and project preview actions into one view. **Review Changes** opens the project diff or the isolated
+agent's worktree review. Isolated changes still need to be applied before they appear in the main
+project preview. **Run Tests** records the result and output using the existing project test runner.
+Results store a content fingerprint of the checked project and are revalidated while visible,
+including after restart. Changes to source, tests, configuration, file names or executable permissions
+mark the result **Outdated**; **Run Again** checks the current files. Unsaved edits also mark it outdated
+and must be saved before running tests. A change during a run prevents that result from staying passed.
+
+In Git repositories the fingerprint includes tracked and untracked non-ignored files. Other folders
+exclude common build and dependency outputs. Only hashes are saved, not source contents. If inputs
+cannot be fully read or exceed the size limit, the result is labeled **Freshness unverified**. Older
+results without fingerprints require a new run. This verifies file contents, not changes to external
+services, tools or the environment.
+
+Project views now open from the **+** menu in the tab row. Existing keyboard shortcuts, tab closing,
+reordering, and dragging tabs into splits continue to work.

@@ -5,8 +5,12 @@ public struct TaskVerificationRecord: Codable, Equatable, Hashable, Sendable {
     public var command: String
     public var output: String
     public var succeeded: Bool?
-    public init(command: String, output: String, succeeded: Bool?, date: Date = Date()) {
+    public var snapshot: VerificationSnapshot?
+    public var snapshotIssue: String?
+    public init(command: String, output: String, succeeded: Bool?, date: Date = Date(), snapshot: VerificationSnapshot? = nil, snapshotIssue: String? = nil) {
         self.command = command; self.output = String(output.suffix(64_000)); self.succeeded = succeeded; self.date = date
+        self.snapshot = snapshot
+        self.snapshotIssue = snapshotIssue
     }
 }
 

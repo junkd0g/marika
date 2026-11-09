@@ -65,7 +65,8 @@ struct WorkspaceFeaturesTests {
     @MainActor @Test func previewReportsItsURLAndStopsTheServer() async throws {
         let root = try workbenchFolder(); defer { try? FileManager.default.removeItem(at: root) }
         let preview = ProjectPreview()
-        let python = "import http.server; s=http.server.ThreadingHTTPServer(('127.0.0.1',0),http.server.SimpleHTTPRequestHandler); print('http://127.0.0.1:%s'%s.server_port,flush=True); s.serve_forever()"
+        try Data("Preview fixture".utf8).write(to: root.appendingPathComponent("index.html"))
+        let python = "import http.server; s=http.server.ThreadingHTTPServer(('127.0.0.1',0),http.server.SimpleHTTPRequestHandler); print('(http://127.0.0.1:%s/)'%s.server_port,flush=True); s.serve_forever()"
         let command = "/usr/bin/python3 -u -c \"" + python + "\""
         preview.start(PreviewConfiguration(command: command, address: "http://localhost:1"), at: root, environment: ProcessInfo.processInfo.environment)
         defer { preview.stop() }
@@ -73,6 +74,9 @@ struct WorkspaceFeaturesTests {
         #expect(preview.state == .running)
         let url = try #require(preview.address)
         #expect(url.port != 1 && preview.logs.contains("http://127.0.0.1:"))
+        #expect(url.path == "/")
+        let (body, pageResponse) = try await URLSession.shared.data(from: url)
+        #expect((pageResponse as? HTTPURLResponse)?.statusCode == 200 && String(decoding: body, as: UTF8.self) == "Preview fixture")
         preview.stop()
         try await Task.sleep(for: .milliseconds(250))
         var request = URLRequest(url: url); request.timeoutInterval = 1

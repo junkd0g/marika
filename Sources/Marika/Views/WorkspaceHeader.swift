@@ -19,6 +19,7 @@ struct WorkspaceHeader: View {
                         .accessibilityLabel(model.showsProjectSidebar ? "Hide projects" : "Show projects")
                         .help(model.showsProjectSidebar ? "Hide projects" : "Show projects")
                     navigation
+                    newViewMenu
                     if geometry.size.width >= 620 {
                         Button { model.showsCommandPalette = true } label: { Image(systemName: "command") }
                             .buttonStyle(.plain).help("Command palette (⌘K)")
@@ -60,11 +61,8 @@ struct WorkspaceHeader: View {
                     if geometry.size.width >= 540 { Menu { repositoryActions } label: { Image(systemName: "folder.badge.plus") }
                         .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().help("Repositories · " + project.editorURL.lastPathComponent)
                     }
-                    if geometry.size.width >= 460 { Button {
-                        let preview = model.preview(for: project)
-                        if preview.isActive { preview.stop() } else { model.runPreview(for: project) }
-                    } label: { Image(systemName: model.previews[project.id]?.isActive == true ? "stop.circle" : "play.circle") }
-                        .buttonStyle(.plain).help("Run or stop preview (⇧⌘R)")
+                    if geometry.size.width >= 460 {
+                        PreviewStatusButton(project: project)
                     }
                     if selection == .conversation, geometry.size.width >= 540 {
                         Button { model.showsInspector.toggle() } label: { Image(systemName: "sidebar.right") }
@@ -82,52 +80,27 @@ struct WorkspaceHeader: View {
                 }
                 .padding(.horizontal, 16)
                 .frame(width: geometry.size.width, height: 42)
-                viewShortcuts(width: geometry.size.width)
             }
         }
-        .frame(height: 76)
+        .frame(height: 42)
         .background(Theme.canvas)
+        #if DEBUG
+            .background(DebugViewMarker(name: "workspace-header"))
+        #endif
     }
 
-    private static let shortcutOrder: [ProjectPanel] = [.code, .research, .browser, .agents, .changes, .terminal, .pipelines, .api, .stats]
-
-    private func viewShortcuts(width: CGFloat) -> some View {
-        let count = width >= 900 ? 8 : width >= 740 ? 6 : width >= 540 ? 4 : width >= 430 ? 3 : 2
-        let direct = Array(Self.shortcutOrder.prefix(count))
-        let remaining = Array(Self.shortcutOrder.dropFirst(count))
-        return HStack(spacing: 6) {
-            Text("Views").font(.system(size: 11, weight: .medium)).foregroundStyle(.secondary).padding(.trailing, 3)
-            ForEach(direct, id: \.self) { tab in
+    private var newViewMenu: some View {
+        Menu {
+            ForEach(ProjectPanel.allCases.filter { $0 != .conversation }, id: \.self) { tab in
                 Button { select(tab) } label: {
-                    Label(tab.title, systemImage: tab.symbol).font(.system(size: 11.5, weight: .medium))
+                    Label("\(tab.title)  ⌘\(tab.shortcut)", systemImage: tab.symbol)
                 }
-                .buttonStyle(.bordered).controlSize(.small).fixedSize()
-                .background(MiddleClickTarget { select(tab) })
-                .onDrag { WorkspaceTabDrag(projectID: project.id, panel: tab).itemProvider() }
-                .help("Open \(tab.title) (⌘\(tab.shortcut) or middle-click). Drag to a workspace edge to split.")
-                .accessibilityLabel("Show " + tab.title)
-                #if DEBUG
-                    .background(DebugViewMarker(name: "workspace-open-" + tab.rawValue.lowercased()))
-                #endif
             }
-            if !remaining.isEmpty {
-                Menu(width < 370 ? "More" : "More views") {
-                    ForEach(remaining, id: \.self) { tab in
-                        Button { select(tab) } label: { Label(tab.title, systemImage: tab.symbol) }
-                    }
-                }
-                .font(.system(size: 11.5)).controlSize(.small).fixedSize()
-                .help("Open or switch to another project view").accessibilityLabel("More project views")
-                #if DEBUG
-                    .background(DebugViewMarker(name: "workspace-more-views"))
-                #endif
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(.horizontal, 16).frame(width: width, height: 34, alignment: .leading)
-        .background(Theme.panel)
+        } label: { Image(systemName: "plus").frame(width: 24, height: 30) }
+        .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+        .accessibilityLabel("Open a view").help("Open a project view. Drag an open tab to split the workspace.")
         #if DEBUG
-            .background(DebugViewMarker(name: "workspace-view-shortcuts"))
+            .background(DebugViewMarker(name: "workspace-new-view"))
         #endif
     }
 

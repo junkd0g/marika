@@ -115,13 +115,11 @@ struct AgentTaskDetailView: View {
                 Text(checks?.running == true ? "Running tests…" : title).font(.caption.monospaced()).textSelection(.enabled)
                 Spacer()
                 if checks?.running == true { ProgressView().controlSize(.mini); Button("Stop tests") { checks?.stop() } }
-                else { Button("Run tests") { model.taskVerification(for: sessionID).run() }.disabled(controller == nil || controller?.isBusy == true || meta.agentTask?.workspace?.status == .discarded || project.runtime != nil) }
+                else { Button(meta.taskVerification == nil ? "Run tests" : "Run Again") { model.taskVerification(for: sessionID).run() }.disabled(checks?.hasUnsavedInputs == true || controller == nil || controller?.isBusy == true || meta.agentTask?.workspace?.status == .discarded || project.runtime != nil) }
             }
             if let result = meta.taskVerification {
-                Label(result.succeeded == true ? "Passed" : result.succeeded == false ? "Failed" : "Not completed", systemImage: result.succeeded == true ? "checkmark.circle" : "exclamationmark.circle")
-                    .foregroundStyle(result.succeeded == true ? Color.green : Theme.attention)
+                TaskVerificationFeedback(sessionID: sessionID)
                 Text("\(result.command) · \(result.date.formatted(date: .abbreviated, time: .shortened))").font(.caption).foregroundStyle(.secondary)
-                Text("Result from this run; later code changes are not verified automatically.").font(.caption).foregroundStyle(.secondary)
                 DisclosureGroup("Test output") { SelectableMessageText(result.output, markdown: false, font: .monospacedSystemFont(ofSize: 11, weight: .regular)) }
             } else { Text("No tests run from this task page yet.").foregroundStyle(.secondary) }
             if !overview.commands.isEmpty {

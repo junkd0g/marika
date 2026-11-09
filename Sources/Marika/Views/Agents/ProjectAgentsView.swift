@@ -163,6 +163,9 @@ private struct AgentTaskCard: View {
             }
             if controller?.isBusy == true { Button("Stop", role: .destructive) { controller?.interrupt() } }
             Button(controller?.phase == .waitingForUser ? "Review Approval" : "Open Chat") { model.openAgentChat(meta.id) }
+            if controller?.isBusy != true {
+                Button("Review Work") { model.taskCompletionID = meta.id }
+            }
             Button("Task details") { model.selectedAgentTaskIDs[meta.projectID] = meta.id }
         }
     }

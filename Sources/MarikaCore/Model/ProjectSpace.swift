@@ -18,15 +18,26 @@ public struct ProjectSpace: Codable, Equatable, Sendable, Identifiable {
     public var color: ProjectSpaceColor
     public var symbol: String
     public var lastProjectID: UUID?
+    public var notes: [SpaceNote]
+    public var tickets: [SpaceTicket]
+    public var ticketPrefix: String
+    public var nextTicketNumber: Int
+    public var section: SpaceSection
 
     public init(id: UUID = UUID(), name: String, color: ProjectSpaceColor = .blue,
-                symbol: String = "square.grid.2x2.fill", lastProjectID: UUID? = nil) {
+                symbol: String = "square.grid.2x2.fill", lastProjectID: UUID? = nil,
+                notes: [SpaceNote] = [], tickets: [SpaceTicket] = [], ticketPrefix: String? = nil,
+                nextTicketNumber: Int = 1, section: SpaceSection = .projects) {
         self.id = id
         let trimmed = String(name.trimmingCharacters(in: .whitespacesAndNewlines).prefix(40))
         self.name = trimmed.isEmpty ? "Untitled space" : trimmed
         self.color = color
         self.symbol = Self.symbols.contains(symbol) ? symbol : Self.symbols[0]
         self.lastProjectID = lastProjectID
+        self.notes = notes; self.tickets = tickets; self.section = section
+        let prefix = String((ticketPrefix ?? self.name).uppercased().filter { $0.isASCII && ($0.isLetter || $0.isNumber) }.prefix(6))
+        self.ticketPrefix = prefix.isEmpty ? "TASK" : prefix
+        self.nextTicketNumber = max(1, nextTicketNumber)
     }
 
     public init(from decoder: Decoder) throws {
@@ -35,7 +46,12 @@ public struct ProjectSpace: Codable, Equatable, Sendable, Identifiable {
                   name: try values.decodeIfPresent(String.self, forKey: .name) ?? "Untitled space",
                   color: try values.decodeIfPresent(ProjectSpaceColor.self, forKey: .color) ?? .blue,
                   symbol: try values.decodeIfPresent(String.self, forKey: .symbol) ?? Self.symbols[0],
-                  lastProjectID: try values.decodeIfPresent(UUID.self, forKey: .lastProjectID))
+                  lastProjectID: try values.decodeIfPresent(UUID.self, forKey: .lastProjectID),
+                  notes: try values.decodeIfPresent([SpaceNote].self, forKey: .notes) ?? [],
+                  tickets: try values.decodeIfPresent([SpaceTicket].self, forKey: .tickets) ?? [],
+                  ticketPrefix: try values.decodeIfPresent(String.self, forKey: .ticketPrefix),
+                  nextTicketNumber: try values.decodeIfPresent(Int.self, forKey: .nextTicketNumber) ?? 1,
+                  section: try values.decodeIfPresent(SpaceSection.self, forKey: .section) ?? .projects)
     }
 }
 
@@ -70,6 +86,7 @@ extension Workspace {
                 spaces[index].lastProjectID = nil
             }
         }
+        normalizeSpaceContent()
         if selectedSpaceID.map({ !ids.contains($0) }) ?? true {
             selectedSpaceID = projects.first(where: { $0.id == selectedProjectID })?.spaceID ?? fallback
         }
@@ -101,14 +118,17 @@ extension Workspace {
         guard !name.isEmpty, name.count <= 40 else { return nil }
         let space = ProjectSpace(name: name, color: color, symbol: symbol)
         spaces.append(space)
-        return space
+        normalizeSpaceContent()
+        return spaces.last
     }
 
     @discardableResult
     public mutating func editSpace(_ id: UUID, name: String, color: ProjectSpaceColor, symbol: String) -> Bool {
         let name = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty, name.count <= 40, let index = spaces.firstIndex(where: { $0.id == id }) else { return false }
-        spaces[index] = ProjectSpace(id: id, name: name, color: color, symbol: symbol, lastProjectID: spaces[index].lastProjectID)
+        spaces[index].name = name
+        spaces[index].color = color
+        spaces[index].symbol = ProjectSpace.symbols.contains(symbol) ? symbol : ProjectSpace.symbols[0]
         return true
     }
 
@@ -125,6 +145,7 @@ extension Workspace {
             spaces[destination].lastProjectID = id
         }
         if selectedProjectID == id { selectedProjectID = preferredProject(in: selectedSpace.id)?.id }
+        normalizeSpaceContent()
         return true
     }
 
@@ -133,8 +154,13 @@ extension Workspace {
         guard id != destinationID, spaces.count > 1, spaces.contains(where: { $0.id == id }),
               spaces.contains(where: { $0.id == destinationID }) else { return false }
         let selected = selectedProjectID
+        if let source = spaces.first(where: { $0.id == id }), let target = spaces.firstIndex(where: { $0.id == destinationID }) {
+            spaces[target].notes += source.notes
+            spaces[target].tickets += source.tickets
+        }
         for index in projects.indices where projects[index].spaceID == id { projects[index].spaceID = destinationID }
         spaces.removeAll { $0.id == id }
+        normalizeSpaceContent()
         if selectedSpaceID == id {
             selectedSpaceID = destinationID
             if let selected { rememberProject(selected) }

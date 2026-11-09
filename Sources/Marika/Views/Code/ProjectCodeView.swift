@@ -43,7 +43,7 @@ struct ProjectCodeView: View {
     var body: some View {
         ZStack {
             editorBody.opacity(agentReview == nil ? 1 : 0).allowsHitTesting(agentReview == nil).accessibilityHidden(agentReview != nil)
-            if let agentReview { AgentInlineReviewView(review: agentReview) }
+            if let agentReview { AgentInlineReviewView(review: agentReview, isVisible: isVisible) }
         }
     }
 

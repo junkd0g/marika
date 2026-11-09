@@ -21,6 +21,10 @@ import Observation
     var testResult: TestExecution?
     var testScope: ReviewTestScope?
     var testError: String?
+    var testSnapshot: VerificationSnapshot?
+    var testOutdated = false
+    var testFreshnessIssue: String?
+    var testIsCurrent: Bool { testSnapshot != nil && !testOutdated && testFreshnessIssue == nil && !agentIsBusy }
     var showsTestOutput = false
     @ObservationIgnored private var testTask: Task<Void, Never>?
 
@@ -44,7 +48,7 @@ import Observation
         defer { busy = false }
         do {
             let result = try await service.review(workspace, project: project.url)
-            if review?.patch != result.patch { testResult = nil; testError = nil }
+            if review?.patch != result.patch, testResult != nil { testOutdated = true }
             setReview(result)
         } catch { self.error = error.localizedDescription }
     }
@@ -80,7 +84,7 @@ import Observation
             let result = try await service.decide(decision, hunkID: hunk.id, review: review, workspace: workspace, project: project.url)
             workspace.baseCommit = result.baseCommit
             if decision == .accept { workspace.acceptedChanges = accepted + 1 }
-            else { workspace.rejectedChanges = rejected + 1; testResult = nil; testError = nil }
+            else { workspace.rejectedChanges = rejected + 1; testOutdated = true }
             workspace.status = result.isEmpty ? .reviewed : .ready
             model.updateAgentWorkspace(workspace, sessionID: sessionID)
             setReview(result)
@@ -118,20 +122,43 @@ import Observation
             return path.hasPrefix(prefix + "/") ? String(path.dropFirst(prefix.count + 1)) : nil
         }
         let scope = ReviewTestScope.resolve(paths: paths, root: root)
-        testScope = scope; testsRunning = true; testResult = nil; testError = nil; showsTestOutput = true
+        testScope = scope; testsRunning = true; testResult = nil; testError = nil; testSnapshot = nil; testOutdated = false; testFreshnessIssue = nil; showsTestOutput = true
         let patch = review?.patch
         let context = ToolContext(root: root, environment: model.toolEnvironment)
         testTask = Task { [weak self] in
             guard let self else { return }
             defer { testsRunning = false }
             do {
+                do { testSnapshot = try await VerificationSnapshot.capture(at: root) }
+                catch { testFreshnessIssue = error.localizedDescription }
+                try Task.checkCancellation()
                 let result = try await scope.run(in: context)
-                guard !Task.isCancelled else { return }
+                try Task.checkCancellation()
                 let current = try await service.review(workspace, project: project?.url)
-                if current.patch == patch, !agentIsBusy { testResult = result }
-                else { testError = "The reviewed code changed while tests ran. Run them again for the current changes." }
+                let after = try? await VerificationSnapshot.capture(at: root)
+                testResult = result
+                if current.patch != patch || agentIsBusy || (testSnapshot != nil && testSnapshot != after) {
+                    testSnapshot = nil
+                    testOutdated = true
+                    testError = "The reviewed code changed while tests ran. Run them again for the current changes."
+                }
             } catch is CancellationError { testError = "Test run stopped." }
             catch { testError = error.localizedDescription }
+        }
+    }
+    func monitorTestFreshness() async {
+        while !Task.isCancelled, isOpen {
+            if !testsRunning, testResult != nil, let snapshot = testSnapshot, let workspace {
+                do {
+                    let current = try await VerificationSnapshot.capture(at: URL(fileURLWithPath: workspace.workingPath))
+                    if !testsRunning, testSnapshot == snapshot {
+                        testOutdated = current != snapshot
+                        testFreshnessIssue = nil
+                    }
+                } catch is CancellationError { return }
+                catch { testFreshnessIssue = error.localizedDescription }
+            }
+            do { try await Task.sleep(for: .seconds(2)) } catch { return }
         }
     }
     func stopTests() { testTask?.cancel() }

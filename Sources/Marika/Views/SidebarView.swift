@@ -16,10 +16,11 @@ struct SidebarView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 10) {
-                Image(systemName: model.selectedSpace.symbol).font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(model.selectedSpace.color.tint).frame(width: 30, height: 30)
-                    .background(model.selectedSpace.color.tint.opacity(0.13), in: RoundedRectangle(cornerRadius: 9))
-                Text(model.selectedSpace.name).font(.system(size: 14, weight: .semibold)).lineLimit(1)
+                Image(systemName: model.selectedSpace.symbol).font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(model.selectedSpace.color.tint).frame(width: 40, height: 40)
+                    .background(model.selectedSpace.color.tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
+                    .overlay { RoundedRectangle(cornerRadius: 12).strokeBorder(model.selectedSpace.color.tint.opacity(0.16)) }
+                Text(model.selectedSpace.name).font(.system(size: 15, weight: .semibold)).lineLimit(1)
                 Spacer(minLength: 0)
                 Menu {
                     SpaceMenuActions(space: model.selectedSpace) { pendingSpaceDeletion = $0 }
@@ -27,10 +28,12 @@ struct SidebarView: View {
                     .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
                     .accessibilityLabel("Space options")
             }
-            .padding(.horizontal, 16).padding(.top, 16).padding(.bottom, 10)
-            .background(LinearGradient(colors: [model.selectedSpace.color.tint.opacity(0.08), .clear], startPoint: .topLeading, endPoint: .bottomTrailing))
+            .padding(.horizontal, 16).padding(.top, 16).padding(.bottom, 12)
 
             VStack(spacing: 2) {
+                spaceSection("Notes", symbol: "doc.text", section: .notes, count: model.selectedSpace.notes.filter { !$0.archived }.count)
+                spaceSection("Tickets", symbol: "rectangle.3.group", section: .tickets, count: model.selectedSpace.tickets.filter { !$0.archived && $0.status != .done }.count)
+                Divider().padding(.horizontal, 10).padding(.vertical, 7)
                 sidebarAction("New chat", symbol: "square.and.pencil") { model.newSessionInCurrentProject() }
                 sidebarAction("Search project", symbol: "magnifyingglass") { model.showsProjectSearch = true }
                     .disabled(model.selectedProject == nil)
@@ -62,9 +65,9 @@ struct SidebarView: View {
                     ForEach(visibleProjects) { project in
                         Button { model.openProject(project) } label: { ProjectRow(project: project) }
                             .buttonStyle(.plain)
-                            .background(model.selectedSession?.projectID == project.id ? Theme.selection : .clear,
+                            .background(model.selectedSpace.section == .projects && model.selectedSession?.projectID == project.id ? Theme.selection : .clear,
                                         in: RoundedRectangle(cornerRadius: 8))
-                            .accessibilityAddTraits(model.selectedSession?.projectID == project.id ? [.isSelected] : [])
+                            .accessibilityAddTraits(model.selectedSpace.section == .projects && model.selectedSession?.projectID == project.id ? [.isSelected] : [])
                             .contextMenu {
                                 Button("Open Project") { model.openProject(project) }
                                 Button("Show Agents") { model.openProject(project, tab: .agents) }
@@ -92,6 +95,11 @@ struct SidebarView: View {
             SpaceSwitcher { pendingSpaceDeletion = $0 }
             UsageFooter()
         }
+        .background(alignment: .topLeading) {
+            RadialGradient(colors: [model.selectedSpace.color.tint.opacity(0.10), .clear],
+                center: .topLeading, startRadius: 0, endRadius: 220)
+                .frame(height: 200).allowsHitTesting(false)
+        }
         .background(Theme.sidebar)
         .onChange(of: model.selectedSpace.id) { _, _ in searchText = "" }
         .confirmationDialog("Delete “\(pendingSpaceDeletion?.name ?? "")”?", isPresented: Binding(
@@ -102,8 +110,25 @@ struct SidebarView: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: { space in
-            Text("Its projects will move to “\(model.workspace.spaces.first(where: { $0.id != space.id })?.name ?? "another space")”. Your files and conversations are kept.")
+            Text("Its projects, notes and tickets will move to “\(model.workspace.spaces.first(where: { $0.id != space.id })?.name ?? "another space")”. Your files and conversations are kept.")
         }
+    }
+
+    private func spaceSection(_ title: String, symbol: String, section: SpaceSection, count: Int) -> some View {
+        Button { model.openSpaceSection(section) } label: {
+            HStack(spacing: 9) {
+                Image(systemName: symbol).frame(width: 16)
+                Text(title)
+                Spacer(minLength: 4)
+                if count > 0 { Text(String(count)).font(.system(size: 10)).monospacedDigit().foregroundStyle(.secondary) }
+            }.font(.system(size: 12.5)).padding(.horizontal, 10).padding(.vertical, 9)
+                .contentShape(Rectangle())
+                .background(model.selectedSpace.section == section ? Theme.selection : .clear, in: RoundedRectangle(cornerRadius: 7))
+        }.buttonStyle(.plain).accessibilityLabel(title + " in " + model.selectedSpace.name)
+            .accessibilityAddTraits(model.selectedSpace.section == section ? [.isSelected] : [])
+            #if DEBUG
+                .background(DebugViewMarker(name: "space-open-" + section.rawValue.lowercased()))
+            #endif
     }
 
     private func sidebarAction(_ title: String, symbol: String, action: @escaping () -> Void) -> some View {
@@ -125,9 +150,9 @@ private struct SpaceMenuActions: View {
         Button("Edit Space…") { model.showSpaceEditor(space.id) }
         Button("New Space…") { model.showSpaceEditor() }
         Divider()
-        Button("Move Left") { model.reorderSpace(space.id, offset: -1) }
+        Button("Move Up") { model.reorderSpace(space.id, offset: -1) }
             .disabled(model.workspace.spaces.first?.id == space.id)
-        Button("Move Right") { model.reorderSpace(space.id, offset: 1) }
+        Button("Move Down") { model.reorderSpace(space.id, offset: 1) }
             .disabled(model.workspace.spaces.last?.id == space.id)
         Divider()
         Button("Delete Space…", role: .destructive) { requestDeletion(space) }
@@ -140,59 +165,77 @@ private struct SpaceSwitcher: View {
     let requestDeletion: (ProjectSpace) -> Void
 
     var body: some View {
-        HStack(spacing: 6) {
+        VStack(spacing: 6) {
+            HStack {
+                Text("Spaces").font(.system(size: 11, weight: .semibold)).foregroundStyle(.secondary)
+                Text(String(model.workspace.spaces.count)).font(.system(size: 10)).foregroundStyle(.tertiary)
+                Spacer()
+                Button { model.showSpaceEditor() } label: { Image(systemName: "plus") }
+                    .buttonStyle(WorkspaceButtonStyle(kind: .quiet, compact: true)).help("New space")
+                    .accessibilityLabel("New space")
+                    #if DEBUG
+                        .background(DebugViewMarker(name: "space-create"))
+                    #endif
+            }.padding(.horizontal, 16)
             ScrollViewReader { scroll in
-                ScrollView(.horizontal) {
-                    HStack(spacing: 7) {
+                ScrollView(.vertical) {
+                    VStack(spacing: 5) {
                         ForEach(model.workspace.spaces) { space in
                             SpaceSwitchButton(space: space, requestDeletion: requestDeletion).id(space.id)
                         }
-                    }.padding(.vertical, 6).padding(.horizontal, 2)
-                }.scrollIndicators(.hidden)
+                    }.padding(.horizontal, 10).padding(.vertical, 2)
+                }.scrollIndicators(.automatic)
+                    .frame(height: min(CGFloat(model.workspace.spaces.count) * 53 + 4, 211))
                     .onChange(of: model.selectedSpace.id, initial: true) { _, id in scroll.scrollTo(id, anchor: .center) }
             }
-            Button { model.showSpaceEditor() } label: { Image(systemName: "plus").frame(width: 28, height: 32) }
-                .buttonStyle(.plain).foregroundStyle(.secondary).help("New space")
-                .accessibilityLabel("New space")
-                #if DEBUG
-                    .background(DebugViewMarker(name: "space-create"))
-                #endif
-        }
-        .frame(height: 48).padding(.horizontal, 14).padding(.vertical, 4)
-        .overlay(alignment: .top) { Divider().padding(.horizontal, 16) }
+        }.padding(.top, 10).padding(.bottom, 12)
+            .overlay(alignment: .top) { Divider().padding(.horizontal, 16) }
     }
 }
 
 private struct SpaceSwitchButton: View {
     @Environment(AppModel.self) private var model
+    @State private var hovered = false
     let space: ProjectSpace
     let requestDeletion: (ProjectSpace) -> Void
 
     private var selected: Bool { model.selectedSpace.id == space.id }
+    private var projectCount: Int { model.workspace.projects(in: space.id).count }
     private var working: [SessionController] {
         let ids = Set(model.workspace.projects(in: space.id).map(\.id))
         return model.controllers.values.filter { ids.contains($0.meta.projectID) && $0.isBusy }
     }
 
-    private var icon: some View {
-        Image(systemName: space.symbol).font(.system(size: 14, weight: .medium))
-            .foregroundStyle(selected ? space.color.tint : .secondary)
-            .frame(width: 34, height: 34)
-            .background(selected ? space.color.tint.opacity(0.16) : .clear, in: RoundedRectangle(cornerRadius: 10))
-            .overlay { RoundedRectangle(cornerRadius: 10).strokeBorder(space.color.tint.opacity(selected ? 0.35 : 0), lineWidth: 1) }
-            .overlay(alignment: .topTrailing) {
+    var body: some View {
+        Button { model.selectSpace(space.id) } label: {
+            HStack(spacing: 10) {
+                Image(systemName: space.symbol).font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(space.color.tint).frame(width: 32, height: 32)
+                    .background(space.color.tint.opacity(selected ? 0.16 : 0.07), in: RoundedRectangle(cornerRadius: 9))
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(space.name).font(.system(size: 12, weight: selected ? .semibold : .medium)).lineLimit(1)
+                    Text("\(projectCount) \(projectCount == 1 ? "project" : "projects")")
+                        .font(.system(size: 10)).foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 4)
                 if !working.isEmpty {
                     Circle().fill(working.contains { $0.phase == .waitingForUser } ? Theme.attention : .green)
-                        .frame(width: 6, height: 6).overlay { Circle().strokeBorder(Theme.sidebar, lineWidth: 1) }
+                        .frame(width: 7, height: 7)
+                }
+                if selected {
+                    Image(systemName: "checkmark").font(.system(size: 11, weight: .semibold)).foregroundStyle(space.color.tint)
                 }
             }
-    }
-
-    var body: some View {
-        Button { model.selectSpace(space.id) } label: { icon }
-        .buttonStyle(.plain).accessibilityLabel(space.name + " space")
+            .padding(.horizontal, 10).frame(maxWidth: .infinity).frame(height: 48)
+            .background(selected ? space.color.tint.opacity(0.10) : hovered ? Theme.selection : .clear,
+                in: RoundedRectangle(cornerRadius: 10))
+            .overlay { RoundedRectangle(cornerRadius: 10).strokeBorder(selected ? space.color.tint.opacity(0.22) : .clear) }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain).foregroundStyle(Theme.ink).onHover { hovered = $0 }
+        .accessibilityLabel(space.name + " space")
         .accessibilityAddTraits(selected ? [.isSelected] : [])
-        .help(space.name + " · \(model.workspace.projects(in: space.id).count) projects" + (working.isEmpty ? "" : " · \(working.count) agents active"))
+        .help(space.name + " · \(projectCount) projects" + (working.isEmpty ? "" : " · \(working.count) agents active"))
         .contextMenu { SpaceMenuActions(space: space, requestDeletion: requestDeletion) }
         #if DEBUG
             .background(DebugViewMarker(name: "space-switch-" + space.id.uuidString))

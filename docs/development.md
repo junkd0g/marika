@@ -69,7 +69,7 @@ visibility in narrow windows, and speed/effort persistence across restarts using
 switching with active agents and unsaved drafts, space removal, and restoration after a restart.
 It uses temporary data and mock agents, and captures light and dark layouts.
 
-`python3 scripts/ui-project-tabs.py` checks named view shortcuts with a narrow inspector,
+`python3 scripts/ui-project-tabs.py` checks the single-row header with a narrow inspector,
 opening, reusing and closing project tool tabs, split cleanup, per-project tab restoration,
 and preservation of active agents and unsaved files.
 
@@ -89,9 +89,34 @@ draft preservation, release notes and update states. It also makes one read-only
 public GitHub releases endpoint; it sends no AI prompts or conversation data.
 
 `python3 scripts/ui-recovery.py` checks deleted-file drafts, backup recovery, corrupt-data
-protection, and retrying failed transcript saves through the native app using a mock agent.
-The macOS GitHub Actions workflow runs core tests, checks the build script's exit status, and
-builds and verifies the release app bundle. Live provider tests remain opt-in.
+protection, retrying failed transcript saves, and restoration of partial streaming output
+after an exit without a shutdown save. It uses synthetic events and a mock agent.
+
+`python3 scripts/ui-welcome.py` checks first-run state, switching the selected provider,
+resuming incomplete setup after restart, retaining drafts, and exploring a project before
+an agent is connected. Statuses and agent responses are synthetic; the test doesn't install
+software or sign in to a real account.
+
+`python3 scripts/ui-followups.py` checks the ready-agent suggestion, recovery of a saved browser
+route by starting its configured preview, failed/retried/confirmed sign-in, and removal of the
+empty native toolbar in windowed and full-screen layouts. Sign-in uses a synthetic Terminal
+handoff and account status; no real account or credential is accessed.
+
+`python3 scripts/ui-workflow.py` exercises the completion card and review sheet, runs a real
+Swift fixture test suite, verifies outdated results after external and unsaved edits, reruns failed
+and repaired code, checks freshness after restart, and rejects results changed during a run. It also
+checks an occupied preview port and opens the preview with adjacent logs.
+It uses isolated data and synthetic agent output; no provider request is sent.
+
+`python3 scripts/ui-space-content.py` exercises note blocks and ticket editing through native
+controls, checks space isolation and archive/restore, and verifies autosave and section restoration
+after restart. It uses local fixtures without a provider account.
+
+`python3 scripts/ui-checks.py` runs the welcome, followups, workflow, Codex-style, smoke, recovery, project-tab, space, space-content and browser suites
+serially. It isolates editor preferences and saved data, disables CLI account probing, and
+keeps fixture files, screenshots and logs in `build/ui-checks` (or `--artifacts PATH`).
+The macOS GitHub Actions workflow runs these native UI checks after core tests and app-bundle
+verification, and retains their diagnostics for seven days on failure. Live provider tests remain opt-in.
 
 ## Refresh the screenshots
 
