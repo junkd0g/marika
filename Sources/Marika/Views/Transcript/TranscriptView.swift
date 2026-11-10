@@ -88,7 +88,7 @@ struct TranscriptView: View {
                             MessageRow(item: item, session: session)
                         case .activity(_, let items):
                             ActivityGroup(
-                                items: items, children: children,
+                                items: items, children: children, projectID: session.meta.projectID,
                                 isLive: session.isBusy && row.id == rows.last?.id)
                         }
                     }

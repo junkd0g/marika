@@ -7,6 +7,7 @@ struct ActivityGroup: View {
     @Environment(AppModel.self) private var model
     let items: [TranscriptItem]
     let children: [String: [TranscriptItem]]
+    let projectID: UUID
     let isLive: Bool
 
     @State private var userExpanded: Bool?
@@ -87,7 +88,7 @@ struct ActivityGroup: View {
                 ForEach(items) { item in
                     switch item.content {
                     case .tool(let call):
-                        ToolRow(call: call, children: children[call.id] ?? [])
+                        ToolRow(call: call, children: children[call.id] ?? [], projectID: projectID)
                     case .thinking(let text, let durationMs):
                         ThinkingRow(text: text, durationMs: durationMs, isLive: isLive && item.id == items.last?.id)
                     default:
@@ -95,7 +96,7 @@ struct ActivityGroup: View {
                     }
                 }
             } else if items.compactMap(\.tool).contains(where: { $0.name.hasSuffix("project_publish_design") && $0.status == .succeeded }) {
-                Button { model.switchPanel(.design) } label: {
+                Button { model.openDesign(for: projectID) } label: {
                     Label("Open Design", systemImage: "square.on.circle")
                 }.buttonStyle(.borderless)
             }
@@ -152,6 +153,7 @@ struct ToolRow: View {
     @Environment(AppModel.self) private var model
     let call: ToolCall
     let children: [TranscriptItem]
+    let projectID: UUID
 
     @State private var isExpanded = false
 
@@ -210,14 +212,14 @@ struct ToolRow: View {
             .buttonStyle(.plain)
 
             if call.name.hasSuffix("project_publish_design"), call.status == .succeeded {
-                Button { model.switchPanel(.design) } label: {
+                Button { model.openDesign(for: projectID) } label: {
                     Label("Open Design", systemImage: "square.on.circle")
                 }
                 .buttonStyle(.borderless).padding(.leading, 24)
             }
 
             if isExpanded {
-                ToolDetail(call: call, children: children)
+                ToolDetail(call: call, children: children, projectID: projectID)
                     .padding(.leading, 24)
                     .padding(.bottom, 6)
             }
@@ -251,6 +253,7 @@ struct ToolRow: View {
 private struct ToolDetail: View {
     let call: ToolCall
     let children: [TranscriptItem]
+    let projectID: UUID
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -265,7 +268,7 @@ private struct ToolDetail: View {
             case .subagent:
                 ForEach(children) { child in
                     if case .tool(let nested) = child.content {
-                        ToolRow(call: nested, children: [])
+                        ToolRow(call: nested, children: [], projectID: projectID)
                     }
                 }
                 if !call.output.isEmpty {

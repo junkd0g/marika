@@ -12,6 +12,12 @@ public struct DesignColor: Codable, Equatable, Hashable, Sendable {
     public static let black = DesignColor(0.1, 0.1, 0.12)
     public static let blue = DesignColor(0.25, 0.5, 1)
     public static let gray = DesignColor(0.88, 0.88, 0.9)
+
+    public var clamped: DesignColor {
+        func component(_ value: Double, fallback: Double) -> Double { value.isFinite ? min(1, max(0, value)) : fallback }
+        return DesignColor(component(red, fallback: 0), component(green, fallback: 0),
+                           component(blue, fallback: 0), component(alpha, fallback: 1))
+    }
 }
 
 public enum DesignHandle: String, Codable, CaseIterable, Sendable {
@@ -87,6 +93,22 @@ public struct DesignNode: Codable, Equatable, Hashable, Sendable, Identifiable {
         }
         strokeWidth = 1; cornerRadius = 0; opacity = 1; text = kind == .text ? "Text" : ""; fontSize = 18
         isLocked = false; isHidden = false
+        normalize()
+    }
+
+    public mutating func normalize(fallback: DesignNode? = nil) {
+        func bounded(_ value: Double, _ range: ClosedRange<Double>, _ fallback: Double) -> Double {
+            value.isFinite ? min(range.upperBound, max(range.lowerBound, value)) : fallback
+        }
+        x = bounded(x, -100_000...100_000, fallback?.x ?? 0)
+        y = bounded(y, -100_000...100_000, fallback?.y ?? 0)
+        width = bounded(width, DesignDocument.minimumSize...20_000, fallback?.width ?? 100)
+        height = bounded(height, DesignDocument.minimumSize...20_000, fallback?.height ?? 100)
+        fontSize = bounded(fontSize, 1...500, fallback?.fontSize ?? 18)
+        strokeWidth = bounded(strokeWidth, 0...100, fallback?.strokeWidth ?? 1)
+        cornerRadius = bounded(cornerRadius, 0...20_000, fallback?.cornerRadius ?? 0)
+        opacity = bounded(opacity, 0...1, fallback?.opacity ?? 1)
+        fill = fill.clamped; stroke = stroke?.clamped
     }
 
     public var frame: CGRect { CGRect(x: x, y: y, width: width, height: height) }
@@ -122,6 +144,13 @@ public struct DesignDocument: Codable, Equatable, Hashable, Sendable {
         nodes.filter { ids.contains($0.id) }.map(\.frame).reduce(nil as CGRect?) { partial, frame in partial.map { $0.union(frame) } ?? frame }
     }
 
+    public var visibleBounds: CGRect? { bounds(of: Set(nodes.filter { !$0.isHidden }.map(\.id))) }
+    public var editableIDs: Set<UUID> { Set(nodes.filter { !$0.isLocked }.map(\.id)) }
+
+    public mutating func normalize() {
+        for index in nodes.indices { nodes[index].normalize() }
+    }
+
     @discardableResult
     public mutating func add(_ kind: DesignNode.Kind, in rect: CGRect) -> UUID {
         let count = nodes.filter { $0.kind == kind }.count + 1
@@ -132,12 +161,15 @@ public struct DesignDocument: Codable, Equatable, Hashable, Sendable {
     }
 
     public mutating func move(_ ids: Set<UUID>, by delta: CGSize) {
+        guard delta.width.isFinite, delta.height.isFinite else { return }
         for index in nodes.indices where ids.contains(nodes[index].id) && !nodes[index].isLocked {
             nodes[index].x += delta.width; nodes[index].y += delta.height
+            nodes[index].normalize()
         }
     }
 
     public mutating func resize(_ id: UUID, handle: DesignHandle, to point: CGPoint) {
+        guard point.x.isFinite, point.y.isFinite else { return }
         guard let index = nodes.firstIndex(where: { $0.id == id }), !nodes[index].isLocked else { return }
         var minX = nodes[index].frame.minX, maxX = nodes[index].frame.maxX
         var minY = nodes[index].frame.minY, maxY = nodes[index].frame.maxY
@@ -154,18 +186,20 @@ public struct DesignDocument: Codable, Equatable, Hashable, Sendable {
         }
         nodes[index].x = minX; nodes[index].y = minY
         nodes[index].width = maxX - minX; nodes[index].height = maxY - minY
+        nodes[index].normalize()
     }
 
     public mutating func remove(_ ids: Set<UUID>) {
-        nodes.removeAll { ids.contains($0.id) }
-        connections?.removeAll { ids.contains($0.from) || ids.contains($0.to) }
+        let removed = ids.intersection(editableIDs)
+        nodes.removeAll { removed.contains($0.id) }
+        connections?.removeAll { removed.contains($0.from) || removed.contains($0.to) }
     }
 
     @discardableResult
     public mutating func duplicate(_ ids: Set<UUID>, offset: Double = 16) -> [UUID] {
         var created: [UUID] = []
         var copies: [UUID: UUID] = [:]
-        for node in nodes where ids.contains(node.id) {
+        for node in nodes where ids.contains(node.id) && !node.isLocked {
             var copy = node
             copy.id = UUID(); copy.x += offset; copy.y += offset; copy.name = node.name + " copy"
             created.append(copy.id)
@@ -181,19 +215,33 @@ public struct DesignDocument: Codable, Equatable, Hashable, Sendable {
     }
 
     public mutating func reorder(_ ids: Set<UUID>, toFront: Bool) {
-        let picked = nodes.filter { ids.contains($0.id) }, rest = nodes.filter { !ids.contains($0.id) }
+        let editable = ids.intersection(editableIDs)
+        let picked = nodes.filter { editable.contains($0.id) }, rest = nodes.filter { !editable.contains($0.id) }
         nodes = toFront ? rest + picked : picked + rest
     }
 
     public mutating func step(_ id: UUID, forward: Bool) {
-        guard let index = nodes.firstIndex(where: { $0.id == id }) else { return }
+        guard let index = nodes.firstIndex(where: { $0.id == id }), !nodes[index].isLocked else { return }
         let target = index + (forward ? 1 : -1)
         guard nodes.indices.contains(target) else { return }
         nodes.swapAt(index, target)
     }
 
     public mutating func update(_ ids: Set<UUID>, _ change: (inout DesignNode) -> Void) {
-        for index in nodes.indices where ids.contains(nodes[index].id) { change(&nodes[index]) }
+        for index in nodes.indices where ids.contains(nodes[index].id) && !nodes[index].isLocked {
+            let previous = nodes[index]
+            change(&nodes[index]); nodes[index].normalize(fallback: previous)
+        }
+    }
+
+    public mutating func setLocked(_ id: UUID, _ locked: Bool) {
+        guard let index = nodes.firstIndex(where: { $0.id == id }) else { return }
+        nodes[index].isLocked = locked
+    }
+
+    public mutating func setHidden(_ id: UUID, _ hidden: Bool) {
+        guard let index = nodes.firstIndex(where: { $0.id == id }) else { return }
+        nodes[index].isHidden = hidden
     }
 
     /// Align selected nodes to the edges or centers of their shared bounds.
@@ -209,6 +257,7 @@ public struct DesignDocument: Codable, Equatable, Hashable, Sendable {
             case .centerY: nodes[index].y = box.midY - nodes[index].height / 2
             case .bottom: nodes[index].y = box.maxY - nodes[index].height
             }
+            nodes[index].normalize()
         }
     }
 }

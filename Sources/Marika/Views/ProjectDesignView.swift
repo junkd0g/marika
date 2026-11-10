@@ -69,11 +69,12 @@ private struct DesignNodeView: View {
 private struct DesignScene: View {
     let nodes: [DesignNode]
     var connections: [DesignConnection] = []
+    var exporting = false
     var body: some View {
         ZStack(alignment: .topLeading) {
             ForEach(connections) { connection in
                 if let points = connection.route(in: nodes) {
-                    DesignConnectionView(points: points, label: connection.label)
+                    DesignConnectionView(points: points, label: connection.label, exporting: exporting)
                 }
             }
             ForEach(nodes.filter { !$0.isHidden }) { DesignNodeView(node: $0) }
@@ -85,6 +86,7 @@ private struct DesignScene: View {
 private struct DesignConnectionView: View {
     let points: [CGPoint]
     let label: String
+    var exporting = false
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -99,12 +101,30 @@ private struct DesignConnectionView: View {
             }.stroke(Color.gray, style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
             if !label.isEmpty, points.count == 4 {
                 let middle = CGPoint(x: (points[1].x + points[2].x) / 2, y: (points[1].y + points[2].y) / 2)
-                Text(label).font(.system(size: 11)).foregroundStyle(Color.primary)
+                Text(label).font(.system(size: 11)).foregroundStyle(exporting ? Color.black : Color.primary)
                     .padding(.horizontal, 5).padding(.vertical, 3)
-                    .background(Theme.canvas, in: RoundedRectangle(cornerRadius: 4))
+                    .background(exporting ? Color.white : Theme.canvas, in: RoundedRectangle(cornerRadius: 4))
                     .fixedSize().position(middle)
             }
         }
+    }
+}
+
+@MainActor
+enum DesignRenderer {
+    static func png(document: DesignDocument, selection: Set<UUID> = []) throws -> Data {
+        let plan = try DesignExportPlan(document: document, selection: selection)
+        let scene = DesignScene(nodes: plan.nodes, connections: plan.connections, exporting: true)
+            .offset(x: -plan.bounds.minX, y: -plan.bounds.minY)
+            .frame(width: plan.bounds.width, height: plan.bounds.height, alignment: .topLeading).clipped()
+            .background(Color.white).environment(\.colorScheme, .light)
+        let renderer = ImageRenderer(content: scene)
+        renderer.scale = plan.scale
+        guard let image = renderer.cgImage,
+              let png = NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:]) else {
+            throw DesignToolError("The image couldn't be rendered. Try exporting fewer shapes.")
+        }
+        return png
     }
 }
 
@@ -112,21 +132,23 @@ struct ProjectDesignView: View {
     @Environment(AppModel.self) private var model
     let project: Project
 
-    @State private var doc = DesignDocument()
-    @State private var loaded = false
-    @State private var undo: [DesignDocument] = []
-    @State private var redo: [DesignDocument] = []
-    @State private var lastCheckpoint = Date.distantPast
+    @Bindable var editor: DesignWorkspace
+    private var doc: DesignDocument { editor.document }
     @State private var tool = DesignTool.select
     @State private var selection: Set<UUID> = []
     @State private var zoom = 1.0
     @State private var offset = CGSize(width: 240, height: 120)
     @State private var drag: Drag?
+    @State private var ignoreDragUntilEnd = false
     @State private var marquee: CGRect?
     @State private var draftRect: CGRect?
     @State private var magnifyBase: Double?
     @State private var canvasSize = CGSize.zero
-    @State private var fitted = false
+    @State private var automaticallyFits = true
+    @State private var exportError: String?
+    @State private var panelWidth: CGFloat = 1000
+    @State private var layerPopover = false
+    @State private var propertyPopover = false
     @FocusState private var focused: Bool
 
     private enum Drag {
@@ -138,37 +160,52 @@ struct ProjectDesignView: View {
         VStack(spacing: 0) {
             toolbar
             Divider()
-            HStack(spacing: 0) {
-                layers.frame(width: 210)
-                Divider()
-                canvas.onGeometryChange(for: CGSize.self) { $0.size } action: { size in
-                    canvasSize = size
-                    if !fitted, size.width > 0, size.height > 0 { fit(); fitted = true }
+            GeometryReader { geometry in
+                HStack(spacing: 0) {
+                    if geometry.size.width >= 780 {
+                        layers.frame(width: 200)
+                        Divider()
+                    }
+                    canvas.onGeometryChange(for: CGSize.self) { $0.size } action: { size in
+                        canvasSize = size
+                        if automaticallyFits, size.width > 0, size.height > 0 { fit() }
+                    }
+                    if geometry.size.width >= 580 {
+                        Divider()
+                        properties.frame(width: 230)
+                    }
                 }
-                Divider()
-                properties.frame(width: 250)
+                .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { panelWidth = $0 }
             }
         }
         .background(Theme.canvas)
-        .onAppear {
-            if !loaded { doc = project.design ?? DesignDocument(); loaded = true }
-            fit()
-        }
-        .onChange(of: doc) { _, new in if loaded { model.updateProject(project.id) { $0.design = new } } }
-        .onChange(of: project.design) { _, incoming in
-            let next = incoming ?? DesignDocument()
-            guard loaded, next != doc else { return }
-            checkpoint()
-            doc = next
+        .onAppear { fit() }
+        .onChange(of: doc) { _, next in
             selection = selection.filter { next.node($0) != nil }
+        }
+        .onChange(of: editor.externalRevision) { _, _ in
+            ignoreDragUntilEnd = drag != nil
+            drag = nil; marquee = nil; draftRect = nil
             fit()
         }
+        .alert("Couldn't export design", isPresented: Binding(
+            get: { exportError != nil }, set: { if !$0 { exportError = nil } }
+        )) { Button("OK") { exportError = nil } } message: { Text(exportError ?? "") }
     }
 
     // MARK: Toolbar
 
     private var toolbar: some View {
+        ScrollView(.horizontal) {
         HStack(spacing: 6) {
+            if panelWidth < 780 {
+                Button { layerPopover.toggle() } label: { Image(systemName: "square.3.layers.3d") }
+                    .help("Layers").popover(isPresented: $layerPopover) { layers.frame(width: 240, height: 340) }
+            }
+            if panelWidth < 580 {
+                Button { propertyPopover.toggle() } label: { Image(systemName: "slider.horizontal.3") }
+                    .help("Properties").popover(isPresented: $propertyPopover) { properties.frame(width: 250, height: 440) }
+            }
             ForEach(DesignTool.allCases, id: \.self) { item in
                 Button { tool = item } label: {
                     Image(systemName: item.symbol).frame(width: 26, height: 22)
@@ -178,23 +215,25 @@ struct ProjectDesignView: View {
             }
             Divider().frame(height: 18)
             Button { undoEdit() } label: { Image(systemName: "arrow.uturn.backward") }
-                .disabled(undo.isEmpty).help("Undo")
+                .disabled(!editor.canUndo).help("Undo")
             Button { redoEdit() } label: { Image(systemName: "arrow.uturn.forward") }
-                .disabled(redo.isEmpty).help("Redo")
+                .disabled(!editor.canRedo).help("Redo")
             Button { duplicateSelection() } label: { Image(systemName: "plus.square.on.square") }
-                .disabled(selection.isEmpty).help("Duplicate")
-            if let title = doc.title {
+                .disabled(selection.intersection(doc.editableIDs).isEmpty).help("Duplicate")
+            if panelWidth >= 780, let title = doc.title {
                 Text(title).font(.caption).lineLimit(1).truncationMode(.middle)
             }
             Spacer()
-            Button { zoom = max(0.1, zoom / 1.25) } label: { Image(systemName: "minus") }
-            Text("\(Int((zoom * 100).rounded()))%").font(.caption.monospacedDigit()).frame(width: 44)
-            Button { zoom = min(8, zoom * 1.25) } label: { Image(systemName: "plus") }
-            Button("Fit") { fit() }.disabled(doc.nodes.isEmpty)
+            Button { changeZoom(zoom / 1.25) } label: { Image(systemName: "minus") }
+            Text(zoom < 0.01 ? "<1%" : "\(Int((zoom * 100).rounded()))%").font(.caption.monospacedDigit()).frame(width: 44)
+            Button { changeZoom(zoom * 1.25) } label: { Image(systemName: "plus") }
+            Button("Fit") { fit() }.disabled(doc.visibleBounds == nil)
             Button { export() } label: { Label("Export PNG", systemImage: "square.and.arrow.up") }
-                .disabled(doc.nodes.isEmpty)
+                .disabled(doc.visibleBounds == nil)
         }
+        .frame(minWidth: max(0, panelWidth - 20))
         .buttonStyle(.borderless).padding(.horizontal, 10).padding(.vertical, 6)
+        }.scrollIndicators(.hidden).frame(height: 38)
     }
 
     // MARK: Layers
@@ -213,10 +252,10 @@ struct ProjectDesignView: View {
                             Image(systemName: node.kind.symbol).frame(width: 16).foregroundStyle(.secondary)
                             Text(node.name).lineLimit(1).opacity(node.isHidden ? 0.4 : 1)
                             Spacer(minLength: 0)
-                            Button { edit { $0.update([node.id]) { $0.isHidden.toggle() } } } label: {
+                            Button { edit { $0.setHidden(node.id, !node.isHidden) } } label: {
                                 Image(systemName: node.isHidden ? "eye.slash" : "eye")
                             }.buttonStyle(.borderless).help(node.isHidden ? "Show" : "Hide")
-                            Button { edit { $0.update([node.id]) { $0.isLocked.toggle() } } } label: {
+                            Button { edit { $0.setLocked(node.id, !node.isLocked) } } label: {
                                 Image(systemName: node.isLocked ? "lock.fill" : "lock.open")
                             }.buttonStyle(.borderless).help(node.isLocked ? "Unlock" : "Lock")
                         }
@@ -226,6 +265,7 @@ struct ProjectDesignView: View {
                         // The list is reversed (front first); translate back to back-to-front order.
                         edit { document in
                             var front = Array(document.nodes.reversed())
+                            guard source.allSatisfy({ !front[$0].isLocked }) else { return }
                             front.move(fromOffsets: source, toOffset: destination)
                             document.nodes = front.reversed()
                         }
@@ -269,7 +309,7 @@ struct ProjectDesignView: View {
         .gesture(MagnifyGesture().onChanged { value in
             let base = magnifyBase ?? zoom
             magnifyBase = base
-            zoom = min(8, max(0.1, base * value.magnification))
+            changeZoom(base * value.magnification)
         }.onEnded { _ in magnifyBase = nil })
         .focusable().focused($focused).focusEffectDisabled()
         .onKeyPress { press in handleKey(press) }
@@ -285,7 +325,7 @@ struct ProjectDesignView: View {
             Rectangle().stroke(Color.accentColor, lineWidth: 1.5)
                 .frame(width: node.width * zoom, height: node.height * zoom).offset(x: origin.x, y: origin.y)
         }
-        if selection.count == 1, let node = doc.node(selection.first!), !node.isLocked {
+        if selection.count == 1, let node = doc.node(selection.first!), !node.isLocked, !node.isHidden {
             ForEach(DesignHandle.allCases, id: \.self) { handle in
                 let point = toScreen(handlePoint(handle, of: node.frame))
                 Rectangle().fill(.white).overlay(Rectangle().stroke(Color.accentColor, lineWidth: 1.5))
@@ -317,7 +357,7 @@ struct ProjectDesignView: View {
     }
 
     private func handleHit(at screen: CGPoint) -> (UUID, DesignHandle)? {
-        guard selection.count == 1, let node = doc.node(selection.first!), !node.isLocked else { return nil }
+        guard selection.count == 1, let node = doc.node(selection.first!), !node.isLocked, !node.isHidden else { return nil }
         for handle in DesignHandle.allCases {
             let point = toScreen(handlePoint(handle, of: node.frame))
             if abs(point.x - screen.x) <= 7, abs(point.y - screen.y) <= 7 { return (node.id, handle) }
@@ -328,14 +368,15 @@ struct ProjectDesignView: View {
     private var dragGesture: some Gesture {
         DragGesture(minimumDistance: 0)
             .onChanged { value in
+                guard !ignoreDragUntilEnd else { return }
                 focused = true
                 let point = toDoc(value.location)
                 if drag == nil { begin(value) }
                 switch drag {
                 case .move(let last):
-                    doc.move(selection, by: CGSize(width: point.x - last.x, height: point.y - last.y))
+                    editor.updateInteraction { $0.move(selection, by: CGSize(width: point.x - last.x, height: point.y - last.y)) }
                     drag = .move(last: point)
-                case .resize(let id, let handle): doc.resize(id, handle: handle, to: point)
+                case .resize(let id, let handle): editor.updateInteraction { $0.resize(id, handle: handle, to: point) }
                 case .create(_, let start): draftRect = rect(start, point)
                 case .marquee(let start, let base):
                     let screenRect = rect(toScreen(start), value.location)
@@ -347,12 +388,12 @@ struct ProjectDesignView: View {
                 }
             }
             .onEnded { value in
-                defer { drag = nil; marquee = nil; draftRect = nil }
+                defer { drag = nil; marquee = nil; draftRect = nil; editor.endInteraction() }
+                if ignoreDragUntilEnd { ignoreDragUntilEnd = false; return }
                 if case .create(let kind, let start) = drag {
                     var area = rect(start, toDoc(value.location))
                     if area.width < 4 && area.height < 4 { area = CGRect(origin: start, size: kind == .text ? CGSize(width: 120, height: 28) : CGSize(width: 100, height: 100)) }
-                    let id = doc.add(kind, in: area)
-                    selection = [id]
+                    editor.updateInteraction { selection = [$0.add(kind, in: area)] }
                     tool = .select
                 }
             }
@@ -360,14 +401,14 @@ struct ProjectDesignView: View {
 
     private func begin(_ value: DragGesture.Value) {
         let point = toDoc(value.startLocation)
-        if tool == .hand { drag = .pan(start: offset); return }
-        if let kind = tool.kind { checkpoint(); drag = .create(kind, start: point); return }
-        if let (id, handle) = handleHit(at: value.startLocation) { checkpoint(); drag = .resize(id, handle); return }
+        if tool == .hand { automaticallyFits = false; drag = .pan(start: offset); return }
+        if let kind = tool.kind { editor.beginInteraction(); drag = .create(kind, start: point); return }
+        if let (id, handle) = handleHit(at: value.startLocation) { editor.beginInteraction(); drag = .resize(id, handle); return }
         let extend = NSEvent.modifierFlags.contains(.shift)
         if let hit = doc.hitTest(point) {
             if extend { if selection.contains(hit) { selection.remove(hit) } else { selection.insert(hit) } }
             else if !selection.contains(hit) { selection = [hit] }
-            if selection.contains(hit) { checkpoint(); drag = .move(last: point) } else { drag = .pan(start: offset) }
+            if selection.contains(hit) { editor.beginInteraction(); drag = .move(last: point) } else { drag = .pan(start: offset) }
             return
         }
         drag = .marquee(start: point, base: extend ? selection : [])
@@ -389,7 +430,7 @@ struct ProjectDesignView: View {
         switch press.key {
         case .delete, .deleteForward:
             guard !selection.isEmpty else { return .ignored }
-            edit { $0.remove(selection) }; selection = []
+            deleteSelection()
         case .leftArrow: nudgeSelection(-nudge, 0)
         case .rightArrow: nudgeSelection(nudge, 0)
         case .upArrow: nudgeSelection(0, -nudge)
@@ -402,29 +443,21 @@ struct ProjectDesignView: View {
 
     private func nudgeSelection(_ dx: Double, _ dy: Double) {
         guard !selection.isEmpty else { return }
-        edit(coalesce: true) { $0.move(selection, by: CGSize(width: dx, height: dy)) }
+        edit(coalescing: "nudge:" + selection.map(\.uuidString).sorted().joined()) { $0.move(selection, by: CGSize(width: dx, height: dy)) }
     }
 
     // MARK: Editing and history
 
-    private func checkpoint() {
-        undo.append(doc); if undo.count > 100 { undo.removeFirst() }
-        redo = []; lastCheckpoint = Date()
+    private func edit(coalescing key: String? = nil, _ change: (inout DesignDocument) -> Void) {
+        editor.edit(coalescing: key, change)
     }
 
-    /// Apply a change as one undo step. `coalesce` merges rapid changes, such as typing or nudging.
-    private func edit(coalesce: Bool = false, _ change: (inout DesignDocument) -> Void) {
-        if !(coalesce && Date().timeIntervalSince(lastCheckpoint) < 1) { checkpoint() } else { lastCheckpoint = Date() }
-        change(&doc)
-    }
+    private func undoEdit() { editor.undo() }
+    private func redoEdit() { editor.redo() }
 
-    private func undoEdit() {
-        guard let previous = undo.popLast() else { return }
-        redo.append(doc); doc = previous; selection = selection.filter { doc.node($0) != nil }
-    }
-    private func redoEdit() {
-        guard let next = redo.popLast() else { return }
-        undo.append(doc); doc = next; selection = selection.filter { doc.node($0) != nil }
+    private func deleteSelection() {
+        edit { $0.remove(selection) }
+        selection = selection.filter { doc.node($0) != nil }
     }
 
     private func duplicateSelection() {
@@ -432,29 +465,45 @@ struct ProjectDesignView: View {
     }
 
     private func fit() {
-        guard let box = doc.bounds(of: Set(doc.nodes.map(\.id))), box.width > 0, box.height > 0 else { return }
+        automaticallyFits = true
+        guard let box = doc.visibleBounds, box.width > 0, box.height > 0 else { return }
         guard canvasSize.width > 0, canvasSize.height > 0 else { return }
-        zoom = min(4, max(0.1, min(max(1, canvasSize.width - 64) / box.width, max(1, canvasSize.height - 64) / box.height)))
+        zoom = min(4, max(0.0001, min(max(1, canvasSize.width - 64) / box.width, max(1, canvasSize.height - 64) / box.height)))
         offset = CGSize(width: (canvasSize.width - box.width * zoom) / 2 - box.minX * zoom,
                         height: (canvasSize.height - box.height * zoom) / 2 - box.minY * zoom)
     }
 
+    private func changeZoom(_ value: Double) {
+        automaticallyFits = false
+        let center = CGPoint(x: canvasSize.width / 2, y: canvasSize.height / 2)
+        let point = toDoc(center)
+        zoom = min(8, max(0.0001, value))
+        offset = CGSize(width: center.x - point.x * zoom, height: center.y - point.y * zoom)
+    }
+
     @MainActor private func export() {
-        let ids = selection.isEmpty ? Set(doc.nodes.map(\.id)) : selection
-        guard let box = doc.bounds(of: ids)?.insetBy(dx: -16, dy: -16) else { return }
-        let scene = DesignScene(nodes: doc.nodes.filter { ids.contains($0.id) }, connections: doc.connections ?? [])
-            .offset(x: -box.minX, y: -box.minY)
-            .frame(width: box.width, height: box.height, alignment: .topLeading).clipped()
-            .background(Color.white)
-        let renderer = ImageRenderer(content: scene)
-        renderer.scale = 2
-        guard let image = renderer.nsImage, let tiff = image.tiffRepresentation,
-              let png = NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:]) else { return }
-        let panel = NSSavePanel()
-        panel.allowedContentTypes = [.png]
-        panel.nameFieldStringValue = "\(project.name) design.png"
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        try? png.write(to: url)
+        do {
+            let png = try DesignRenderer.png(document: doc, selection: selection)
+            guard let window = NSApp.keyWindow ?? NSApp.mainWindow ?? NSApp.windows.first(where: { $0.isVisible && $0.canBecomeMain }) else {
+                throw DesignToolError("Open a project window to export.")
+            }
+            window.makeKeyAndOrderFront(nil)
+            NSApp.activate()
+            let panel = NSSavePanel()
+            panel.allowedContentTypes = [.png]
+            panel.canCreateDirectories = true
+            panel.isExtensionHidden = false
+            panel.directoryURL = project.url
+            let name = String(project.name.map { "/\\:".contains($0) ? "-" : $0 }.prefix(90))
+            panel.nameFieldStringValue = "\(name) design.png"
+            panel.beginSheetModal(for: window) { response in
+                guard response == .OK, let url = panel.url else { return }
+                Task {
+                    do { try await Task.detached { try png.write(to: url, options: .atomic) }.value }
+                    catch { exportError = error.localizedDescription }
+                }
+            }
+        } catch { exportError = error.localizedDescription }
     }
 
     // MARK: Properties
@@ -463,12 +512,16 @@ struct ProjectDesignView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
                 if let id = selection.first, selection.count == 1, let node = doc.node(id) {
-                    singleProperties(node)
+                    if node.isLocked {
+                        Label("Layer is locked", systemImage: "lock.fill").foregroundStyle(.secondary)
+                        Button("Unlock layer") { edit { $0.setLocked(node.id, false) } }
+                    }
+                    singleProperties(node).disabled(node.isLocked)
                 } else if selection.count > 1 {
                     Text("\(selection.count) layers selected").font(.callout.weight(.semibold))
                     alignmentRow
                     arrangeRow
-                    Button("Delete", role: .destructive) { edit { $0.remove(selection) }; selection = [] }
+                    Button("Delete", role: .destructive) { deleteSelection() }
                 } else {
                     Text("Nothing selected").font(.callout).foregroundStyle(.secondary)
                     Text("Shortcuts: V select, H hand, F frame, R rectangle, O ellipse, T text. Delete removes, arrows nudge, ⇧ extends selection, pinch zooms.")
@@ -479,26 +532,26 @@ struct ProjectDesignView: View {
         }
     }
 
-    private func binding<T>(_ id: UUID, _ path: WritableKeyPath<DesignNode, T>, coalesce: Bool = true) -> Binding<T> {
-        Binding(get: { doc.node(id)![keyPath: path] },
-                set: { value in edit(coalesce: coalesce) { $0.update([id]) { $0[keyPath: path] = value } } })
+    private func binding<T>(_ node: DesignNode, _ path: WritableKeyPath<DesignNode, T>) -> Binding<T> {
+        Binding(get: { (doc.node(node.id) ?? node)[keyPath: path] },
+                set: { value in edit(coalescing: "property:\(node.id):\(path)") { $0.update([node.id]) { $0[keyPath: path] = value } } })
     }
 
     private func singleProperties(_ node: DesignNode) -> some View {
         let id = node.id
         return VStack(alignment: .leading, spacing: 10) {
-            TextField("Name", text: binding(id, \.name)).textFieldStyle(.roundedBorder).font(.callout.weight(.semibold))
+            TextField("Name", text: binding(node, \.name)).textFieldStyle(.roundedBorder).font(.callout.weight(.semibold))
             Grid(alignment: .leading, horizontalSpacing: 8, verticalSpacing: 6) {
-                GridRow { number("X", binding(id, \.x)); number("Y", binding(id, \.y)) }
-                GridRow { number("W", binding(id, \.width, coalesce: true)); number("H", binding(id, \.height)) }
+                GridRow { number("X", binding(node, \.x)); number("Y", binding(node, \.y)) }
+                GridRow { number("W", binding(node, \.width)); number("H", binding(node, \.height)) }
             }
-            TextField("Text", text: binding(id, \.text), axis: .vertical).textFieldStyle(.roundedBorder).lineLimit(1...5)
-            number("Size", binding(id, \.fontSize))
+            TextField("Text", text: binding(node, \.text), axis: .vertical).textFieldStyle(.roundedBorder).lineLimit(1...5)
+            number("Size", binding(node, \.fontSize))
             if node.kind == .rectangle || node.kind == .frame {
-                number("Radius", binding(id, \.cornerRadius))
+                number("Radius", binding(node, \.cornerRadius))
             }
             ColorPicker(node.kind == .text ? "Color" : "Fill", selection: Binding(
-                get: { node.fill.color }, set: { value in edit(coalesce: true) { $0.update([id]) { $0.fill = DesignColor(value) } } }))
+                get: { node.fill.color }, set: { value in edit(coalescing: "color:\(id)") { $0.update([id]) { $0.fill = DesignColor(value) } } }))
             if node.kind != .text {
                 Toggle("Stroke", isOn: Binding(
                     get: { node.stroke != nil },
@@ -506,18 +559,18 @@ struct ProjectDesignView: View {
                 if let stroke = node.stroke {
                     HStack {
                         ColorPicker("", selection: Binding(
-                            get: { stroke.color }, set: { value in edit(coalesce: true) { $0.update([id]) { $0.stroke = DesignColor(value) } } }))
+                            get: { stroke.color }, set: { value in edit(coalescing: "color:\(id)") { $0.update([id]) { $0.stroke = DesignColor(value) } } }))
                             .labelsHidden()
-                        number("Width", binding(id, \.strokeWidth))
+                        number("Width", binding(node, \.strokeWidth))
                     }
                 }
             }
             HStack {
                 Text("Opacity").font(.caption).foregroundStyle(.secondary)
-                Slider(value: binding(id, \.opacity), in: 0...1)
+                Slider(value: binding(node, \.opacity), in: 0...1)
             }
             arrangeRow
-            Button("Delete", role: .destructive) { edit { $0.remove([id]) }; selection = [] }
+            Button("Delete", role: .destructive) { deleteSelection() }
         }
     }
 
@@ -526,6 +579,7 @@ struct ProjectDesignView: View {
             Text(label).font(.caption).foregroundStyle(.secondary).frame(width: label.count > 2 ? 44 : 16, alignment: .leading)
             TextField("", value: Binding(get: { value.wrappedValue.rounded() }, set: { value.wrappedValue = $0 }), format: .number)
                 .textFieldStyle(.roundedBorder).frame(minWidth: 50)
+                .accessibilityLabel(["X": "X position", "Y": "Y position", "W": "Width", "H": "Height", "Size": "Font size" ][label] ?? label)
         }
     }
 

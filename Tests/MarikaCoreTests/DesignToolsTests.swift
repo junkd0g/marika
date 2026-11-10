@@ -88,4 +88,14 @@ struct DesignToolsTests {
         #expect(doc.connections?.count == 1)
         #expect(doc.connections?.first == copiedEdge)
     }
+
+    @Test func chatCannotReplaceOrDeleteLockedShapes() throws {
+        var current = try publish(architecture)
+        current.setLocked(current.nodes[0].id, true)
+        #expect(throws: DesignToolError.self) { try publish(architecture, replacing: current) }
+        let snapshot = try DesignTools.snapshot(current)
+        let unchanged = try DesignTools.publish(["baseRevision": try #require(snapshot["baseRevision"]),
+            "design": .string(String(decoding: try #require(snapshot["document"]).serialized(), as: UTF8.self))], replacing: current)
+        #expect(unchanged == current)
+    }
 }

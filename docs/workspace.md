@@ -78,6 +78,9 @@ The chat's tool result includes **Open Design**. Canvas edits from another turn 
 invalidate the agent's previous revision, so it must read again before publishing.
 
 Manual drawing, layer ordering, property editing, undo/redo and PNG export remain available.
+Undo history stays with the project while switching tabs or projects. Locked layers cannot be
+edited or deleted by the canvas or by chat; unlock them in Layers before changing them. Fit and
+PNG export include visible shapes, and large exports scale down to keep image memory bounded.
 After updating Marika, restart the app so existing agent connections load the new tools.
 
 ## Needs attention

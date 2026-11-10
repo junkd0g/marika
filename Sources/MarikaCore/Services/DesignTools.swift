@@ -101,6 +101,11 @@ public enum DesignTools {
             return DesignConnection(id: id, from: from, to: to, label: edge.label ?? "")
         }
         result.connections = edges.isEmpty ? nil : edges
+        for locked in current.nodes where locked.isLocked {
+            guard result.node(locked.id) == locked else {
+                throw DesignToolError("Layer “\(locked.name)” is locked. Preserve it unchanged, or ask the user to unlock it in Design first.")
+            }
+        }
         return result
     }
 

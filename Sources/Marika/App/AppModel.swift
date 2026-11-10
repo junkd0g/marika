@@ -61,6 +61,7 @@ final class AppModel {
         }
     }
     var editors: [UUID: CodeWorkspace] = [:]
+    var designs: [UUID: DesignWorkspace] = [:]
     var repositoryEditors: [UUID: [String: CodeWorkspace]] = [:]
     var ideWorkspaces: [String: IDEWorkspace] = [:]
     var experienceProjectID: UUID?
@@ -201,7 +202,8 @@ final class AppModel {
         case .code: editor(for: project).focusEditor()
         case .browser: _ = browser(for: project)
         case .terminal: ensureTerminal(for: project)
-        case .changes, .agents, .stats, .pipelines, .api, .research, .design: break
+        case .design: _ = design(for: project)
+        case .changes, .agents, .stats, .pipelines, .api, .research: break
         }
         projectTabs[project.id] = tab
     }
@@ -330,10 +332,11 @@ final class AppModel {
             }
             switch name {
             case "project_get_design":
-                return try result(DesignTools.snapshot(project.design ?? DesignDocument()))
+                return try result(DesignTools.snapshot(design(for: project).document))
             case "project_publish_design":
-                let document = try DesignTools.publish(args, replacing: project.design ?? DesignDocument())
-                updateProject(projectID) { $0.design = document }
+                let workspace = design(for: project)
+                let document = try DesignTools.publish(args, replacing: workspace.document)
+                workspace.receive(document)
                 return try result(["message": "Saved Design canvas. Open Design below Tickets or use Open Design in this chat.",
                                    "baseRevision": .string(try DesignTools.revision(of: document)),
                                    "shapes": .int(Int64(document.nodes.count)),
@@ -520,7 +523,7 @@ final class AppModel {
 
     @ObservationIgnored let store: Store = {
         #if DEBUG
-            if let path = ProcessInfo.processInfo.environment["MARIKA_DATA"] {
+            if let path = DebugFixtureSettings.value("MARIKA_DATA") {
                 return Store(root: URL(fileURLWithPath: path))
             }
         #endif
@@ -759,6 +762,7 @@ final class AppModel {
         if primary == .code || saved.secondary == .code { _ = editor(for: current) }
         if primary == .browser || saved.secondary == .browser { _ = browser(for: current) }
         if primary == .terminal || saved.secondary == .terminal { ensureTerminal(for: current) }
+        if primary == .design || saved.secondary == .design { _ = design(for: current) }
         if (projectTabs[current.id] ?? .conversation) == .conversation { composerFocusRequest = UUID() }
     }
 
@@ -859,6 +863,7 @@ final class AppModel {
             workspace.projects.removeAll { $0.id == project.id }
             workspace.normalizeSpaces()
             editors[project.id] = nil
+            designs[project.id] = nil
             repositoryEditors[project.id] = nil
             browsers.removeValue(forKey: project.id)?.stop()
             projectTabs[project.id] = nil

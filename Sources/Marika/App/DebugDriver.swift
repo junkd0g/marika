@@ -13,7 +13,7 @@
         private static var agentReferences: [String: UUID] = [:]
 
         static func startIfRequested(delegate: AppDelegate) {
-            guard let path = ProcessInfo.processInfo.environment["MARIKA_DRIVER"] else { return }
+            guard let path = DebugFixtureSettings.value("MARIKA_DRIVER") else { return }
             Task {
                 do {
                     let steps = try JSONValue(parsing: Data(contentsOf: URL(fileURLWithPath: path)))
@@ -31,7 +31,16 @@
         }
 
         private static func log(_ message: String) {
-            FileHandle.standardError.write(Data("[driver] \(message)\n".utf8))
+            let data = Data("[driver] \(message)\n".utf8)
+            FileHandle.standardError.write(data)
+            if let path = DebugFixtureSettings.value("MARIKA_DRIVER_LOG") {
+                if !FileManager.default.fileExists(atPath: path) { FileManager.default.createFile(atPath: path, contents: nil) }
+                if let file = FileHandle(forWritingAtPath: path) {
+                    defer { try? file.close() }
+                    _ = try? file.seekToEnd()
+                    try? file.write(contentsOf: data)
+                }
+            }
         }
 
         private static func pause(_ seconds: Double) async throws {
@@ -141,6 +150,12 @@
                       let picker = marker(in: root, named: "research-sections") else { throw DriverError("Research sections not found") }
                 try click(picker, in: window, fractionX: (CGFloat(step["index"]?.int ?? 0) + 0.5) / 3)
                 try await pause(0.2)
+            case "designExportTest":
+                try DebugDesignChecks.render(model, to: step["directory"]?.string ?? "")
+                log("Design PNG rendering passed: selected shapes, visible bounds, dimensions, and nonblank pixels")
+            case "designIntegrationTest":
+                try await DebugDesignChecks.run(model)
+                log("Design integration passed: synchronous edits, stale publishing, project isolation, history, navigation, and persistence")
             case "designToolsTest":
                 let session = try await current(model)
                 guard let project = model.selectedProject, let design = step["design"]?.string else { throw DriverError("Design fixture missing") }

@@ -3,6 +3,21 @@ import MarikaCore
 
 extension AppModel {
     var selectedProject: Project? { selectedSession.flatMap(project(for:)) }
+    func design(for project: Project) -> DesignWorkspace {
+        if let existing = designs[project.id] { return existing }
+        let editor = DesignWorkspace(document: self.project(id: project.id)?.design ?? DesignDocument())
+        editor.onChange = { [weak self] document in
+            self?.updateProject(project.id) { $0.design = document }
+        }
+        designs[project.id] = editor
+        return editor
+    }
+    func openDesign(for projectID: UUID) {
+        guard let project = project(id: projectID) else { return }
+        if let spaceID = project.spaceID, selectedSpace.id != spaceID { selectSpace(spaceID) }
+        if selectedProject?.id == projectID { switchPanel(.design) }
+        else { openProject(project, tab: .design) }
+    }
     var worktreeService: AgentWorktrees { AgentWorktrees(directory: store.worktreesDirectory, environment: gitEnvironment) }
 
     func layout(for id: UUID) -> ProjectLayout { project(id: id)?.layout ?? ProjectLayout() }
@@ -20,6 +35,7 @@ extension AppModel {
         if let stacked { saved.stacked = stacked }
         if secondary == .code { _ = editor(for: project) }
         if secondary == .browser { _ = browser(for: project) }
+        if secondary == .design { _ = design(for: project) }
         updateLayout(saved, for: project.id)
     }
     func switchPanel(_ tab: ProjectPanel) {
@@ -67,6 +83,7 @@ extension AppModel {
             case .code: _ = editor(for: project)
             case .browser: _ = browser(for: project)
             case .terminal: ensureTerminal(for: project)
+            case .design: _ = design(for: project)
             default: break
             }
         }
