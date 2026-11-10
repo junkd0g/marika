@@ -41,6 +41,7 @@ public final class SessionController: Identifiable {
 
     /// Called when transcript content or session settings change.
     @ObservationIgnored public var onChange: ((SessionController) -> Void)?
+    @ObservationIgnored public var onPhaseChange: ((SessionController) -> Void)?
     /// Draft edits only change metadata; saving them needn't rewrite a long transcript.
     @ObservationIgnored public var onDraftChange: ((SessionController) -> Void)?
     /// Called when a turn ends or the agent starts waiting, for notifications.
@@ -104,6 +105,13 @@ public final class SessionController: Identifiable {
     public var isBusy: Bool { phase != .idle }
     public var pendingApproval: ApprovalRequest? { approvals.first }
     public var hasStarted: Bool { !items.isEmpty }
+
+    /// The app mirrors this small record to workspace metadata without changing the transcript.
+    public func recordAttention(_ record: SessionAttention) { meta.attention = record }
+    public func dismissAttentionEvent(_ event: String) {
+        meta.dismissedAttentionEvent = event
+        notifyChange()
+    }
 
     // MARK: Actions
 
@@ -410,6 +418,7 @@ public final class SessionController: Identifiable {
     }
 
     private func setPhase(_ phase: AgentPhase, appliesQueuedSwitch: Bool = true) {
+        let changed = self.phase != phase
         // The CLI reports `running` again right after an approval, and that must not restart
         // the clock for the turn.
         if phase != .idle, turnStartedAt == nil { turnStartedAt = Date() }
@@ -427,6 +436,7 @@ public final class SessionController: Identifiable {
             // Run after the current event/error handler has recorded its final output.
             Task { [weak self] in self?.applyQueuedAgentIfIdle() }
         }
+        if changed { onPhaseChange?(self) }
     }
 
     private func finishTurn(_ summary: TurnSummary) {

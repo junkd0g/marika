@@ -15,7 +15,7 @@ struct SidebarView: View {
 
     var body: some View {
         GeometryReader { geometry in
-            let reserved: CGFloat = model.rateLimits.isEmpty ? 485 : 511
+            let reserved: CGFloat = model.rateLimits.isEmpty ? 521 : 547
             sidebar(spaceRows: max(1, min(4, Int((geometry.size.height - reserved) / 53))))
         }
     }
@@ -38,6 +38,8 @@ struct SidebarView: View {
             .padding(.horizontal, 16).padding(.top, 16).padding(.bottom, 12)
 
             VStack(spacing: 2) {
+                spaceSection("Needs attention", symbol: "tray", section: .attention,
+                    count: model.attentionItems.filter { model.project(id: $0.projectID)?.spaceID == model.selectedSpace.id }.count)
                 spaceSection("Notes", symbol: "doc.text", section: .notes, count: model.selectedSpace.notes.filter { !$0.archived }.count)
                 spaceSection("Tickets", symbol: "rectangle.3.group", section: .tickets, count: model.selectedSpace.tickets.filter { !$0.archived && $0.status != .done }.count)
                 Divider().padding(.horizontal, 10).padding(.vertical, 7)
@@ -138,7 +140,7 @@ struct SidebarView: View {
         }.buttonStyle(.plain).accessibilityLabel(title + " in " + model.selectedSpace.name)
             .accessibilityAddTraits(model.selectedSpace.section == section ? [.isSelected] : [])
             #if DEBUG
-                .background(DebugViewMarker(name: "space-open-" + section.rawValue.lowercased()))
+                .background(DebugViewMarker(name: "space-open-" + (section == .attention ? "attention" : section.rawValue.lowercased())))
             #endif
     }
 

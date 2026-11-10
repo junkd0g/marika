@@ -29,6 +29,17 @@ adds a line inside one. Pin notes, search titles and contents, or use **Copy Mar
 text through the clipboard. **Archive** hides a note; open the archive and choose **Restore**
 to bring it back.
 
+Select text inside a note block to reveal **Create ticket** in the note toolbar. A block's **…** menu
+also offers **Create ticket** for the entire block, including a checklist item. Review the prefilled
+title and Markdown description, choose a project from the same space (or leave it unassigned), then
+create the ticket. Cancel keeps the note unchanged and creates nothing. Checklist completion stays
+as it was. The source note is linked automatically and can be included as context when starting an agent.
+
+Notes show **Linked tickets** below their blocks, with current status and archive labels. Open a
+ticket from there, or follow its linked note back to the source. Links and the ticket's copied text
+survive restart; editing the note later does not rewrite the ticket description.
+Links to archived source notes open the archive automatically; restore the note to edit it again.
+
 **Tickets** have a stable key, title, Markdown description, status, priority, type, assignee text,
 and optional project link. Switch between the board and list, search, or filter by priority and
 project. Use the card’s menu to move it between Backlog, To Do, In Progress and Done, or change its status
@@ -36,7 +47,34 @@ in the editor. Archive/restore tickets without deleting their history. Ticket ke
 a space is renamed or its content is moved. Moving a project to another space clears old ticket
 links to that project; the tickets stay in their own space.
 
+In a ticket's Properties, choose a project and **Link notes** from the same space. **Start work**
+opens the agent launch form with the ticket and selected notes included automatically; add optional
+instructions, choose a provider and permissions, then start. The ticket moves to In Progress and
+its **Work** tab shows live activity, approvals and blockers. Open the agent to respond to an approval
+or continue the conversation. The chat's result actions link back to the ticket.
+
+When the agent finishes, review its reply and changed files, then run checks from Work. Failed,
+incomplete or outdated checks prevent acceptance. **Accept result** marks the ticket Done; if no
+checks have been run, the tab says so and acceptance remains an explicit manual review. Isolated
+changes must be applied or rejected in the worktree review before acceptance. Changes to the ticket
+title, description, project or linked notes require a new run with the updated context. Continuing an
+accepted agent reopens the ticket, including when an older run is resumed. Previous runs and their
+saved results stay attached across restarts and after an agent chat is removed.
+
 Notes and tickets are stored locally in Marika's workspace and included in its saved-data backup.
+
+## Needs attention
+
+Open **Needs attention** in the sidebar or press **⇧⌘I**. The inbox shows pending approvals and
+input requests first, then blocked agents, failed or incomplete checks, and results awaiting review.
+Use **This space / All spaces**, update-type filters and search to narrow the list. Opening an update
+routes to its ticket, chat or result details, including work in another space.
+
+Approvals disappear when resolved. Busy agents hide older failures; passing checks clear their
+failure update, and accepted tickets or reviewed worktrees clear their review request. **Dismiss**
+hides a handled update across restarts without deleting the agent or changing ticket status. A new
+failure or run returns to the inbox. Live approval and input requests cannot be dismissed. An agent
+that was working when the app closed offers a link to continue its chat after restart.
 
 ## Project tabs
 

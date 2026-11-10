@@ -9,7 +9,10 @@ struct SpaceTicketsView: View {
     @State private var priority: SpaceTicket.Priority?
     @State private var projectID: UUID?
     @State private var listLayout = false
-    @State private var editingID: UUID?
+    private var editingID: UUID? {
+        get { model.spaceTicketSelections[spaceID] }
+        nonmutating set { model.spaceTicketSelections[spaceID] = newValue }
+    }
     private var space: ProjectSpace { model.workspace.spaces.first { $0.id == spaceID } ?? model.selectedSpace }
     private var tickets: [SpaceTicket] {
         space.tickets.filter { $0.archived == archived && (priority == nil || $0.priority == priority) &&
@@ -32,7 +35,9 @@ struct SpaceTicketsView: View {
             if listLayout { ticketList }
             else { board }
         }.background(Theme.canvas)
-            .sheet(item: Binding<SpaceTicket?>(get: { editingID.flatMap { model.ticket($0, in: spaceID) } }, set: { if $0 == nil { editingID = nil } })) { ticket in
+            .sheet(item: Binding<SpaceTicket?>(get: { editingID.flatMap { model.ticket($0, in: spaceID) } }, set: { if $0 == nil { editingID = nil } }), onDismiss: {
+                let action = model.ticketNavigation; model.ticketNavigation = nil; action?()
+            }) { ticket in
                 SpaceTicketEditor(spaceID: spaceID, ticketID: ticket.id).environment(model)
             }
             .background(SpaceContentMarker(name: "space-tickets"))
@@ -114,6 +119,7 @@ struct SpaceTicketsView: View {
                     Label(project.name, systemImage: "folder").font(.system(size: 10)).foregroundStyle(.secondary).lineLimit(1)
                 }
                 if !ticket.assignee.isEmpty { Label(ticket.assignee, systemImage: "person.crop.circle").font(.system(size: 10)).foregroundStyle(.secondary).lineLimit(1) }
+                TicketWorkBadge(ticket: ticket)
             }.frame(maxWidth: .infinity, alignment: .leading).padding(12)
                 .background(Theme.canvas, in: RoundedRectangle(cornerRadius: 8))
                 .overlay { RoundedRectangle(cornerRadius: 8).strokeBorder(Theme.hairline) }
@@ -139,6 +145,7 @@ struct SpaceTicketsView: View {
                             Text(ticket.displayTitle).font(.system(size: 12)).lineLimit(2)
                             Spacer(minLength: 8)
                             Text(ticket.status.rawValue).font(.system(size: 10)).foregroundStyle(ticket.status.tint)
+                            TicketWorkBadge(ticket: ticket)
                             Image(systemName: ticket.priority.symbol).foregroundStyle(ticket.priority.tint)
                         }.padding(14).contentShape(Rectangle())
                     }.buttonStyle(.plain).contextMenu { ticketActions(ticket) }
@@ -166,6 +173,9 @@ private struct SpaceTicketEditor: View {
     let spaceID: UUID
     let ticketID: UUID
     @State private var preview = false
+    @State private var section = "Details"
+    @State private var launchDraft: TicketAgentLaunch?
+    @State private var launchError: String?
     private enum Field: Hashable { case title, description, assignee }
     @FocusState private var focusedField: Field?
     private var ticket: SpaceTicket? { model.ticket(ticketID, in: spaceID) }
@@ -182,11 +192,20 @@ private struct SpaceTicketEditor: View {
                         Text(ticket.key).font(.system(size: 11, design: .monospaced)).foregroundStyle(.secondary)
                     }
                     Spacer()
+                    if !ticket.archived, ticket.status != .done {
+                        Button("Start work", systemImage: "play.fill") {
+                            do { launchDraft = try model.ticketLaunchDraft(ticketID); launchError = nil }
+                            catch { launchError = error.localizedDescription; section = "Work" }
+                        }.buttonStyle(WorkspaceButtonStyle(kind: .primary))
+                            .disabled(ticket.projectID == nil || ticket.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || model.ticketHasActiveWork(ticket) || model.launchingTickets.contains(ticketID) || model.acceptingTickets.contains(ticketID))
+                            .help(ticket.projectID == nil ? "Choose a project in Properties to start work" : "Start an agent with this ticket and its linked notes")
+                            .background(SpaceContentMarker(name: "space-ticket-start-work"))
+                    }
                     Button(ticket.archived ? "Restore" : "Archive", systemImage: ticket.archived ? "arrow.uturn.backward" : "archivebox") {
                         update { $0.archived.toggle() }; dismiss()
                     }.buttonStyle(WorkspaceButtonStyle(kind: .quiet))
                         .background(SpaceContentMarker(name: "space-ticket-archive"))
-                    Button("Done") { dismiss() }.buttonStyle(WorkspaceButtonStyle(kind: .primary))
+                    Button("Close") { dismiss() }.buttonStyle(WorkspaceButtonStyle(kind: .secondary))
                         .keyboardShortcut(.cancelAction)
                         .background(SpaceContentMarker(name: "space-ticket-done"))
                 }.padding(.horizontal, 24).padding(.vertical, 18)
@@ -200,6 +219,13 @@ private struct SpaceTicketEditor: View {
                                 .accessibilityLabel("Ticket title")
                                 .background(SpaceContentMarker(name: "space-ticket-title"))
                         }
+                        Picker("Ticket section", selection: $section) {
+                            Text("Details").tag("Details")
+                            Text("Work\(ticket.work?.isEmpty == false ? " (\(ticket.work!.count))" : "")").tag("Work")
+                        }.pickerStyle(.segmented).labelsHidden()
+                            .background(SpaceContentMarker(name: "space-ticket-sections"))
+                        if let launchError { Text(launchError).font(.caption).foregroundStyle(Theme.attention) }
+                        if section == "Details" {
                         VStack(spacing: 12) {
                             HStack {
                                 Text("Description").font(.system(size: 12, weight: .semibold))
@@ -209,19 +235,28 @@ private struct SpaceTicketEditor: View {
                             }
                             descriptionEditor(ticket)
                         }.frame(maxHeight: .infinity)
+                        } else {
+                            TicketWorkView(ticketID: ticketID, navigate: navigate).frame(maxWidth: .infinity, maxHeight: .infinity)
+                        }
                         HStack(spacing: 6) {
                             Image(systemName: "checkmark.circle").foregroundStyle(.secondary)
                             Text("Changes save automatically")
                             Spacer()
-                            Text("Markdown supported")
+                            if section == "Details" { Text("Markdown supported") }
                         }.font(.system(size: 10)).foregroundStyle(.tertiary)
                     }.padding(24).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                     Divider()
-                    properties(ticket).padding(20).frame(width: 226, alignment: .topLeading)
+                    ScrollView { properties(ticket).padding(20) }.frame(width: 226, alignment: .topLeading)
                         .frame(maxHeight: .infinity, alignment: .top).background(Theme.panel)
-                }
+                }.disabled(model.acceptingTickets.contains(ticketID))
             }.frame(width: 780, height: 650).background(Theme.canvas)
-                .onAppear { focusedField = ticket.title.isEmpty ? .title : nil }
+                .onAppear { focusedField = ticket.title.isEmpty ? .title : nil; if ticket.work?.isEmpty == false { section = "Work" } }
+                .sheet(item: $launchDraft) { draft in
+                    if let project = model.project(id: draft.projectID) {
+                        LaunchAgentView(project: project, initialPrompt: draft.prompt, initialName: draft.name, ticketLaunch: draft) { _ in section = "Work" }
+                            .environment(model)
+                    }
+                }
                 .background(SpaceContentMarker(name: "space-ticket-editor"))
         }
     }
@@ -277,8 +312,11 @@ private struct SpaceTicketEditor: View {
                     options: [Optional<UUID>.none] + model.workspace.projects(in: spaceID).map { Optional($0.id) },
                     label: { $0.flatMap(model.project(id:))?.name ?? "No project" }, symbol: "folder")
             }
+            TicketNotesPicker(ticketID: ticketID, spaceID: spaceID, navigate: navigate)
         }
     }
+
+    private func navigate(_ action: @escaping () -> Void) { model.ticketNavigation = action; dismiss() }
 
     private func update(_ change: (inout SpaceTicket) -> Void) { model.updateSpaceTicket(ticketID, in: spaceID, change) }
     private func binding<Value>(_ path: WritableKeyPath<SpaceTicket, Value>, fallback: Value) -> Binding<Value> {
@@ -286,7 +324,7 @@ private struct SpaceTicketEditor: View {
     }
 }
 
-private extension SpaceTicket.Status {
+extension SpaceTicket.Status {
     var tint: Color {
         switch self { case .backlog: .secondary; case .todo: .blue; case .inProgress: .orange; case .done: .green }
     }
@@ -295,6 +333,6 @@ private extension SpaceTicket.Priority {
     var tint: Color { switch self { case .low: .secondary; case .medium: .blue; case .high: .orange; case .urgent: .red } }
     var symbol: String { switch self { case .low: "arrow.down"; case .medium: "equal"; case .high: "arrow.up"; case .urgent: "exclamationmark.2" } }
 }
-private extension SpaceTicket.Kind {
+extension SpaceTicket.Kind {
     var symbol: String { switch self { case .task: "checkmark.square"; case .bug: "ladybug"; case .feature: "sparkles" } }
 }

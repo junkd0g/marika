@@ -119,7 +119,7 @@ struct TranscriptView: View {
                 } else if session.isBusy {
                     WorkingIndicator(session: session)
                 } else if let summary = TaskCompletionSummary(items: session.items) {
-                    TaskCompletionCard(session: session, summary: summary)
+                    TaskResultsFooter(session: session, summary: summary).id(summary.finishedAt)
                 }
             }
             .scrollTargetLayout()

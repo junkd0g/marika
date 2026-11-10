@@ -48,6 +48,8 @@ struct RootView: View {
                     }
                 } else if !model.isReady {
                     Color.clear
+                } else if model.selectedSpace.section == .attention {
+                    AttentionInboxView()
                 } else if model.selectedSpace.section == .notes {
                     SpaceNotesView(spaceID: model.selectedSpace.id).id(model.selectedSpace.id)
                 } else if model.selectedSpace.section == .tickets {

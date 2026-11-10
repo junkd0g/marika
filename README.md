@@ -53,8 +53,8 @@ shows waiting and verification progress, with **Check Again** and **Retry Sign I
 3. Choose the provider, model and permission mode in Chat, then send your task.
 4. Use **+** in the tab row to open **Code**, **Browser**, **Stats**, or another view. Keyboard shortcuts and dragging tabs into splits are supported.
 
-When a task finishes, **Review Work** brings reported files, recorded checks, and preview actions
-together. The Browser preview bar shows server status and opens logs beside the page.
+When a task finishes, inline result actions open changed files, run checks and launch the preview.
+The Browser preview bar shows server status and opens logs beside the page.
 
 Permission modes differ between providers. See [approval modes](docs/approval-modes.md)
 for the behavior implemented by each runtime.
@@ -69,6 +69,16 @@ conversations, open tabs and editor drafts. Right-click a project to move it to 
 
 Each space also has **Notes** with headings, checklists and other editable blocks, and **Tickets**
 with a board, priorities, assignees and project links. Both save automatically and support archive/restore.
+Link notes to a ticket and choose **Start work** to launch an agent with that context. The ticket's
+**Work** tab tracks activity, approvals, blockers, changes and checks. **Accept result** marks it
+Done after review; continuing the agent reopens the ticket.
+Select text in a note and choose **Create ticket**, or use a block's menu to create one from a
+checklist item. Review the prefilled text, choose a project and create it. The source note stays
+linked and shows its related tickets with live status.
+
+**Needs attention** brings approvals, blocked agents, failed checks and results awaiting review
+into one inbox. Filter to this space or all spaces, open the relevant ticket or chat, and dismiss
+handled updates. Resolved issues clear automatically; new failures return. Open it with **⇧⌘I**.
 
 The **+** menu in the tab row opens tools. **Chat** stays visible on the left; tool tabs can be
 closed, reordered and reopened. Closing a tab keeps its unsaved files and running tasks.

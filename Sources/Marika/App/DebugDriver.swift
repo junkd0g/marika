@@ -214,9 +214,11 @@
                 let session = try await current(model)
                 model.showsWelcome = false
                 model.switchPanel(.conversation)
-                session.apply(.tool(ToolCall(id: "workflow-edit", name: "edit", kind: .edit, title: "Update preview", detail: "",
-                    status: .succeeded, diff: [DiffFile(path: "index.html", newContent: "<h1>Updated preview</h1>")])))
-                session.apply(.textFinished(id: "workflow-result", text: "Updated the preview page. Review the file changes, then run checks and open the preview.", parentToolID: nil))
+                if step["changes"]?.bool != false {
+                    session.apply(.tool(ToolCall(id: "workflow-edit", name: "edit", kind: .edit, title: "Update preview", detail: "",
+                        status: .succeeded, diff: [DiffFile(path: "index.html", newContent: "<h1>Updated preview</h1>")])))
+                }
+                session.apply(.textFinished(id: "workflow-result", text: step["changes"]?.bool == false ? "The preview shows your project in the browser. No files were changed." : "Updated the preview page. Review the file changes, then run checks and open the preview.", parentToolID: nil))
                 session.apply(.turnFinished(TurnSummary(outcome: .completed, durationMs: 1000)))
             case "taskCompletionCheck":
                 let session = try await current(model)
@@ -228,6 +230,10 @@
                 if step["sheet"]?.bool == true {
                     guard let sheet = window()?.attachedSheet, let root = sheet.contentView,
                           marker(in: root, named: "task-completion-view") != nil else { throw DriverError("Completion sheet not shown") }
+                }
+                if step["inline"]?.bool == true {
+                    guard let main = window(), main.attachedSheet == nil, let root = main.contentView,
+                          marker(in: root, named: "task-results-checks-details") != nil else { throw DriverError("Checks are not inline") }
                 }
                 log("Completion summary and verification passed")
             case "verificationStatus":
@@ -476,6 +482,9 @@
                     "title": ticket.title, "body": ticket.body, "status": ticket.status.rawValue, "priority": ticket.priority.rawValue,
                     "assignee": ticket.assignee, "archived": ticket.archived, "projectID": ticket.projectID?.uuidString ?? ""] }
                 log("spaceContent " + String(decoding: try JSONSerialization.data(withJSONObject: ["space": space.name, "section": space.section.rawValue, "notes": notes, "tickets": tickets], options: [.sortedKeys]), as: UTF8.self))
+            case "ticketWorkTest":
+                try await DebugTicketWorkChecks.run(step, model: model)
+                log("Ticket work " + (step["phase"]?.string ?? "") + " passed")
             case "spaceContentText":
                 guard let main = window(), let name = step["name"]?.string else { throw DriverError("Space text target missing") }
                 let targetWindow = main.attachedSheet ?? main
@@ -489,6 +498,19 @@
                 guard let field = targetWindow.firstResponder as? NSTextView else { throw DriverError("Space text field is not focused: " + name) }
                 field.insertText(step["text"]?.string ?? "", replacementRange: NSRange(location: 0, length: (field.string as NSString).length))
                 try await pause(0.1)
+            case "noteTicketSaveGuard":
+                try await DebugNoteTicketChecks.saveFailure(model: model)
+                log("Note ticket save failure recovered without an orphaned ticket")
+            case "noteTicketSelect":
+                guard let main = window(), let root = main.contentView,
+                      let name = step["name"]?.string, let target = marker(in: root, named: name) else { throw DriverError("Note selection target missing") }
+                try click(target, in: main); try await pause(0.1)
+                guard let field = main.firstResponder as? NSTextView, field.isFieldEditor else { throw DriverError("Note field editor missing") }
+                let selected = step["text"]?.string ?? field.string
+                let range = (field.string as NSString).range(of: selected)
+                guard range.location != NSNotFound else { throw DriverError("Selection text missing from the note") }
+                field.setSelectedRange(range)
+                try await pause(0.2)
             case "spaceNoteBlock":
                 let space = model.selectedSpace
                 guard let id = model.spaceNoteSelections[space.id] ?? space.notes.first?.id else { throw DriverError("No note selected") }
@@ -537,9 +559,13 @@
                     "windowWidth": root.bounds.width, "projectListHeight": projectList.map { min($0.bounds.height, $0.visibleRect.height) } ?? 0,
                     "tabWidths": widths]
                 log("qaLayout " + String(decoding: try JSONSerialization.data(withJSONObject: state, options: [.sortedKeys]), as: UTF8.self))
+            case "attentionTest":
+                try await DebugAttentionChecks.run(step, model: model)
+                log("Attention inbox " + (step["phase"]?.string ?? "") + " passed")
             case "clickMarker":
                 let name = step["name"]?.string ?? ""
                 guard let target = NSApp.windows.filter(\.isVisible).compactMap({ window in window.contentView.flatMap { marker(in: $0, named: name) }.map { (window, $0) } }).first else { throw DriverError("Missing UI element: " + name) }
+                if step["scroll"]?.bool == true { target.1.scrollToVisible(target.1.bounds); try await pause(0.15) }
                 try click(target.1, in: target.0)
                 try await pause(0.3)
             case "editorPopoverShot":
@@ -1043,11 +1069,21 @@
                 }
             case "projectClick":
                 guard let project = model.workspace.projects.first(where: { $0.name == step["name"]?.string }),
-                    let window = window(), let root = window.contentView,
-                    let row = marker(in: root, named: "project-row-" + project.id.uuidString)
+                    let window = window(), let root = window.contentView
                 else { throw DriverError("project row not found") }
+                NSApp.activate()
                 window.makeKeyAndOrderFront(nil)
+                // Chat can present a native inspector; wait for its window transition before measuring the row.
+                try await pause(0.5)
+                root.layoutSubtreeIfNeeded()
+                guard let row = marker(in: root, named: "project-row-" + project.id.uuidString) else { throw DriverError("project row disappeared") }
+                row.scrollToVisible(row.bounds)
                 try click(row, in: window)
+                for _ in 0..<40 {
+                    if model.selectedProject?.id == project.id { return }
+                    try await pause(0.05)
+                }
+                throw DriverError("Project row click did not select " + project.name)
             case "workspaceState":
                 guard let root = window()?.contentView else { throw DriverError("no window") }
                 let state: [String: Any] = [

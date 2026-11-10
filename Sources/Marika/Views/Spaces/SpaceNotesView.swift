@@ -6,7 +6,10 @@ struct SpaceNotesView: View {
     @Environment(AppModel.self) private var model
     let spaceID: UUID
     @State private var query = ""
-    @State private var archived = false
+    private var archived: Bool {
+        get { model.spaceNoteArchives[spaceID] ?? false }
+        nonmutating set { model.spaceNoteArchives[spaceID] = newValue }
+    }
     private var space: ProjectSpace { model.workspace.spaces.first { $0.id == spaceID } ?? model.selectedSpace }
     private var notes: [SpaceNote] {
         space.notes.filter { $0.archived == archived && (query.isEmpty || $0.searchableText.localizedStandardContains(query)) }
@@ -95,7 +98,15 @@ private struct SpaceNoteEditor: View {
     let noteID: UUID
     @FocusState private var focusedBlock: UUID?
     @FocusState private var titleFocused: Bool
+    @State private var textSelection: NoteTextSelection?
+    @State private var ticketDraft: NoteTicketDraft?
+    @State private var createdTicketID: UUID?
+    @State private var ticketError: String?
     private var note: SpaceNote? { model.note(noteID, in: spaceID) }
+    private var relatedTickets: [SpaceTicket] {
+        (model.workspace.spaces.first { $0.id == spaceID }?.tickets ?? []).filter { $0.linkedNoteIDs?.contains(noteID) == true }
+            .sorted { $0.archived == $1.archived ? $0.updatedAt > $1.updatedAt : !$0.archived }
+    }
     var body: some View {
         if let note {
             VStack(spacing: 0) {
@@ -105,12 +116,19 @@ private struct SpaceNoteEditor: View {
                     } label: {
                         HStack(spacing: 7) {
                             Image(systemName: "plus")
-                            Text("Add Block").fontWeight(.medium)
-                            Image(systemName: "chevron.down").font(.system(size: 8, weight: .semibold)).foregroundStyle(.secondary)
+                            if textSelection == nil {
+                                Text("Add Block").fontWeight(.medium)
+                                Image(systemName: "chevron.down").font(.system(size: 8, weight: .semibold)).foregroundStyle(.secondary)
+                            }
                         }
-                    }.menuStyle(.borderlessButton).menuIndicator(.hidden).frame(width: 102)
+                    }.menuStyle(.borderlessButton).menuIndicator(.hidden).frame(width: textSelection == nil ? 102 : 32).accessibilityLabel("Add Block")
                         .workspaceControl(height: 30).disabled(note.archived)
                         .background(SpaceContentMarker(name: "space-note-add-block"))
+                    if let textSelection, !note.archived {
+                        Button("Create ticket", systemImage: "rectangle.3.group") { prepareTicket(textSelection.blockID, selection: textSelection) }
+                            .buttonStyle(WorkspaceButtonStyle(kind: .secondary, compact: true)).help("Create a ticket from the selected text")
+                            .background(SpaceContentMarker(name: "note-selection-create-ticket"))
+                    }
                     Spacer()
                     Button { update { $0.pinned.toggle() } } label: { Image(systemName: note.pinned ? "pin.fill" : "pin") }
                         .buttonStyle(WorkspaceButtonStyle(kind: .quiet, compact: true))
@@ -118,6 +136,7 @@ private struct SpaceNoteEditor: View {
                     Button("Copy Markdown", systemImage: "doc.on.doc") {
                         NSPasteboard.general.clearContents(); NSPasteboard.general.setString(note.markdown, forType: .string)
                     }.buttonStyle(WorkspaceButtonStyle(kind: .quiet, compact: true))
+                        .labelStyle(.iconOnly).accessibilityLabel("Copy Markdown").help("Copy note as Markdown")
                     Button(note.archived ? "Restore" : "Archive") { update { $0.archived.toggle() } }.buttonStyle(WorkspaceButtonStyle(kind: .quiet, compact: true))
                         .background(SpaceContentMarker(name: "space-note-archive"))
                 }.padding(.horizontal, 20).frame(height: 52)
@@ -136,12 +155,24 @@ private struct SpaceNoteEditor: View {
                             Button { addBlock(.text) } label: { Label("Add a block", systemImage: "plus") }
                                 .buttonStyle(.plain).foregroundStyle(.tertiary).padding(.top, 4)
                         }
+                        if let ticketError { Text(ticketError).font(.caption).foregroundStyle(Theme.attention) }
+                        linkedTickets
                         Text("Changes save automatically · Return adds a block · Shift-Return adds a new line")
                             .font(.system(size: 10)).foregroundStyle(.tertiary).padding(.top, 20)
                     }.padding(30).frame(maxWidth: 800, alignment: .leading).frame(maxWidth: .infinity)
                 }
             }.frame(maxWidth: .infinity, maxHeight: .infinity)
                 .onAppear { titleFocused = note.title.isEmpty }
+                .onChange(of: titleFocused) { if titleFocused { textSelection = nil } }
+                .onChange(of: note.archived) { textSelection = nil }
+                .sheet(item: $ticketDraft, onDismiss: {
+                    if let id = createdTicketID { createdTicketID = nil; model.openTicket(id) }
+                }) { draft in
+                    NoteTicketCreateView(draft: draft) { createdTicketID = $0 }.environment(model)
+                }
+                .background(NoteSelectionObserver(focusedBlock: focusedBlock, blocks: note.blocks) { selection in
+                    if textSelection != selection { textSelection = selection }
+                })
                 .background(NoteLineBreakHandler(isEditingBlock: focusedBlock != nil))
         }
     }
@@ -172,6 +203,8 @@ private struct SpaceNoteEditor: View {
                 .accessibilityLabel(block.kind.rawValue + " block")
                 .background(SpaceContentMarker(name: "space-note-block-" + block.id.uuidString))
             Menu {
+                Button("Create ticket") { prepareTicket(block.id) }.disabled(block.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                Divider()
                 Menu("Turn into") { ForEach(SpaceNoteBlock.Kind.allCases, id: \.self) { kind in Button(kind.rawValue) { editBlock(block.id) { $0.kind = kind } } } }
                 Divider()
                 Button("Move Up") { move(block.id, by: -1) }.disabled(note?.blocks.first?.id == block.id)
@@ -180,7 +213,40 @@ private struct SpaceNoteEditor: View {
                 Button("Remove Block") { update { $0.blocks.removeAll { $0.id == block.id } } }
             } label: { Image(systemName: "ellipsis").frame(width: 20, height: 22) }
                 .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().accessibilityLabel("Block options")
+                .background(SpaceContentMarker(name: "note-block-options-" + block.id.uuidString))
         }
+    }
+    @ViewBuilder private var linkedTickets: some View {
+        if !relatedTickets.isEmpty {
+            Divider().padding(.top, 12)
+            Text("Linked tickets (\(relatedTickets.count))").font(.system(size: 12, weight: .semibold)).foregroundStyle(.secondary)
+                .background(SpaceContentMarker(name: "note-linked-tickets"))
+            ForEach(relatedTickets) { ticket in
+                Button { model.openTicket(ticket.id) } label: {
+                    HStack(spacing: 10) {
+                        Image(systemName: ticket.kind.symbol).foregroundStyle(.secondary)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(ticket.key).font(.system(size: 10, design: .monospaced)).foregroundStyle(.secondary)
+                            Text(ticket.displayTitle).font(.system(size: 12, weight: .medium)).multilineTextAlignment(.leading)
+                        }
+                        Spacer(minLength: 8)
+                        Text(ticket.archived ? "Archived · " + ticket.status.rawValue : ticket.status.rawValue)
+                            .font(.system(size: 10, weight: .medium)).foregroundStyle(ticket.status.tint)
+                    }.padding(12).frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
+                        .background(Theme.panel, in: RoundedRectangle(cornerRadius: 9))
+                        .overlay { RoundedRectangle(cornerRadius: 9).strokeBorder(Theme.hairline) }
+                }.buttonStyle(.plain).accessibilityLabel("Open ticket " + ticket.key + ", " + ticket.status.rawValue)
+                    .background(SpaceContentMarker(name: "note-linked-ticket-" + ticket.id.uuidString))
+            }
+        }
+    }
+    private func prepareTicket(_ blockID: UUID, selection: NoteTextSelection? = nil) {
+        guard let note else { return }
+        do {
+            let project = model.selectedProject.flatMap { $0.spaceID == spaceID ? $0.id : nil }
+            ticketDraft = try NoteTicketDraft(note: note, spaceID: spaceID, blockID: blockID, selection: selection, projectID: project)
+            ticketError = nil
+        } catch { ticketError = error.localizedDescription }
     }
     private func font(_ kind: SpaceNoteBlock.Kind) -> Font {
         switch kind {

@@ -103,15 +103,28 @@ route by starting its configured preview, failed/retried/confirmed sign-in, and 
 empty native toolbar in windowed and full-screen layouts. Sign-in uses a synthetic Terminal
 handoff and account status; no real account or credential is accessed.
 
-`python3 scripts/ui-workflow.py` exercises the completion card and review sheet, runs a real
+`python3 scripts/ui-workflow.py` exercises the inline results actions and check details, runs a real
 Swift fixture test suite, verifies outdated results after external and unsaved edits, reruns failed
 and repaired code, checks freshness after restart, and rejects results changed during a run. It also
-checks an occupied preview port and opens the preview with adjacent logs.
+checks direct Changes navigation, an occupied preview port, and opening the preview with adjacent
+logs. Light and dark compact captures and ordinary replies without result actions are covered.
 It uses isolated data and synthetic agent output; no provider request is sent.
 
 `python3 scripts/ui-space-content.py` exercises note blocks and ticket editing through native
 controls, checks space isolation and archive/restore, and verifies autosave and section restoration
 after restart. It uses local fixtures without a provider account.
+
+Tickets can start an agent in their linked project with the description, selected space notes and
+optional extra instructions. The Work tab keeps live activity, approvals, blockers, saved results,
+changed paths and checks. Accept result marks the ticket Done only after successful work and any
+existing checks pass for the current inputs. Isolated changes must be reviewed first. Changing
+the ticket requirements or selected notes requires a new run; continuing an accepted agent
+reopens the ticket. Saved results remain available when an agent chat is removed.
+
+`python3 scripts/ui-ticket-work.py` tests guarded launch and save failures, scoped notes, pending
+approvals, blockers, failed/repaired checks, two-way ticket navigation, acceptance and restart.
+It also verifies isolated changes cannot be accepted before review and resuming older work reopens
+the ticket. Agent events are synthetic; checks run against a real disposable Swift package.
 
 `python3 scripts/ui-navigation-qa.py` checks Help and project navigation from Notes and Tickets,
 disabled hidden-editor commands, single-line tab labels, and compact layouts with seven spaces.
@@ -125,8 +138,16 @@ The project and workbench suites also cover editor history, local drafts, and bl
 of agent changes over an unsaved file. The workbench then applies a non-overlapping change and
 checks that the original draft survives a restart.
 
-`python3 scripts/ui-checks.py` runs 15 suites: welcome, followups, workflow, Codex-style, smoke,
-recovery, project-tabs, spaces, space-content, navigation-qa, deep-workflows, projects, workbench, history-updates and browser
+`python3 scripts/ui-attention.py` exercises inbox priority, space isolation, ticket/chat/check-result
+routes, approval resolution, passing checks, accepted tickets, persistent dismissal and a new failure
+after restart. It uses synthetic local agent events and isolated workspace data.
+
+`python3 scripts/ui-note-tickets.py` uses native Unicode text selections to create linked tickets,
+checks cancellation and save-failure rollback, preserves checklist state and source blocks, and
+follows both directions of the link across restart. Light and dark compact captures are retained.
+
+`python3 scripts/ui-checks.py` runs 18 suites: welcome, followups, workflow, Codex-style, smoke,
+recovery, project-tabs, spaces, space-content, note-tickets, ticket-work, attention, navigation-qa, deep-workflows, projects, workbench, history-updates and browser
 serially. It isolates editor preferences and saved data, disables CLI account probing, and
 keeps fixture files, screenshots and logs in `build/ui-checks` (or `--artifacts PATH`).
 The macOS GitHub Actions workflow runs these native UI checks after core tests and app-bundle

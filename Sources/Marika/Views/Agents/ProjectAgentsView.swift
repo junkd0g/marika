@@ -151,8 +151,13 @@ private struct AgentTaskCard: View {
         .padding(16)
     }
     private var taskContext: some View {
-        Text((controller?.meta.agent ?? meta.agent).shortName + " · " + (meta.agentTask?.workspace == nil ? "Shared files" : "Isolated worktree"))
-            .font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+        HStack(spacing: 6) {
+            if let ticketID = meta.agentTask?.ticketID, let ticket = model.ticketLocation(ticketID)?.ticket {
+                Button(ticket.key) { model.openTicket(ticketID) }.buttonStyle(.link).font(.system(size: 11))
+            }
+            Text((controller?.meta.agent ?? meta.agent).shortName + " · " + (meta.agentTask?.workspace == nil ? "Shared files" : "Isolated worktree"))
+                .font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+        }
     }
     private var taskActions: some View {
         HStack(spacing: 8) {
@@ -164,7 +169,7 @@ private struct AgentTaskCard: View {
             if controller?.isBusy == true { Button("Stop", role: .destructive) { controller?.interrupt() } }
             Button(controller?.phase == .waitingForUser ? "Review Approval" : "Open Chat") { model.openAgentChat(meta.id) }
             if controller?.isBusy != true {
-                Button("Review Work") { model.taskCompletionID = meta.id }
+                Button("Results") { model.taskCompletionID = meta.id }
             }
             Button("Task details") { model.selectedAgentTaskIDs[meta.projectID] = meta.id }
         }
@@ -179,6 +184,7 @@ struct LaunchAgentView: View {
     var initialName = ""
     var parentSessionID: UUID?
     var researchReference: ResearchTaskReference?
+    var ticketLaunch: TicketAgentLaunch?
     var onLaunched: ((SessionController) -> Void)?
     @State private var agent: AgentKind = .claude
     @State private var selectedModel = ""
@@ -189,6 +195,7 @@ struct LaunchAgentView: View {
     @State private var isolated = true
     @State private var isGitProject: Bool?
     @State private var isLaunching = false
+    @State private var launchTask: Task<Void, Never>?
     @State private var error: String?
     @FocusState private var taskFocused: Bool
 
@@ -197,7 +204,7 @@ struct LaunchAgentView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             VStack(alignment: .leading, spacing: 5) {
-                Text("New agent").font(.system(size: 20, weight: .semibold))
+                Text(ticketLaunch == nil ? "New agent" : "Start ticket work").font(.system(size: 20, weight: .semibold))
                 Text("A new agent will work in \(project.name) with its own chat.")
                     .font(.system(size: 12)).foregroundStyle(.secondary)
             }
@@ -219,18 +226,21 @@ struct LaunchAgentView: View {
                     .accessibilityLabel("Agent name")
                 Text(name.isEmpty ? "Suggested name: \(AgentTaskName.suggested(from: prompt))" : "You can rename the agent later.")
                     .font(.caption).foregroundStyle(.secondary)
-                Text("Task").font(.system(size: 12, weight: .medium))
+                Text(ticketLaunch == nil ? "Task" : "Additional instructions (optional)").font(.system(size: 12, weight: .medium))
+                if ticketLaunch != nil {
+                    Text("The ticket description and linked notes are included automatically.").font(.caption).foregroundStyle(.secondary)
+                }
                 TextEditor(text: $prompt).font(.system(size: 13)).focused($taskFocused)
                     .scrollContentBackground(.hidden).padding(8)
                     .frame(height: 130).background(Theme.canvas, in: RoundedRectangle(cornerRadius: 8))
                     .overlay { RoundedRectangle(cornerRadius: 8).strokeBorder(Theme.hairline) }
                     .overlay(alignment: .topLeading) {
                         if prompt.isEmpty {
-                            Text("For example: review the UI and fix the file navigation.")
+                            Text(ticketLaunch == nil ? "For example: review the UI and fix the file navigation." : "Any extra guidance for this run…")
                                 .font(.system(size: 13)).foregroundStyle(.tertiary).padding(13).allowsHitTesting(false)
                         }
                     }
-                    .accessibilityLabel("Agent task")
+                    .accessibilityLabel(ticketLaunch == nil ? "Agent task" : "Additional ticket instructions")
             }
             if let selectedFile {
                 Toggle("Include selected file: \(selectedFile)", isOn: $includeFile)
@@ -241,6 +251,7 @@ struct LaunchAgentView: View {
                 .font(.system(size: 12))
                 .disabled(isGitProject == false)
                 .help("Git projects get a separate checkout. Review and apply changes from the Agents panel. Other folders use their existing files.")
+                .background(SpaceContentMarker(name: "agent-launch-isolated"))
             if isGitProject == false {
                 Text("This folder has no Git repository, so agents use the project files.")
                     .font(.system(size: 11)).foregroundStyle(.secondary)
@@ -250,32 +261,37 @@ struct LaunchAgentView: View {
             HStack {
                 Text("Other agents can keep working.").font(.system(size: 11)).foregroundStyle(.secondary)
                 Spacer()
-                Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
-                Button("Queue task") { enqueue() }.disabled(isLaunching || prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                Button(isLaunching ? "Launching…" : "Launch Agent", action: launch)
+                Button("Cancel") { launchTask?.cancel(); dismiss() }.keyboardShortcut(.cancelAction)
+                if ticketLaunch == nil { Button("Queue task") { enqueue() }.disabled(isLaunching || prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) }
+                Button(isLaunching ? "Launching…" : ticketLaunch == nil ? "Launch Agent" : "Start work", action: launch)
                     .buttonStyle(.borderedProminent).keyboardShortcut(.return, modifiers: .command)
-                    .disabled(isLaunching || prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .disabled(isLaunching || (ticketLaunch == nil && prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty))
+                    .background(SpaceContentMarker(name: ticketLaunch == nil ? "agent-launch-submit" : "ticket-launch-submit"))
             }
         }
         .padding(24).frame(width: 590)
-        .onAppear { agent = model.workspace.preferences.defaultAgent; prompt = initialPrompt; name = initialName; taskFocused = true }
+        .onAppear { agent = model.workspace.preferences.defaultAgent; prompt = ticketLaunch == nil ? initialPrompt : ""; name = initialName; taskFocused = true }
         .task { isGitProject = await Git(environment: model.gitEnvironment).snapshot(at: project.url).isRepository; if isGitProject == false { isolated = false } }
         .onChange(of: agent) { _, _ in selectedModel = "" }
+        .onDisappear { launchTask?.cancel() }
+        .background(SpaceContentMarker(name: ticketLaunch == nil ? "agent-launch-form" : "ticket-launch-form"))
     }
 
     private func launch() {
         isLaunching = true
         error = nil
-        var task = prompt
+        var task = ticketLaunch.map { $0.prompt + (prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "" : "\n\nAdditional instructions for this run:\n" + prompt) } ?? prompt
         if includeFile, let selectedFile { task += "\n\nStart with this project file: \(selectedFile)" }
-        Task {
+        launchTask = Task {
             do {
                 let opensChat = model.projectTabs[project.id] == .conversation
                 let controller = try await model.launchAgent(in: project, agent: agent,
-                    settings: AgentSettings(model: selectedModel.isEmpty ? nil : selectedModel, mode: mode), prompt: task, parentSessionID: parentSessionID, isolated: isolated, name: name)
+                    settings: AgentSettings(model: selectedModel.isEmpty ? nil : selectedModel, mode: mode), prompt: task, parentSessionID: parentSessionID, isolated: isolated, name: name, ticketLaunch: ticketLaunch)
                 onLaunched?(controller)
-                if opensChat { model.openAgentChat(controller.id) }
-                else { model.showAgents(for: project) }
+                if ticketLaunch == nil {
+                    if opensChat { model.openAgentChat(controller.id) }
+                    else { model.showAgents(for: project) }
+                }
                 dismiss()
             } catch { self.error = error.localizedDescription; isLaunching = false }
         }

@@ -215,13 +215,14 @@ show a failure instead of staying in Starting indefinitely.
 
 ### Reviewing completed work
 
-Finished chat turns offer **Review Work**, bringing the latest turn's reported files, recorded checks,
-and project preview actions into one view. **Review Changes** opens the project diff or the isolated
-agent's worktree review. Isolated changes still need to be applied before they appear in the main
-project preview. **Run Tests** records the result and output using the existing project test runner.
+Finished chat turns with changes offer inline actions for changed files, checks and the project
+preview. The file action opens the project diff or the isolated agent's worktree review. Isolated
+changes still need to be applied before they appear in the main project preview. **Run checks**
+records the result using the existing project test runner; expand its status to inspect the output.
+The More menu opens the full task results. Ordinary replies keep the transcript clear.
 Results store a content fingerprint of the checked project and are revalidated while visible,
 including after restart. Changes to source, tests, configuration, file names or executable permissions
-mark the result **Outdated**; **Run Again** checks the current files. Unsaved edits also mark it outdated
+mark the result **Outdated**; **Run again** checks the current files. Unsaved edits also mark it outdated
 and must be saved before running tests. A change during a run prevents that result from staying passed.
 
 In Git repositories the fingerprint includes tracked and untracked non-ignored files. Other folders

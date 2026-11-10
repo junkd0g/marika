@@ -87,6 +87,13 @@ final class AppModel {
     @ObservationIgnored var scheduler: Task<Void, Never>?
     var agentLaunchProjectID: UUID?
     var spaceNoteSelections: [UUID: UUID] = [:]
+    var spaceNoteArchives: [UUID: Bool] = [:]
+    var spaceTicketSelections: [UUID: UUID] = [:]
+    var attentionScopeAllSpaces = false
+    var attentionFilter = "All updates"
+    var launchingTickets: Set<UUID> = []
+    var acceptingTickets: Set<UUID> = []
+    @ObservationIgnored var ticketNavigation: (() -> Void)?
     var selectedAgentTaskIDs: [UUID: UUID] = [:]
     @ObservationIgnored var synthesizingComparisons: Set<UUID> = []
     var researchSections: [UUID: String] = [:]
@@ -219,10 +226,17 @@ final class AppModel {
 
     @discardableResult
     func launchAgent(in project: Project, agent: AgentKind, settings: AgentSettings, prompt: String,
-                     parentSessionID: UUID? = nil, isolated: Bool = true, name: String? = nil, queueID: UUID? = nil, sessionID: UUID = UUID()) async throws -> SessionController {
+                     parentSessionID: UUID? = nil, isolated: Bool = true, name: String? = nil, queueID: UUID? = nil, sessionID: UUID = UUID(), ticketLaunch: TicketAgentLaunch? = nil) async throws -> SessionController {
+        if let ticketLaunch {
+            guard !launchingTickets.contains(ticketLaunch.ticketID), !acceptingTickets.contains(ticketLaunch.ticketID) else { throw TicketWorkError("This ticket is already starting or accepting work.") }
+            try validateTicketLaunch(ticketLaunch, projectID: project.id)
+            launchingTickets.insert(ticketLaunch.ticketID)
+        }
+        defer { if let ticketLaunch { launchingTickets.remove(ticketLaunch.ticketID) } }
         let task = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !task.isEmpty else { throw AgentError.launchFailed("Describe what this agent should do.") }
         guard task.count <= 32_000 else { throw AgentError.launchFailed("Keep the agent task under 32,000 characters.") }
+        if let ticketLaunch, !task.hasPrefix(ticketLaunch.prompt) { throw TicketWorkError("The ticket context is missing. Start work again from the ticket.") }
         let taskName = name?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         guard taskName.count <= 80 else { throw AgentError.launchFailed("Keep the agent name under 80 characters.") }
         guard self.project(id: project.id) != nil else { throw AgentError.launchFailed("This project was removed.") }
@@ -241,6 +255,7 @@ final class AppModel {
         meta.title = taskName.isEmpty ? AgentTaskName.suggested(from: task) : taskName
         meta.settings = settings
         meta.agentTask?.queueID = queueID
+        meta.agentTask?.ticketID = ticketLaunch?.ticketID
         // A launched agent always gets a new chat; reusing an empty chat could replace a draft.
         launchingAgents.insert(meta.id)
         launchingProjects[meta.id] = project.id
@@ -257,12 +272,32 @@ final class AppModel {
             if let workspace = meta.agentTask?.workspace { try? await worktreeService.discard(workspace, project: project.url) }
             throw AgentError.launchFailed("Agent setup was cancelled or the project was removed.")
         }
-        workspace.sessions.append(meta)
-        scheduleSave()
-        await open(meta.id)
-        guard let controller = controllers[meta.id] else { throw AgentError.launchFailed("Couldn't create the agent chat.") }
-        controller.send(UserInput(text: task))
-        return controller
+        var previousTicketStatus: SpaceTicket.Status?
+        do {
+            if let ticketLaunch { try validateTicketLaunch(ticketLaunch, projectID: project.id) }
+            workspace.sessions.append(meta)
+            scheduleSave()
+            await open(meta.id)
+            guard let controller = controllers[meta.id] else { throw AgentError.launchFailed("Couldn't create the agent chat.") }
+            if let ticketLaunch {
+                try validateTicketLaunch(ticketLaunch, projectID: project.id)
+                previousTicketStatus = ticketLocation(ticketLaunch.ticketID)?.ticket.status
+                try attachTicketWork(ticketLaunch, session: controller.meta)
+                guard await save() else { throw TicketWorkError("Couldn't save the ticket link. No agent was started.") }
+                try validateTicketLaunch(ticketLaunch, projectID: project.id)
+            }
+            try Task.checkCancellation()
+            guard !isShuttingDown else { throw CancellationError() }
+            controller.send(UserInput(text: task))
+            return controller
+        } catch {
+            if let ticketLaunch {
+                rollbackTicketWork(ticketLaunch.ticketID, sessionID: meta.id, previousStatus: previousTicketStatus)
+            }
+            deleteSession(meta.id)
+            if let workspace = meta.agentTask?.workspace { try? await worktreeService.discard(workspace, project: project.url) }
+            throw error
+        }
     }
 
     func openAgentChat(_ id: UUID) {
@@ -901,6 +936,10 @@ final class AppModel {
             return try await self.makeAgent(for: meta)
         }
         controller.onChange = { [weak self] in self?.sessionChanged($0) }
+        controller.onPhaseChange = { [weak self] in
+            self?.syncTicketWork($0, phaseChanged: true)
+            self?.syncAttention($0)
+        }
         controller.onDraftChange = { [weak self] in self?.sessionChanged($0, transcriptChanged: false) }
         controller.onAttentionNeeded = { [weak self] in self?.attentionNeeded($0, $1) }
         controller.onRateLimit = { [weak self] in self?.rateLimits[$0.agent] = $0 }
@@ -989,6 +1028,8 @@ final class AppModel {
             let index = workspace.sessions.firstIndex(where: { $0.id == controller.id })
         else { return }
         workspace.sessions[index] = controller.meta
+        syncAttention(controller)
+        syncTicketWork(controller)
         if visibleChatSessionIDs.contains(controller.id), NSApp.isActive {
             markChatRead(controller.id)
         }

@@ -11,6 +11,13 @@ extension AppModel {
         showsWelcome = false
     }
     func note(_ id: UUID, in spaceID: UUID) -> SpaceNote? { workspace.spaces.first { $0.id == spaceID }?.notes.first { $0.id == id } }
+    func openNote(_ id: UUID, in spaceID: UUID) {
+        guard let note = note(id, in: spaceID) else { return }
+        selectSpace(spaceID)
+        spaceNoteArchives[spaceID] = note.archived
+        spaceNoteSelections[spaceID] = id
+        openSpaceSection(.notes)
+    }
     func ticket(_ id: UUID, in spaceID: UUID) -> SpaceTicket? { workspace.spaces.first { $0.id == spaceID }?.tickets.first { $0.id == id } }
     @discardableResult func addSpaceNote(in spaceID: UUID) -> UUID? {
         guard let note = editSpaceContent({ $0.createNote(in: spaceID) }) else { return nil }
@@ -28,5 +35,19 @@ extension AppModel {
     }
     func updateSpaceTicket(_ id: UUID, in spaceID: UUID, _ change: (inout SpaceTicket) -> Void) {
         _ = editSpaceContent { $0.updateTicket(id, in: spaceID, change: change) }
+    }
+    func createNoteTicket(_ draft: NoteTicketDraft) async throws -> UUID {
+        var updated = workspace
+        let ticket = try updated.createTicket(from: draft)
+        editSpaceContent { $0 = updated }
+        guard await save() else {
+            editSpaceContent { workspace in
+                if let index = workspace.spaces.firstIndex(where: { $0.id == draft.spaceID }) {
+                    workspace.spaces[index].tickets.removeAll { $0.id == ticket.id }
+                }
+            }
+            throw TicketWorkError("Couldn't save the ticket. Your note and draft are kept; try again after resolving the storage error.")
+        }
+        return ticket.id
     }
 }

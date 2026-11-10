@@ -1,37 +1,6 @@
 import MarikaCore
 import SwiftUI
 
-struct TaskCompletionCard: View {
-    @Environment(AppModel.self) private var model
-    @Environment(\.conversationIsVisible) private var isVisible
-    private struct MonitorID: Equatable { let record: TaskVerificationRecord?; let visible: Bool }
-    let session: SessionController
-    let summary: TaskCompletionSummary
-    var body: some View {
-        HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 5) {
-                Label(summary.outcome == .completed ? "Ready to review" : "Review partial work", systemImage: "checklist")
-                    .font(.system(size: 13, weight: .semibold))
-                Text("\(summary.changedFiles.count) reported \(summary.changedFiles.count == 1 ? "file" : "files") · \(verificationLabel)")
-                    .font(.system(size: 11)).foregroundStyle(.secondary)
-            }
-            Spacer(minLength: 8)
-            Button("Review Work") { model.taskCompletionID = session.id }
-                .buttonStyle(.borderedProminent).controlSize(.small)
-                #if DEBUG
-                    .background(DebugViewMarker(name: "task-review-work"))
-                #endif
-        }.padding(14).surface()
-        .task(id: MonitorID(record: session.meta.taskVerification, visible: isVisible)) {
-            if isVisible, session.meta.taskVerification != nil { await model.taskVerification(for: session.id).monitor() }
-        }
-    }
-    private var verificationLabel: String {
-        guard session.meta.taskVerification != nil else { return "Tests not verified" }
-        return model.taskVerifications[session.id]?.label ?? "Checking freshness…"
-    }
-}
-
 struct TaskCompletionView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
@@ -43,8 +12,11 @@ struct TaskCompletionView: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Review Work").font(.title2.bold())
+                    Text("Task results").font(.title2.bold())
                     Text(session?.meta.title ?? "Task results").foregroundStyle(.secondary).lineLimit(1)
+                    if let ticketID = session?.meta.agentTask?.ticketID, let ticket = model.ticketLocation(ticketID)?.ticket {
+                        Button(ticket.key) { navigate { model.openTicket(ticketID) } }.buttonStyle(.link).font(.caption)
+                    }
                 }
                 Spacer()
                 Button("Done") { dismiss() }.keyboardShortcut(.cancelAction)

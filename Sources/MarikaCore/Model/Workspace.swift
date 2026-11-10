@@ -87,6 +87,8 @@ public struct SessionMeta: Codable, Equatable, Hashable, Sendable, Identifiable 
     public var queuedAgent: AgentKind?
     public var taskPlan: [TodoItem]?
     public var taskVerification: TaskVerificationRecord?
+    public var attention: SessionAttention?
+    public var dismissedAttentionEvent: String?
 
     public init(
         id: UUID = UUID(), projectID: UUID, agent: AgentKind, title: String = "New session", createdAt: Date = Date(),
@@ -128,6 +130,7 @@ public struct AgentTask: Codable, Equatable, Hashable, Sendable {
     public var parentSessionID: UUID?
     public var workspace: AgentWorkspace?
     public var queueID: UUID?
+    public var ticketID: UUID?
 
     public init(prompt: String, parentSessionID: UUID? = nil) {
         self.prompt = prompt

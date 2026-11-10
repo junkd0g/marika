@@ -208,6 +208,9 @@ struct MarikaCommands: Commands {
             }.disabled(model.activeBrowser == nil)
         }
         CommandMenu("Navigate") {
+            Button("Needs Attention") { openWindow(id: "main"); model.openSpaceSection(.attention) }
+                .keyboardShortcut("i", modifiers: [.command, .shift]).disabled(!model.isReady || model.workspaceLoadFailed)
+            Divider()
             Button(model.activeBrowser == nil ? "Previous Project Tab" : "Previous Browser Tab") {
                 if let browser = model.activeBrowser { browser.selectAdjacentTab(-1) }
                 else { model.selectAdjacentProjectTab(-1) }

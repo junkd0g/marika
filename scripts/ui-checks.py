@@ -19,7 +19,7 @@ artifacts = args.artifacts.resolve()
 artifacts.mkdir(parents=True, exist_ok=True)
 failed = []
 
-for suite in ['welcome', 'followups', 'workflow', 'codex-style', 'smoke', 'recovery', 'project-tabs', 'spaces', 'space-content', 'navigation-qa', 'deep-workflows', 'projects', 'workbench', 'history-updates', 'browser']:
+for suite in ['welcome', 'followups', 'workflow', 'codex-style', 'smoke', 'recovery', 'project-tabs', 'spaces', 'space-content', 'note-tickets', 'ticket-work', 'attention', 'navigation-qa', 'deep-workflows', 'projects', 'workbench', 'history-updates', 'browser']:
     directory = artifacts / suite
     directory.mkdir(exist_ok=True)
     environment = dict(os.environ, TMPDIR=str(directory), MARIKA_DEMO='1',

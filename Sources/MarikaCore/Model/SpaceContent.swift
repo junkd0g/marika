@@ -1,7 +1,7 @@
 import Foundation
 
 public enum SpaceSection: String, Codable, CaseIterable, Sendable {
-    case projects = "Projects", notes = "Notes", tickets = "Tickets"
+    case projects = "Projects", notes = "Notes", tickets = "Tickets", attention = "Needs attention"
 }
 
 public struct SpaceNoteBlock: Codable, Equatable, Hashable, Sendable, Identifiable {
@@ -71,6 +71,8 @@ public struct SpaceTicket: Codable, Equatable, Sendable, Identifiable {
     public var archived: Bool
     public var createdAt: Date
     public var updatedAt: Date
+    public var linkedNoteIDs: [UUID]?
+    public var work: [TicketWork]?
     public var displayTitle: String { title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Untitled ticket" : title }
     public init(id: UUID = UUID(), key: String, title: String = "", status: Status = .todo, date: Date = Date()) {
         self.id = id; self.key = key; self.title = title; self.status = status
@@ -111,6 +113,8 @@ extension Workspace {
         if let projectID = spaces[index].tickets[item].projectID, !projects(in: spaceID).contains(where: { $0.id == projectID }) {
             spaces[index].tickets[item].projectID = nil
         }
+        let notes = Set(spaces[index].notes.map(\.id))
+        spaces[index].tickets[item].linkedNoteIDs = spaces[index].tickets[item].linkedNoteIDs.map { Array(Set($0)).filter(notes.contains).sorted { $0.uuidString < $1.uuidString } }
         return true
     }
     mutating func normalizeSpaceContent() {
@@ -121,8 +125,10 @@ extension Workspace {
             while !prefixes.insert(prefix).inserted { prefix = base + String(suffix); suffix += 1 }
             spaces[index].ticketPrefix = prefix
             let projectIDs = Set(projects(in: spaces[index].id).map(\.id))
+            let noteIDs = Set(spaces[index].notes.map(\.id))
             for item in spaces[index].tickets.indices {
                 if let id = spaces[index].tickets[item].projectID, !projectIDs.contains(id) { spaces[index].tickets[item].projectID = nil }
+                spaces[index].tickets[item].linkedNoteIDs = spaces[index].tickets[item].linkedNoteIDs.map { Array(Set($0)).filter(noteIDs.contains).sorted { $0.uuidString < $1.uuidString } }
             }
         }
     }
