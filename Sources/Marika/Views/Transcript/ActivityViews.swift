@@ -4,6 +4,7 @@ import SwiftUI
 /// A run of tool calls and reasoning. Stays open while the agent works, and folds into a
 /// one-line summary afterwards so the conversation stays readable.
 struct ActivityGroup: View {
+    @Environment(AppModel.self) private var model
     let items: [TranscriptItem]
     let children: [String: [TranscriptItem]]
     let isLive: Bool
@@ -93,6 +94,10 @@ struct ActivityGroup: View {
                         EmptyView()
                     }
                 }
+            } else if items.compactMap(\.tool).contains(where: { $0.name.hasSuffix("project_publish_design") && $0.status == .succeeded }) {
+                Button { model.switchPanel(.design) } label: {
+                    Label("Open Design", systemImage: "square.on.circle")
+                }.buttonStyle(.borderless)
             }
         }
     }
@@ -144,6 +149,7 @@ private struct ThinkingRow: View {
 }
 
 struct ToolRow: View {
+    @Environment(AppModel.self) private var model
     let call: ToolCall
     let children: [TranscriptItem]
 
@@ -202,6 +208,13 @@ struct ToolRow: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+
+            if call.name.hasSuffix("project_publish_design"), call.status == .succeeded {
+                Button { model.switchPanel(.design) } label: {
+                    Label("Open Design", systemImage: "square.on.circle")
+                }
+                .buttonStyle(.borderless).padding(.leading, 24)
+            }
 
             if isExpanded {
                 ToolDetail(call: call, children: children)

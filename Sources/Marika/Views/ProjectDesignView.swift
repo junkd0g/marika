@@ -47,11 +47,18 @@ private struct DesignNodeView: View {
             Text(node.text).font(.system(size: node.fontSize)).foregroundStyle(node.fill.color)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         case .ellipse:
-            Ellipse().fill(node.fill.color).overlay(stroke(Ellipse()))
+            Ellipse().fill(node.fill.color).overlay(stroke(Ellipse())).overlay(shapeLabel)
         case .rectangle, .frame:
             RoundedRectangle(cornerRadius: node.cornerRadius).fill(node.fill.color)
-                .overlay(stroke(RoundedRectangle(cornerRadius: node.cornerRadius)))
+                .overlay(stroke(RoundedRectangle(cornerRadius: node.cornerRadius))).overlay(shapeLabel)
         }
+    }
+
+    private var shapeLabel: some View {
+        let brightness = node.fill.red * 0.299 + node.fill.green * 0.587 + node.fill.blue * 0.114
+        return Text(node.text).font(.system(size: node.fontSize, weight: .medium))
+            .foregroundStyle(brightness < 0.55 ? Color.white : Color.black.opacity(0.85))
+            .multilineTextAlignment(.center).padding(12)
     }
 
     @ViewBuilder private func stroke<S: InsettableShape>(_ shape: S) -> some View {
@@ -61,11 +68,43 @@ private struct DesignNodeView: View {
 
 private struct DesignScene: View {
     let nodes: [DesignNode]
+    var connections: [DesignConnection] = []
     var body: some View {
         ZStack(alignment: .topLeading) {
+            ForEach(connections) { connection in
+                if let points = connection.route(in: nodes) {
+                    DesignConnectionView(points: points, label: connection.label)
+                }
+            }
             ForEach(nodes.filter { !$0.isHidden }) { DesignNodeView(node: $0) }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+}
+
+private struct DesignConnectionView: View {
+    let points: [CGPoint]
+    let label: String
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            Path { path in
+                path.addLines(points)
+                if let end = points.last, let before = points.dropLast().last(where: { $0 != end }) {
+                    let angle = atan2(end.y - before.y, end.x - before.x)
+                    path.move(to: CGPoint(x: end.x - 10 * cos(angle - .pi / 6), y: end.y - 10 * sin(angle - .pi / 6)))
+                    path.addLine(to: end)
+                    path.addLine(to: CGPoint(x: end.x - 10 * cos(angle + .pi / 6), y: end.y - 10 * sin(angle + .pi / 6)))
+                }
+            }.stroke(Color.gray, style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
+            if !label.isEmpty, points.count == 4 {
+                let middle = CGPoint(x: (points[1].x + points[2].x) / 2, y: (points[1].y + points[2].y) / 2)
+                Text(label).font(.system(size: 11)).foregroundStyle(Color.primary)
+                    .padding(.horizontal, 5).padding(.vertical, 3)
+                    .background(Theme.canvas, in: RoundedRectangle(cornerRadius: 4))
+                    .fixedSize().position(middle)
+            }
+        }
     }
 }
 
@@ -86,6 +125,8 @@ struct ProjectDesignView: View {
     @State private var marquee: CGRect?
     @State private var draftRect: CGRect?
     @State private var magnifyBase: Double?
+    @State private var canvasSize = CGSize.zero
+    @State private var fitted = false
     @FocusState private var focused: Bool
 
     private enum Drag {
@@ -100,14 +141,28 @@ struct ProjectDesignView: View {
             HStack(spacing: 0) {
                 layers.frame(width: 210)
                 Divider()
-                canvas
+                canvas.onGeometryChange(for: CGSize.self) { $0.size } action: { size in
+                    canvasSize = size
+                    if !fitted, size.width > 0, size.height > 0 { fit(); fitted = true }
+                }
                 Divider()
                 properties.frame(width: 250)
             }
         }
         .background(Theme.canvas)
-        .onAppear { if !loaded { doc = project.design ?? DesignDocument(); loaded = true } }
+        .onAppear {
+            if !loaded { doc = project.design ?? DesignDocument(); loaded = true }
+            fit()
+        }
         .onChange(of: doc) { _, new in if loaded { model.updateProject(project.id) { $0.design = new } } }
+        .onChange(of: project.design) { _, incoming in
+            let next = incoming ?? DesignDocument()
+            guard loaded, next != doc else { return }
+            checkpoint()
+            doc = next
+            selection = selection.filter { next.node($0) != nil }
+            fit()
+        }
     }
 
     // MARK: Toolbar
@@ -128,6 +183,9 @@ struct ProjectDesignView: View {
                 .disabled(redo.isEmpty).help("Redo")
             Button { duplicateSelection() } label: { Image(systemName: "plus.square.on.square") }
                 .disabled(selection.isEmpty).help("Duplicate")
+            if let title = doc.title {
+                Text(title).font(.caption).lineLimit(1).truncationMode(.middle)
+            }
             Spacer()
             Button { zoom = max(0.1, zoom / 1.25) } label: { Image(systemName: "minus") }
             Text("\(Int((zoom * 100).rounded()))%").font(.caption.monospacedDigit()).frame(width: 44)
@@ -145,7 +203,8 @@ struct ProjectDesignView: View {
         VStack(alignment: .leading, spacing: 0) {
             Text("Layers").font(.caption.weight(.semibold)).foregroundStyle(.secondary).padding(10)
             if doc.nodes.isEmpty {
-                Text("Pick a shape tool and drag on the canvas to draw.").font(.caption).foregroundStyle(.secondary).padding(.horizontal, 10)
+                Text("Ask your project chat to draw an architecture diagram here, or pick a shape tool and drag to draw.")
+                    .font(.caption).foregroundStyle(.secondary).padding(.horizontal, 10)
                 Spacer()
             } else {
                 List(selection: $selection) {
@@ -198,7 +257,7 @@ struct ProjectDesignView: View {
                     x += step }
                 context.fill(path, with: .color(.primary.opacity(0.18)))
             }
-            DesignScene(nodes: doc.nodes)
+            DesignScene(nodes: doc.nodes, connections: doc.connections ?? [])
                 .scaleEffect(zoom, anchor: .topLeading).offset(offset)
                 .allowsHitTesting(false)
             overlays.allowsHitTesting(false)
@@ -374,16 +433,17 @@ struct ProjectDesignView: View {
 
     private func fit() {
         guard let box = doc.bounds(of: Set(doc.nodes.map(\.id))), box.width > 0, box.height > 0 else { return }
-        let view = CGSize(width: 700, height: 500)
-        zoom = min(4, max(0.1, min(view.width / box.width, view.height / box.height) * 0.9))
-        offset = CGSize(width: 40 - box.minX * zoom + (view.width - box.width * zoom) / 2 - 40,
-                        height: 40 - box.minY * zoom + (view.height - box.height * zoom) / 2 - 40)
+        guard canvasSize.width > 0, canvasSize.height > 0 else { return }
+        zoom = min(4, max(0.1, min(max(1, canvasSize.width - 64) / box.width, max(1, canvasSize.height - 64) / box.height)))
+        offset = CGSize(width: (canvasSize.width - box.width * zoom) / 2 - box.minX * zoom,
+                        height: (canvasSize.height - box.height * zoom) / 2 - box.minY * zoom)
     }
 
     @MainActor private func export() {
         let ids = selection.isEmpty ? Set(doc.nodes.map(\.id)) : selection
         guard let box = doc.bounds(of: ids)?.insetBy(dx: -16, dy: -16) else { return }
-        let scene = DesignScene(nodes: doc.nodes).offset(x: -box.minX, y: -box.minY)
+        let scene = DesignScene(nodes: doc.nodes.filter { ids.contains($0.id) }, connections: doc.connections ?? [])
+            .offset(x: -box.minX, y: -box.minY)
             .frame(width: box.width, height: box.height, alignment: .topLeading).clipped()
             .background(Color.white)
         let renderer = ImageRenderer(content: scene)
@@ -432,10 +492,8 @@ struct ProjectDesignView: View {
                 GridRow { number("X", binding(id, \.x)); number("Y", binding(id, \.y)) }
                 GridRow { number("W", binding(id, \.width, coalesce: true)); number("H", binding(id, \.height)) }
             }
-            if node.kind == .text {
-                TextField("Text", text: binding(id, \.text), axis: .vertical).textFieldStyle(.roundedBorder).lineLimit(1...5)
-                number("Size", binding(id, \.fontSize))
-            }
+            TextField("Text", text: binding(id, \.text), axis: .vertical).textFieldStyle(.roundedBorder).lineLimit(1...5)
+            number("Size", binding(id, \.fontSize))
             if node.kind == .rectangle || node.kind == .frame {
                 number("Radius", binding(id, \.cornerRadius))
             }

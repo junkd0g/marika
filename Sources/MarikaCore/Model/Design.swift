@@ -18,6 +18,35 @@ public enum DesignHandle: String, Codable, CaseIterable, Sendable {
     case topLeft, top, topRight, right, bottomRight, bottom, bottomLeft, left
 }
 
+public struct DesignConnection: Codable, Equatable, Hashable, Sendable, Identifiable {
+    public var id: UUID
+    public var from: UUID
+    public var to: UUID
+    public var label: String
+
+    public init(id: UUID = UUID(), from: UUID, to: UUID, label: String = "") {
+        self.id = id; self.from = from; self.to = to; self.label = label
+    }
+
+    /// Attached endpoints follow their shapes when a user moves or resizes them.
+    public func route(in nodes: [DesignNode]) -> [CGPoint]? {
+        guard let source = nodes.first(where: { $0.id == from && !$0.isHidden }),
+              let target = nodes.first(where: { $0.id == to && !$0.isHidden }), from != to else { return nil }
+        let a = source.frame, b = target.frame
+        let dx = b.midX - a.midX, dy = b.midY - a.midY
+        if abs(dx) >= abs(dy) {
+            let start = CGPoint(x: dx >= 0 ? a.maxX : a.minX, y: a.midY)
+            let end = CGPoint(x: dx >= 0 ? b.minX : b.maxX, y: b.midY)
+            let middle = (start.x + end.x) / 2
+            return [start, CGPoint(x: middle, y: start.y), CGPoint(x: middle, y: end.y), end]
+        }
+        let start = CGPoint(x: a.midX, y: dy >= 0 ? a.maxY : a.minY)
+        let end = CGPoint(x: b.midX, y: dy >= 0 ? b.minY : b.maxY)
+        let middle = (start.y + end.y) / 2
+        return [start, CGPoint(x: start.x, y: middle), CGPoint(x: end.x, y: middle), end]
+    }
+}
+
 public struct DesignNode: Codable, Equatable, Hashable, Sendable, Identifiable {
     public enum Kind: String, Codable, CaseIterable, Sendable {
         case frame = "Frame", rectangle = "Rectangle", ellipse = "Ellipse", text = "Text"
@@ -72,6 +101,9 @@ public struct DesignNode: Codable, Equatable, Hashable, Sendable, Identifiable {
 public struct DesignDocument: Codable, Equatable, Hashable, Sendable {
     public static let minimumSize = 8.0
     public var nodes: [DesignNode] = []
+    public var title: String?
+    /// Optional so canvases saved before chat integration still decode.
+    public var connections: [DesignConnection]?
     public init() {}
 
     public func node(_ id: UUID) -> DesignNode? { nodes.first { $0.id == id } }
@@ -124,17 +156,27 @@ public struct DesignDocument: Codable, Equatable, Hashable, Sendable {
         nodes[index].width = maxX - minX; nodes[index].height = maxY - minY
     }
 
-    public mutating func remove(_ ids: Set<UUID>) { nodes.removeAll { ids.contains($0.id) } }
+    public mutating func remove(_ ids: Set<UUID>) {
+        nodes.removeAll { ids.contains($0.id) }
+        connections?.removeAll { ids.contains($0.from) || ids.contains($0.to) }
+    }
 
     @discardableResult
     public mutating func duplicate(_ ids: Set<UUID>, offset: Double = 16) -> [UUID] {
         var created: [UUID] = []
+        var copies: [UUID: UUID] = [:]
         for node in nodes where ids.contains(node.id) {
             var copy = node
             copy.id = UUID(); copy.x += offset; copy.y += offset; copy.name = node.name + " copy"
             created.append(copy.id)
+            copies[node.id] = copy.id
             nodes.append(copy)
         }
+        let edges = (connections ?? []).compactMap { edge -> DesignConnection? in
+            guard let from = copies[edge.from], let to = copies[edge.to] else { return nil }
+            return DesignConnection(from: from, to: to, label: edge.label)
+        }
+        if !edges.isEmpty { connections = (connections ?? []) + edges }
         return created
     }
 

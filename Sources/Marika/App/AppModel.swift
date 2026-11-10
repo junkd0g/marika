@@ -329,6 +329,15 @@ final class AppModel {
                 BrowserTools.text(String(decoding: try value.serialized(), as: UTF8.self))
             }
             switch name {
+            case "project_get_design":
+                return try result(DesignTools.snapshot(project.design ?? DesignDocument()))
+            case "project_publish_design":
+                let document = try DesignTools.publish(args, replacing: project.design ?? DesignDocument())
+                updateProject(projectID) { $0.design = document }
+                return try result(["message": "Saved Design canvas. Open Design below Tickets or use Open Design in this chat.",
+                                   "baseRevision": .string(try DesignTools.revision(of: document)),
+                                   "shapes": .int(Int64(document.nodes.count)),
+                                   "connections": .int(Int64(document.connections?.count ?? 0))])
             case "project_publish_comparison":
                 guard let id = args["comparisonID"]?.string.flatMap(UUID.init(uuidString:)),
                       var run = project.comparisons?.first(where: { $0.id == id }) else { throw AgentError.launchFailed("Use your assigned comparison ID.") }
@@ -989,6 +998,7 @@ final class AppModel {
             launch.environment = authorized.environment
         }
         launch.projectInstructions += "\n" + (project.knowledge?.instructions ?? "")
+        if browserConfig != nil { launch.projectInstructions += "\n" + DesignTools.instructions }
         // Isolated workers must not edit another repository's live checkout.
         if meta.agentTask?.workspace == nil {
             launch.additionalDirectories = (project.repositoryPaths ?? []).map { URL(fileURLWithPath: $0) }

@@ -63,6 +63,23 @@ saved results stay attached across restarts and after an agent chat is removed.
 
 Notes and tickets are stored locally in Marika's workspace and included in its saved-data backup.
 
+## Design from chat
+
+**Design** sits below **Tickets** in the left sidebar and opens the current project's editable
+canvas. You can also open it with **⌘G** or the project tab menu. Shapes, labels and connections
+save with the project.
+
+Ask either Claude or Codex, for example: **“In Design, draw this project's architecture.”**
+The agent can read the canvas with `project_get_design` and update it with
+`project_publish_design`. Architecture diagrams use labeled shapes and directed connections;
+moving or resizing a shape keeps its connections attached. The agent can inspect the project
+and publish into Design without creating a report or opening an external design service.
+The chat's tool result includes **Open Design**. Canvas edits from another turn or from you
+invalidate the agent's previous revision, so it must read again before publishing.
+
+Manual drawing, layer ordering, property editing, undo/redo and PNG export remain available.
+After updating Marika, restart the app so existing agent connections load the new tools.
+
 ## Needs attention
 
 Open **Needs attention** in the sidebar or press **⇧⌘I**. The inbox shows pending approvals and
