@@ -201,7 +201,7 @@ final class AppModel {
         case .code: editor(for: project).focusEditor()
         case .browser: _ = browser(for: project)
         case .terminal: ensureTerminal(for: project)
-        case .changes, .agents, .stats, .pipelines, .api, .research: break
+        case .changes, .agents, .stats, .pipelines, .api, .research, .design: break
         }
         projectTabs[project.id] = tab
     }

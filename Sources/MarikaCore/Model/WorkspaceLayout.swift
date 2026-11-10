@@ -1,10 +1,10 @@
 import Foundation
 
 public enum ProjectPanel: String, Codable, CaseIterable, Sendable {
-    case conversation = "Conversation", code = "Code", browser = "Browser", agents = "Agents", stats = "Stats", pipelines = "Pipelines", api = "API", changes = "Changes", terminal = "Terminal", research = "Research"
+    case conversation = "Conversation", code = "Code", browser = "Browser", agents = "Agents", stats = "Stats", pipelines = "Pipelines", api = "API", changes = "Changes", terminal = "Terminal", research = "Research", design = "Design"
     public var title: String { self == .conversation ? "Chat" : rawValue }
     public var shortcut: String {
-        switch self { case .conversation: "1"; case .code: "2"; case .browser: "3"; case .agents: "4"; case .stats: "5"; case .pipelines: "6"; case .api: "7"; case .changes: "8"; case .terminal: "9"; case .research: "0" }
+        switch self { case .conversation: "1"; case .code: "2"; case .browser: "3"; case .agents: "4"; case .stats: "5"; case .pipelines: "6"; case .api: "7"; case .changes: "8"; case .terminal: "9"; case .research: "0"; case .design: "g" }
     }
 }
 

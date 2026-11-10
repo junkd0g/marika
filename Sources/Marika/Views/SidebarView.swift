@@ -13,9 +13,13 @@ struct SidebarView: View {
         }
     }
 
+    private var designSelected: Bool {
+        model.selectedSpace.section == .projects && model.commandPanel == .design
+    }
+
     var body: some View {
         GeometryReader { geometry in
-            let reserved: CGFloat = model.rateLimits.isEmpty ? 521 : 547
+            let reserved: CGFloat = model.rateLimits.isEmpty ? 556 : 582
             sidebar(spaceRows: max(1, min(4, Int((geometry.size.height - reserved) / 53))))
         }
     }
@@ -42,6 +46,17 @@ struct SidebarView: View {
                     count: model.attentionItems.filter { model.project(id: $0.projectID)?.spaceID == model.selectedSpace.id }.count)
                 spaceSection("Notes", symbol: "doc.text", section: .notes, count: model.selectedSpace.notes.filter { !$0.archived }.count)
                 spaceSection("Tickets", symbol: "rectangle.3.group", section: .tickets, count: model.selectedSpace.tickets.filter { !$0.archived && $0.status != .done }.count)
+                sidebarAction("Design", symbol: "square.on.circle", selected: designSelected) {
+                    if let project = model.workspace.preferredProject(in: model.selectedSpace.id) {
+                        model.openProject(project, tab: .design)
+                    }
+                }
+                .disabled(model.spaceProjects.isEmpty)
+                .accessibilityLabel("Design in " + model.selectedSpace.name)
+                .help("Open the design canvas for this project (⌘G)")
+                #if DEBUG
+                    .background(DebugViewMarker(name: "sidebar-open-design"))
+                #endif
                 Divider().padding(.horizontal, 10).padding(.vertical, 7)
                 sidebarAction("New chat", symbol: "square.and.pencil") { model.newSessionInCurrentProject() }
                 sidebarAction("Search project", symbol: "magnifyingglass") { model.showsProjectSearch = true }
@@ -144,13 +159,15 @@ struct SidebarView: View {
             #endif
     }
 
-    private func sidebarAction(_ title: String, symbol: String, action: @escaping () -> Void) -> some View {
+    private func sidebarAction(_ title: String, symbol: String, selected: Bool = false, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Label(title, systemImage: symbol)
                 .font(.system(size: 12.5)).frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 10).padding(.vertical, 9).contentShape(Rectangle())
+                .background(selected ? Theme.selection : .clear, in: RoundedRectangle(cornerRadius: 7))
         }
         .buttonStyle(.plain).foregroundStyle(Theme.ink)
+        .accessibilityAddTraits(selected ? [.isSelected] : [])
     }
 }
 

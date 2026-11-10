@@ -37,6 +37,7 @@ public struct Project: Codable, Equatable, Hashable, Sendable, Identifiable {
     public var taskQueue: AgentTaskQueue?
     public var taskActivity: [TaskActivity]?
     public var runtime: WorkspaceRuntime?
+    public var design: DesignDocument?
 
     public init(id: UUID = UUID(), path: String, name: String? = nil) {
         self.id = id

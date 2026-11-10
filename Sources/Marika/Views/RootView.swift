@@ -177,6 +177,7 @@ private struct ProjectWorkspaceView: View {
                     if visible(.pipelines) {
                         place(ProjectPipelinesView(project: project), panel: .pipelines, size: geometry.size)
                     }
+                    if visible(.design) { place(ProjectDesignView(project: project), panel: .design, size: geometry.size) }
                     if visible(.stats) {
                         place(ProjectStatsView(project: project), panel: .stats, size: geometry.size)
                     }
