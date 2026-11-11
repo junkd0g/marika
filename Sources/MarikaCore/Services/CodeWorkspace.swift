@@ -162,6 +162,13 @@ public final class CodeWorkspace {
         return try await files.read(path).text
     }
 
+    /// Audits use unsaved edits when present, otherwise the latest bytes on disk.
+    /// Reading for a check must not replace an open editor buffer.
+    public func currentSourceText(_ path: String) async throws -> String {
+        if let existing = documents.first(where: { $0.path == path }), existing.isModified { return existing.text }
+        return try await files.read(path).text
+    }
+
     public func navigate(to path: String, line: Int, column: Int = 1, length: Int = 0) async {
         saveCurrentVisit()
         let sameDocument = selectedDocument?.path == path

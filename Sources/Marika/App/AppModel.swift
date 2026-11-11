@@ -61,7 +61,9 @@ final class AppModel {
         }
     }
     var editors: [UUID: CodeWorkspace] = [:]
+    @ObservationIgnored var editorRestorations: [UUID: [String: Task<Void, Never>]] = [:]
     var designs: [UUID: DesignWorkspace] = [:]
+    var designCanvases: [UUID: DesignCanvasModel] = [:]
     var repositoryEditors: [UUID: [String: CodeWorkspace]] = [:]
     var ideWorkspaces: [String: IDEWorkspace] = [:]
     var experienceProjectID: UUID?
@@ -516,7 +518,10 @@ final class AppModel {
             if let ide, ide.preferences.formatOnSave { try await ide.format(document) }
         }
         if let saved = project.editorURL == project.url ? project.layout : project.repositoryLayouts?[project.editorURL.path], !saved.files.isEmpty {
-            Task { await editor.restore(saved) }
+            editorRestorations[project.id, default: [:]][project.editorURL.path] = Task { [weak self] in
+                await editor.restore(saved)
+                self?.editorRestorations[project.id]?[project.editorURL.path] = nil
+            }
         }
         return editor
     }
@@ -864,6 +869,7 @@ final class AppModel {
             workspace.normalizeSpaces()
             editors[project.id] = nil
             designs[project.id] = nil
+            designCanvases[project.id] = nil
             repositoryEditors[project.id] = nil
             browsers.removeValue(forKey: project.id)?.stop()
             projectTabs[project.id] = nil

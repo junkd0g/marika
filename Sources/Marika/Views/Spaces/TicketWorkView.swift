@@ -24,6 +24,15 @@ struct TicketWorkView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
+        if let source = ticket?.designSource {
+            Button("Open linked Design", systemImage: "square.stack.3d.up") {
+                navigate {
+                    model.openDesign(for: source.projectID)
+                    model.designCanvases[source.projectID]?.selection = Set(source.elementIDs)
+                    model.designCanvases[source.projectID]?.fitSelection()
+                }
+            }.buttonStyle(WorkspaceButtonStyle(compact: true))
+        }
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 if let ticket, let work {

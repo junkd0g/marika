@@ -10,6 +10,7 @@ extension AppModel {
             self?.updateProject(project.id) { $0.design = document }
         }
         designs[project.id] = editor
+        designCanvases[project.id] = DesignCanvasModel(editor: editor, projectID: project.id, app: self)
         return editor
     }
     func openDesign(for projectID: UUID) {
@@ -17,6 +18,19 @@ extension AppModel {
         if let spaceID = project.spaceID, selectedSpace.id != spaceID { selectSpace(spaceID) }
         if selectedProject?.id == projectID { switchPanel(.design) }
         else { openProject(project, tab: .design) }
+    }
+    func useDesignElementsInChat(projectID: UUID, selection: Set<UUID>) async throws {
+        guard let project = project(id: projectID) else { throw DesignToolError("This project is no longer available.") }
+        let reference = try DesignTools.referencePrompt(design(for: project).document, selection: selection)
+        let chat = selectedSession.flatMap { $0.projectID == projectID ? $0 : nil }
+            ?? workspace.chat(for: projectID) ?? newSession(in: project)
+        await open(chat.id)
+        guard self.project(id: projectID) != nil, let controller = controllers[chat.id] else {
+            throw DesignToolError("The project chat couldn't be opened.")
+        }
+        controller.draft = DesignTools.mergingReference(reference, into: controller.draft)
+        if let spaceID = project.spaceID, selectedSpace.id != spaceID { selectSpace(spaceID) }
+        openAgentChat(chat.id)
     }
     var worktreeService: AgentWorktrees { AgentWorktrees(directory: store.worktreesDirectory, environment: gitEnvironment) }
 

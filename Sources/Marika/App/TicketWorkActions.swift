@@ -22,7 +22,8 @@ extension AppModel {
         guard let location = ticketLocation(id), let space = workspace.spaces.first(where: { $0.id == location.spaceID }) else {
             throw TicketWorkError("This ticket is no longer available.")
         }
-        return try TicketWorkContext(ticket: location.ticket, notes: space.notes)
+        let design = location.ticket.projectID.flatMap { designs[$0]?.document ?? project(id: $0)?.design }
+        return try TicketWorkContext(ticket: location.ticket, notes: space.notes, design: design)
     }
 
     func ticketHasActiveWork(_ ticket: SpaceTicket) -> Bool {
@@ -36,7 +37,7 @@ extension AppModel {
         let draft = TicketAgentLaunch(ticketID: id, projectID: projectID, contextDigest: context.digest,
                                       prompt: context.prompt, name: String((context.key + ": " + context.title).prefix(80)))
         try validateTicketLaunch(draft, projectID: projectID)
-        guard draft.prompt.count <= 32_000 else { throw TicketWorkError("The ticket and selected notes exceed 32,000 characters. Shorten the description or link fewer notes.") }
+        guard draft.prompt.count <= 32_000 else { throw TicketWorkError("The ticket and linked context exceed 32,000 characters. Shorten the description or link fewer notes or design elements.") }
         return draft
     }
 
@@ -48,7 +49,7 @@ extension AppModel {
         guard !location.ticket.archived, location.ticket.status != .done else { throw TicketWorkError("Reopen this ticket before starting more work.") }
         guard !isShuttingDown, !Task.isCancelled else { throw CancellationError() }
         guard !ticketHasActiveWork(location.ticket) else { throw TicketWorkError("An agent is already working on this ticket. Open its chat to continue or stop it.") }
-        guard try ticketContext(launch.ticketID).digest == launch.contextDigest else { throw TicketWorkError("The ticket or its notes changed. Close this launch form and start again with the updated context.") }
+        guard try ticketContext(launch.ticketID).digest == launch.contextDigest else { throw TicketWorkError("The ticket or its linked context changed. Close this launch form and start again with the updated context.") }
     }
 
     func attachTicketWork(_ launch: TicketAgentLaunch, session: SessionMeta) throws {

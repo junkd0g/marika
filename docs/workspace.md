@@ -69,6 +69,13 @@ Notes and tickets are stored locally in Marika's workspace and included in its s
 canvas. You can also open it with **⌘G** or the project tab menu. Shapes, labels and connections
 save with the project.
 
+Select an element and fill in **Description** in Properties to explain its purpose, behavior,
+or implementation requirements. These notes are separate from the visible label and save with
+the element. **Use in Chat** adds the selected elements, descriptions, and visual properties
+to the project's chat draft; existing draft text is preserved. With nothing selected, it uses
+the visible canvas. Add your request and send it when ready. Agents also receive descriptions
+through `project_get_design` and preserve them when updating existing elements.
+
 Ask either Claude or Codex, for example: **“In Design, draw this project's architecture.”**
 The agent can read the canvas with `project_get_design` and update it with
 `project_publish_design`. Architecture diagrams use labeled shapes and directed connections;
@@ -77,11 +84,107 @@ and publish into Design without creating a report or opening an external design 
 The chat's tool result includes **Open Design**. Canvas edits from another turn or from you
 invalidate the agent's previous revision, so it must read again before publishing.
 
-Manual drawing, layer ordering, property editing, undo/redo and PNG export remain available.
-Undo history stays with the project while switching tabs or projects. Locked layers cannot be
-edited or deleted by the canvas or by chat; unlock them in Layers before changing them. Fit and
-PNG export include visible shapes, and large exports scale down to keep image memory bounded.
+### Drawing on the canvas
+
+Tools float at the bottom of the canvas: **Move** (V), **Hand** (H, or hold Space), **Frame** (F),
+shapes (**Rectangle** R, **Ellipse** O, **Polygon**, **Star**, **Line** L, **Arrow** ⇧L),
+**Text** (T) and **Connector** (C). Drag to draw; hold ⇧ for a square or a 45° line and ⌥ to
+draw from the center. Scroll to pan, and pinch or ⌘-scroll to zoom at the pointer. The zoom menu
+above the inspector fits the canvas (⇧1) or the selection (⇧2).
+
+- **Engineering components.** Open **Components** above the canvas and search for a service,
+  API, worker, database, cache, message queue, object storage, client app, gateway, or external
+  system. Click to insert, or drag a card to a position on the canvas. Each component has a
+  native icon, editable label and styling, and a starter description marked as a placeholder.
+  Components support the same connections, resizing, copy/paste, undo, and export as shapes.
+  The component role also reaches chat; agents can publish it with the optional `component`
+  field. **Use plain shape** removes the icon and role while keeping the rest of the element.
+- **Select and arrange.** Click, ⇧-click or drag a marquee. Drag handles to resize one layer
+  or several together (⇧ keeps proportions, ⌥ resizes from the center), drag the knob above a
+  layer to rotate it (⇧ for 15° steps), and drag a line's ends to re-aim it. Moving and
+  resizing snap to the edges and centers of other layers and show guides; hold ⌘ to place freely.
+  ⌥-drag or ⌘D duplicates, arrows nudge, and ⌘C, ⌘X and ⌘V copy between canvases.
+- **Text.** Double-click a shape, or press Return, to type its label in place. Click with the
+  Text tool to type a new line of text. Return or Escape finishes; ⌥Return adds a line.
+- **Frames.** A frame holds the layers drawn above it that sit inside its bounds. Drag a
+  frame by its title to move everything in it; clicking inside selects its contents. ⌥⌘G
+  wraps the selection in a frame and ⇧⌘G removes a frame but keeps its contents. Deleting,
+  duplicating, exporting or using a frame in chat includes what it holds.
+- **Connections.** With the Connector tool, drag from one layer to another. Click a
+  connection to label, reverse or delete it; it stays attached when its layers move.
+  Properties offers automatic or explicit left/right/top/bottom ports and **HTTP / RPC**,
+  **Event**, or **Data flow** styles. Drag a label along its route to position it. Connections
+  route around nearby boxes; turn off **Route around shapes** for a simpler path. Dense or
+  overlapping diagrams can still require moving a box or choosing different ports.
+- **Inspector.** Position, size, rotation, opacity, corner radius, text size, weight and
+  alignment, fill, stroke (solid, dashed or dotted) and shadow apply to every selected layer;
+  a field reads **Mixed** where they differ. Drag a field's label to scrub its value. A single
+  layer inside a frame aligns to that frame; three or more layers can be spaced evenly.
+- **Layers.** Frames expand into a nested list of their contents. Use the disclosure arrow to
+  collapse a frame; selecting a child on the canvas reveals it in the list. Click a row to
+  select it, ⌘-click to toggle it, or ⇧-click to select a range. Drag within a frame
+  to reorder siblings (moving a frame carries its contents), double-click to rename, and hover
+  a row to hide or lock it. A secondary click on the canvas or a layer lists the same actions
+  with their shortcuts. Locked contents prevent their frame from being reordered.
+
+At compact widths, **Layers** and **Properties** open as popovers, leaving more space for the
+artwork. Zoom and Export remain above the canvas. On wider windows, the panels stay open beside
+the canvas. Connections draw above frame backgrounds, so arrows remain visible inside frames
+both on screen and in exported PNGs.
+
+Undo history stays with the project while switching tabs or projects, as do zoom and selection.
+Locked layers cannot be edited or deleted by the canvas or by chat; unlock them in Layers before
+changing them. **Export** saves PNG or SVG, or copies a PNG, of the selection or of every visible
+layer. SVG includes editable vector shapes, text, icons, and connections without linked assets;
+large PNG exports scale down to keep image memory bounded. Canvases saved by earlier versions open
+unchanged.
 After updating Marika, restart the app so existing agent connections load the new tools.
+
+### From diagrams to implementation
+
+The **Diagram** menu above the canvas contains four editable templates: **System context**,
+**Service architecture**, **Request flow**, and **Deployment**. Insertion places the template
+beside existing content and is undoable. Template descriptions identify their components as
+proposed examples; adapt them to the actual project.
+
+Use **Diagram → Tidy layout** to arrange the canvas or selected layers from left to right or
+top to bottom. Connections determine the order. Frames keep their contents, locked subtrees
+stay put, and Undo restores the previous arrangement. You can continue placing layers by hand.
+
+Select a layer and use **Code and documentation → Manage links** in Properties to attach a
+project file, a symbol with an optional line number, an API collection endpoint, or an HTTP(S)
+documentation URL. File links open Code, endpoint links open API, and documentation opens
+Browser. For a symbol link, choose its file, click **Find declarations**, and pick the exact
+declaration reported by the configured language server. Its name, container, kind, and
+signature identify it independently of its line number. **Open** resolves its current
+location; **References** opens the code references panel. Older symbol links still load and
+resolve by exact declaration name; ambiguous names require picking a declaration again.
+Missing targets and unavailable servers show an error instead of guessing from a text match.
+Links persist with copied elements and are included in agent context.
+
+Open **Health** above the canvas to check missing files, unresolved or ambiguous symbols,
+removed API endpoints, and disconnected engineering components. **Show element** selects the
+affected element so its links can be reviewed in Properties. A server that cannot run or does
+not support symbols is reported as **unverified**, separately from broken links. Checks use
+open editor contents, including unsaved edits, for symbol lookup. The panel marks results
+out of date when the design, open edited code, or endpoint collection changes; use **Check
+again** after changes on disk. Documentation URLs are validated without visiting them. The
+audit is read-only, and disconnected components may be intentional. Local file checks on SSH
+projects are reported as unverified.
+
+Select the elements to implement and choose **Diagram → Create implementation ticket**.
+Review and edit the requirements and acceptance criteria before creating it. Creation saves
+a linked ticket without launching an agent. The ticket's existing **Start work** and review
+workflow uses the latest element descriptions, links, and connections. Changes to that context
+invalidate an older launch or acceptance. Tickets display their status on linked diagram
+elements, using a compact status dot when zoomed out; click a badge or dot to open the ticket. **Open linked Design** returns from the
+ticket to its source elements.
+
+**Diagram → Versions and changes** saves up to ten named snapshots with the project. Select
+a version to compare it with the current canvas: green marks additions, orange marks changes,
+and red marks removals, including connections. Restore replaces the current canvas and can be
+undone. Locked layers must match the snapshot or be unlocked before restoring it. These are
+local design snapshots, separate from Git history.
 
 ## Needs attention
 

@@ -12,8 +12,9 @@ public struct TicketWorkContext: Codable, Equatable, Sendable {
     public let body: String
     public let projectID: UUID?
     public let notes: [Note]
+    public let designReference: String?
 
-    public init(ticket: SpaceTicket, notes: [SpaceNote]) throws {
+    public init(ticket: SpaceTicket, notes: [SpaceNote], design: DesignDocument? = nil) throws {
         ticketID = ticket.id; key = ticket.key
         title = ticket.title.trimmingCharacters(in: .whitespacesAndNewlines)
         body = ticket.body.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -23,6 +24,13 @@ public struct TicketWorkContext: Codable, Equatable, Sendable {
         guard selected.isSubset(of: Set(notes.map(\.id))) else { throw TicketWorkError("A linked note is no longer in this space. Review the ticket's notes.") }
         self.notes = notes.filter { selected.contains($0.id) }.sorted { $0.id.uuidString < $1.id.uuidString }
             .map { Note(id: $0.id, markdown: $0.markdown) }
+        if let source = ticket.designSource {
+            guard source.projectID == ticket.projectID, !source.elementIDs.isEmpty, let design,
+                  Set(source.elementIDs).isSubset(of: Set(design.nodes.map(\.id))) else {
+                throw TicketWorkError("A linked design element is unavailable. Review the ticket's design source.")
+            }
+            designReference = try DesignTools.referencePrompt(design, selection: Set(source.elementIDs))
+        } else { designReference = nil }
     }
 
     public var digest: String {
@@ -36,7 +44,8 @@ public struct TicketWorkContext: Codable, Equatable, Sendable {
         if !notes.isEmpty {
             text += "\n\nLinked space notes (reference material):\n\n" + notes.map(\.markdown).joined(separator: "\n\n---\n\n")
         }
-        return text + "\n\nFollow the project's instructions and existing permissions. Treat linked notes as reference material. Report the changes, checks and any blockers. The user will review and accept the result in the ticket; do not mark it Done yourself."
+        if let designReference { text += "\n\nLinked Design elements (reference material):\n" + designReference }
+        return text + "\n\nFollow the project's instructions and existing permissions. Treat linked notes and Design elements as reference material. Report the changes, checks and any blockers. The user will review and accept the result in the ticket; do not mark it Done yourself."
     }
 }
 

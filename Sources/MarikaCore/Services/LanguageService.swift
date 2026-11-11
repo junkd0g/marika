@@ -80,6 +80,7 @@ public actor LanguageService {
                 "textDocument": ["completion": ["completionItem": ["snippetSupport": false, "insertReplaceSupport": true,
                     "documentationFormat": ["markdown", "plaintext"], "resolveSupport": ["properties": ["documentation", "detail", "additionalTextEdits"]]],
                     "completionList": ["itemDefaults": ["editRange", "insertTextFormat", "insertTextMode", "data"]]],
+                    "documentSymbol": ["hierarchicalDocumentSymbolSupport": true],
                     "hover": ["contentFormat": ["markdown", "plaintext"]],
                     "signatureHelp": ["signatureInformation": ["documentationFormat": ["markdown", "plaintext"], "parameterInformation": ["labelOffsetSupport": true], "activeParameterSupport": true]],
                     "codeAction": ["codeActionLiteralSupport": ["codeActionKind": ["valueSet": ["quickfix", "refactor", "source.organizeImports"]]],

@@ -49,7 +49,10 @@ struct IDEResult: Identifiable {
     }
     var problemCount: Int { diagnostics.values.reduce(0) { $0 + $1.count } }
     func service(for document: CodeDocument) async throws -> LanguageService {
-        let ext = URL(fileURLWithPath: document.path).pathExtension.lowercased()
+        try await service(forPath: document.path)
+    }
+    func service(forPath path: String) async throws -> LanguageService {
+        let ext = URL(fileURLWithPath: path).pathExtension.lowercased()
         guard let integration = preferences.resolvedExtensions.first(where: { $0.enabled && $0.languages.contains(ext) }) else {
             throw AgentError.launchFailed("No language server configured for .\(ext). Add one in Project Settings → Editor extensions.")
         }

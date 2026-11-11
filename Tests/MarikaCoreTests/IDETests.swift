@@ -50,6 +50,15 @@ private actor IDEEvents {
         #expect(!(definition.array ?? []).isEmpty)
         let renamed = try await server.request("textDocument/rename", path: "main.go", position: SourcePosition(line: 1, character: 6), extra: ["newName": "sum"])
         #expect(renamed["documentChanges"]?.array?.isEmpty == false || renamed["changes"]?.object?.isEmpty == false)
+        let symbols = try await server.symbols(path: "main.go", text: text)
+        let declaration = try #require(symbols.first { $0.name == "add" })
+        let link = DesignSourceLink(kind: .symbol, target: "main.go", line: 2, symbol: "add", symbolIdentity: declaration.identity)
+        let shifted = "// add is mentioned here but is not a declaration.\n\n" + text
+        let current = try SourceSymbols.resolve(link, in: await server.symbols(path: "main.go", text: shifted))
+        #expect(current.position.line == declaration.position.line + 2)
+        let references = try await server.request("textDocument/references", path: "main.go", position: current.position,
+                                                 extra: ["context": ["includeDeclaration": true]])
+        #expect(SourceNavigation.locations(references).count == 2)
         try await server.synchronize(path: "main.go", text: "package main\nfunc main(){ missing() }\n")
         for _ in 0..<100 { if await !collector.diagnostics.isEmpty { break }; try await Task.sleep(for: .milliseconds(100)) }
         #expect(await collector.diagnostics.contains { $0["message"]?.string?.contains("missing") == true })

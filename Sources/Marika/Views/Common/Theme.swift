@@ -14,6 +14,7 @@ enum Theme {
     static let surface = Color.primary.opacity(0.04)
     static let hairline = Color.primary.opacity(0.10)
     static let canvas = adaptive(light: 0xFFFFFF, dark: 0x202020)
+    static let designCanvas = adaptive(light: 0xF1F1F3, dark: 0x1A1A1A)
     static let panel = adaptive(light: 0xFAFAFA, dark: 0x272727)
     static let chrome = adaptive(light: 0xFAFAFA, dark: 0x1D1D1D)
     static let sidebar = adaptive(light: 0xF5F5F5, dark: 0x181818)

@@ -150,6 +150,51 @@
                       let picker = marker(in: root, named: "research-sections") else { throw DriverError("Research sections not found") }
                 try click(picker, in: window, fractionX: (CGFloat(step["index"]?.int ?? 0) + 0.5) / 3)
                 try await pause(0.2)
+            case "designDescriptionsTest":
+                try await DebugDesignChecks.descriptions(model)
+                log("Design descriptions passed: persistence, agent context, draft preservation, and no automatic send")
+            case "designComponentsPrepare":
+                try DebugDesignComponents.prepare(model)
+            case "designWorkflowPrepare":
+                try DebugDesignWorkflow.prepare(model)
+            case "designIntelligenceTest":
+                try await DebugDesignIntelligence.run(model)
+                log("Design intelligence passed: real declarations, moved symbols, references, health checks, and stale results")
+            case "designIntelligenceSelection":
+                try DebugDesignIntelligence.selection(model, added: step["added"]?.bool ?? false)
+            case "designWorkflowCheck":
+                try await DebugDesignWorkflow.check(model)
+            case "designWorkflowTicket":
+                try await DebugDesignWorkflow.ticket(model)
+            case "designWorkflowFinish":
+                try await DebugDesignWorkflow.finish(model, directory: step["directory"]?.string ?? "")
+                log("Design workflows passed: templates, routed labels, source links, reviewed tickets, status badges, versions, restore, and SVG")
+            case "designComponentsCheck":
+                try DebugDesignComponents.check(model, directory: step["directory"]?.string ?? "")
+                log("Engineering components passed: library insertion, undo, drops, roles, chat context, and rendered icons")
+            case "designComponentsCapture":
+                try DebugDesignComponents.capture(model, path: step["path"]?.string ?? "")
+            case "designCanvasTest":
+                let menuPath = try await DebugDesignChecks.canvas(model)
+                log("Design canvas passed: drawing, snapping, group resize, rotation, connectors, text, frames, duplication, shortcuts, zoom, and native events"
+                    + (menuPath ? "; menu-bar shortcuts checked" : "; menu-bar shortcuts skipped because the window was not key"))
+            case "designVisualTest":
+                try await DebugDesignVisualChecks.run(model, directory: step["directory"]?.string ?? "")
+                log("Design visuals passed: fills, labels, connectors, selection changes, appearance, compact layout, hierarchy and PNG export")
+            case "designLayerState":
+                guard let project = model.selectedProject, let canvas = model.designCanvases[project.id],
+                      canvas.layerRows.count == step["count"]?.int else { throw DriverError("Unexpected visible Design layers") }
+                if let names = step["selected"]?.array?.compactMap(\.string) {
+                    guard Set(canvas.selectedNodes.map(\.name)) == Set(names) else {
+                        throw DriverError("Unexpected Design selection: \(canvas.selectedNodes.map(\.name))")
+                    }
+                }
+                log("Design layer tree state passed")
+            case "designSelect":
+                try DebugDesignChecks.select(model, names: step["names"]?.array?.compactMap(\.string) ?? [],
+                                             connection: step["connection"]?.bool ?? false, tool: step["tool"]?.string,
+                                             editing: step["editing"]?.bool ?? false, clear: step["clear"]?.bool ?? false)
+                try await pause(0.4)
             case "designExportTest":
                 try DebugDesignChecks.render(model, to: step["directory"]?.string ?? "")
                 log("Design PNG rendering passed: selected shapes, visible bounds, dimensions, and nonblank pixels")
@@ -602,7 +647,7 @@
                 let name = step["name"]?.string ?? ""
                 guard let target = NSApp.windows.filter(\.isVisible).compactMap({ window in window.contentView.flatMap { marker(in: $0, named: name) }.map { (window, $0) } }).first else { throw DriverError("Missing UI element: " + name) }
                 if step["scroll"]?.bool == true { target.1.scrollToVisible(target.1.bounds); try await pause(0.15) }
-                try click(target.1, in: target.0)
+                try click(target.1, in: target.0, fractionX: CGFloat(step["fraction"]?.double ?? 0.5))
                 try await pause(0.3)
             case "editorPopoverShot":
                 let name = step["name"]?.string ?? "editor-settings-panel"

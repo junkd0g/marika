@@ -70,14 +70,22 @@ public struct DesignExportPlan: Sendable {
     public var scale: Double
 
     public init(document: DesignDocument, selection: Set<UUID> = []) throws {
-        nodes = document.nodes.filter { !$0.isHidden && (selection.isEmpty || selection.contains($0.id)) }
+        let picked = document.withChildren(selection)
+        nodes = document.nodes.filter { !$0.isHidden && (picked.isEmpty || picked.contains($0.id)) }
         guard let first = nodes.first else { throw DesignToolError("There are no visible shapes to export.") }
-        bounds = nodes.dropFirst().reduce(first.frame) { $0.union($1.frame) }.insetBy(dx: -16, dy: -16)
+        bounds = nodes.dropFirst().reduce(first.visualBounds) { $0.union($1.visualBounds) }.insetBy(dx: -16, dy: -16)
         guard bounds.width.isFinite, bounds.height.isFinite, bounds.width > 0, bounds.height > 0 else {
             throw DesignToolError("The canvas contains invalid dimensions.")
         }
         let ids = Set(nodes.map(\.id))
         connections = (document.connections ?? []).filter { ids.contains($0.from) && ids.contains($0.to) }
+        for edge in connections {
+            for point in edge.route(in: nodes) ?? [] { bounds = bounds.union(CGRect(x: point.x - 16, y: point.y - 16, width: 32, height: 32)) }
+            if !edge.label.isEmpty, let center = edge.labelPoint(in: nodes) {
+                let halfWidth = Double(edge.label.count) * 7 + 10
+                bounds = bounds.union(CGRect(x: center.x - halfWidth, y: center.y - 16, width: halfWidth * 2, height: 32))
+            }
+        }
         // Bound both dimensions and total pixels before allocating an image.
         scale = min(2, 8192 / max(bounds.width, bounds.height), sqrt(24_000_000 / (bounds.width * bounds.height)))
     }
