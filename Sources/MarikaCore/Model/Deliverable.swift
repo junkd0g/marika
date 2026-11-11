@@ -26,11 +26,7 @@ public struct Deliverable: Codable, Hashable, Sendable {
         let value = try JSONDecoder().decode(Self.self, from: Data(json.utf8)); try value.validate(); return value
     }
     public func validate() throws {
-        let textBytes = title.utf8.count + (body?.utf8.count ?? 0)
-            + (slides ?? []).reduce(0) { $0 + $1.title.utf8.count + ($1.notes?.utf8.count ?? 0) + $1.bullets.reduce(0) { $0 + $1.utf8.count } }
-            + (sheets ?? []).reduce(0) { $0 + $1.name.utf8.count + $1.columns.reduce(0) { $0 + $1.utf8.count } + $1.rows.reduce(0) { $0 + $1.reduce(0) { $0 + $1.utf8.count } } }
-            + (sources ?? []).reduce(0) { $0 + $1.id.utf8.count + $1.title.utf8.count + $1.url.utf8.count + $1.excerpt.utf8.count }
-        guard textBytes <= 1_000_000 else { throw AgentError.launchFailed("Keep deliverable text under 1 MB.") }
+        guard textByteCount <= 1_000_000 else { throw AgentError.launchFailed("Keep deliverable text under 1 MB.") }
         guard !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, title.count <= 180 else { throw AgentError.launchFailed("Give the deliverable a title under 180 characters.") }
         if let sources, !sources.isEmpty { try ResearchReport(answer: title, sources: sources, findings: []).validate() }
         switch kind {
@@ -50,6 +46,32 @@ public struct Deliverable: Codable, Hashable, Sendable {
                   }) else { throw AgentError.launchFailed("Use 1–12 uniquely named sheets, up to 50 columns and 1,000 matching-width rows. Sheet names must be valid Excel names.") }
         }
     }
+
+    // Keep accumulation explicit: nested reductions in one expression exceed the
+    // type-checking budget of the Swift compiler shipped with Xcode 26.3.
+    private var textByteCount: Int {
+        var count = title.utf8.count + (body?.utf8.count ?? 0)
+        for slide in slides ?? [] {
+            count += slide.title.utf8.count
+            count += slide.notes?.utf8.count ?? 0
+            for bullet in slide.bullets { count += bullet.utf8.count }
+        }
+        for sheet in sheets ?? [] {
+            count += sheet.name.utf8.count
+            for column in sheet.columns { count += column.utf8.count }
+            for row in sheet.rows {
+                for cell in row { count += cell.utf8.count }
+            }
+        }
+        for source in sources ?? [] {
+            count += source.id.utf8.count
+            count += source.title.utf8.count
+            count += source.url.utf8.count
+            count += source.excerpt.utf8.count
+        }
+        return count
+    }
+
     public var markdown: String {
         var result = "# " + title + "\n\n"
         switch kind {
