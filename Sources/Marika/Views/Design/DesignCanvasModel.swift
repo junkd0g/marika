@@ -1,7 +1,6 @@
 import AppKit
 import MarikaCore
 import Observation
-import UniformTypeIdentifiers
 
 enum DesignTool: String, CaseIterable {
     case select = "Move", hand = "Hand", frame = "Frame", rectangle = "Rectangle", ellipse = "Ellipse"
@@ -113,6 +112,7 @@ final class DesignCanvasModel {
     var showsTemplates = false
     var showsHistory = false
     var showsHealth = false
+    var showsImport = false
     let health = DesignHealthModel()
     var ticketDraft: DesignTicketDraft?
     var isPanning = false
@@ -356,50 +356,8 @@ final class DesignCanvasModel {
         case .connectionLabel(let id):
             guard let edge = doc.connections?.first(where: { $0.id == id }), let route = edge.route(in: doc.nodes) else { return }
             editor.updateInteraction { $0.updateConnection(id) { $0.labelPosition = DesignConnection.fraction(on: route, nearest: point) } }
-        case .move(var move):
-            if !move.started {
-                guard hypot(pointer.location.x - move.origin.x, pointer.location.y - move.origin.y) > 3 else { return }
-                var ids = doc.carried(by: selection)
-                if pointer.option {
-                    // Copies keep document order, so they pair up with the layers they came from.
-                    let sources = doc.nodes.filter { ids.contains($0.id) }.map(\.id)
-                    var copies: [UUID] = []
-                    editor.updateInteraction { copies = $0.duplicate(ids, offset: 0) }
-                    selection = Set(zip(sources, copies).filter { selection.contains($0.0) }.map(\.1))
-                    ids = Set(copies)
-                }
-                move.originals = Dictionary(uniqueKeysWithValues: doc.nodes.filter { ids.contains($0.id) }.map { ($0.id, $0) })
-                move.box = doc.bounds(of: ids) ?? .zero
-                move.targets = doc.snapTargets(excluding: ids)
-                move.started = true
-            }
-            var dx = Double(point.x - move.start.x), dy = Double(point.y - move.start.y)
-            var freeX = true, freeY = true
-            if pointer.shift { if abs(dx) >= abs(dy) { dy = 0; freeY = false } else { dx = 0; freeX = false } }
-            guides = []
-            if !pointer.command {
-                let snap = DesignSnap.move(move.box.offsetBy(dx: dx, dy: dy), targets: move.targets, threshold: 6 / zoom, x: freeX, y: freeY)
-                guides = snap.guides
-                // Land on whole pixels unless a guide placed the edge.
-                let minX = Double(move.box.minX), minY = Double(move.box.minY)
-                let snapX = Double(snap.offset.width), snapY = Double(snap.offset.height)
-                dx = snapX != 0 ? dx + snapX : freeX ? (minX + dx).rounded() - minX : 0
-                dy = snapY != 0 ? dy + snapY : freeY ? (minY + dy).rounded() - minY : 0
-            }
-            editor.updateInteraction { $0.apply(move.originals.mapValues { var node = $0; node.x += dx; node.y += dy; return node }) }
-            self.drag = .move(move)
-        case .resize(let resize):
-            if let node = resize.rotated {
-                guides = []
-                editor.updateInteraction {
-                    $0.apply([node.id: node.resized(resize.handle, to: point, keepAspect: pointer.shift, fromCenter: pointer.option)])
-                }
-            } else {
-                let target = snapped(point, targets: resize.targets, bypass: pointer.command || pointer.shift,
-                                     x: resize.handle.horizontal != 0, y: resize.handle.vertical != 0)
-                let box = resize.handle.resize(resize.box, to: target, keepAspect: pointer.shift, fromCenter: pointer.option)
-                editor.updateInteraction { $0.apply(resize.originals.mapValues { $0.scaled(from: resize.box, to: box) }) }
-            }
+        case .move(let move): dragSelection(move, pointer: pointer, to: point)
+        case .resize(let resize): resizeSelection(resize, pointer: pointer, to: point)
         case .rotate(let node, let start):
             let angle = Double(atan2(point.y - node.center.y, point.x - node.center.x))
             var degrees = (node.rotation ?? 0) + (angle - start) * 180 / .pi
@@ -431,6 +389,55 @@ final class DesignCanvasModel {
             selection = base.union(hits)
         case .pan(let start, let origin):
             offset = CGSize(width: start.width + pointer.location.x - origin.x, height: start.height + pointer.location.y - origin.y)
+        }
+    }
+
+    private func dragSelection(_ initial: Move, pointer: DesignPointer, to point: CGPoint) {
+        var move = initial
+        if !move.started {
+            guard hypot(pointer.location.x - move.origin.x, pointer.location.y - move.origin.y) > 3 else { return }
+            var ids = doc.carried(by: selection)
+            if pointer.option {
+                // Copies keep document order, so they pair up with the layers they came from.
+                let sources = doc.nodes.filter { ids.contains($0.id) }.map(\.id)
+                var copies: [UUID] = []
+                editor.updateInteraction { copies = $0.duplicate(ids, offset: 0) }
+                selection = Set(zip(sources, copies).filter { selection.contains($0.0) }.map(\.1))
+                ids = Set(copies)
+            }
+            move.originals = Dictionary(uniqueKeysWithValues: doc.nodes.filter { ids.contains($0.id) }.map { ($0.id, $0) })
+            move.box = doc.bounds(of: ids) ?? .zero
+            move.targets = doc.snapTargets(excluding: ids)
+            move.started = true
+        }
+        var dx = Double(point.x - move.start.x), dy = Double(point.y - move.start.y)
+        var freeX = true, freeY = true
+        if pointer.shift { if abs(dx) >= abs(dy) { dy = 0; freeY = false } else { dx = 0; freeX = false } }
+        guides = []
+        if !pointer.command {
+            let snap = DesignSnap.move(move.box.offsetBy(dx: dx, dy: dy), targets: move.targets, threshold: 6 / zoom, x: freeX, y: freeY)
+            guides = snap.guides
+            // Land on whole pixels unless a guide placed the edge.
+            let minX = Double(move.box.minX), minY = Double(move.box.minY)
+            let snapX = Double(snap.offset.width), snapY = Double(snap.offset.height)
+            dx = snapX != 0 ? dx + snapX : freeX ? (minX + dx).rounded() - minX : 0
+            dy = snapY != 0 ? dy + snapY : freeY ? (minY + dy).rounded() - minY : 0
+        }
+        editor.updateInteraction { $0.apply(move.originals.mapValues { var node = $0; node.x += dx; node.y += dy; return node }) }
+        self.drag = .move(move)
+    }
+
+    private func resizeSelection(_ resize: Resize, pointer: DesignPointer, to point: CGPoint) {
+        if let node = resize.rotated {
+            guides = []
+            editor.updateInteraction {
+                $0.apply([node.id: node.resized(resize.handle, to: point, keepAspect: pointer.shift, fromCenter: pointer.option)])
+            }
+        } else {
+            let target = snapped(point, targets: resize.targets, bypass: pointer.command || pointer.shift,
+                                 x: resize.handle.horizontal != 0, y: resize.handle.vertical != 0)
+            let box = resize.handle.resize(resize.box, to: target, keepAspect: pointer.shift, fromCenter: pointer.option)
+            editor.updateInteraction { $0.apply(resize.originals.mapValues { $0.scaled(from: resize.box, to: box) }) }
         }
     }
 
@@ -665,189 +672,6 @@ final class DesignCanvasModel {
         return true
     }
 
-    func choose(_ shape: DesignTool) {
-        tool = shape
-        if DesignTool.shapes.contains(shape) { lastShape = shape }
-    }
-
-    func insertComponent(_ component: DesignComponent, at location: CGPoint? = nil) {
-        if editingText != nil { commitText() }
-        var center = location.map(toDoc) ?? toDoc(CGPoint(x: canvasSize.width / 2, y: canvasSize.height / 2))
-        if location == nil {
-            // Keep successive insertions separate without moving the user's existing artwork.
-            for _ in 0..<24 {
-                let box = component.makeNode(centeredAt: center).frame.insetBy(dx: -12, dy: -12)
-                if !doc.nodes.contains(where: { !$0.isHidden && $0.kind != .frame && $0.bounds.intersects(box) }) { break }
-                center.x += 32; center.y += 24
-            }
-        }
-        var id: UUID?
-        edit { id = $0.addComponent(component, centeredAt: center) }
-        selection = Set(id.map { [$0] } ?? [])
-        selectedConnection = nil
-        tool = .select
-        if location == nil, let id, let node = doc.node(id),
-           !CGRect(origin: .zero, size: canvasSize).contains(toScreen(node.frame)) { fitSelection() }
-        focusRequests += 1
-    }
-
-    @discardableResult
-    func acceptComponentDrop(_ values: [String], at point: CGPoint) -> Bool {
-        let components = values.compactMap { value -> DesignComponent? in
-            guard value.hasPrefix(DesignComponentLibrary.dragPrefix) else { return nil }
-            return DesignComponent(rawValue: String(value.dropFirst(DesignComponentLibrary.dragPrefix.count)))
-        }
-        for (index, component) in components.enumerated() {
-            insertComponent(component, at: CGPoint(x: point.x + Double(index) * 24, y: point.y + Double(index) * 24))
-        }
-        return !components.isEmpty
-    }
-
-    // MARK: Editing
-
-    func edit(coalescing key: String? = nil, _ change: (inout DesignDocument) -> Void) {
-        editor.edit(coalescing: key, change)
-    }
-
-    /// Applies an inspector change to every selected layer as one undo step per property.
-    func update(_ key: String, _ change: (inout DesignNode) -> Void) {
-        let ids = selection
-        edit(coalescing: "property:\(key):\(ids.hashValue)") { $0.update(ids, change) }
-    }
-
-    func deleteSelection() {
-        if let edge = activeConnection {
-            edit { $0.removeConnection(edge.id) }
-            selectedConnection = nil
-            return
-        }
-        let ids = doc.carried(by: selection)
-        guard !ids.isEmpty else { return }
-        edit { $0.remove(ids) }
-        prune()
-    }
-
-    func duplicateSelection() {
-        let ids = doc.carried(by: selection)
-        guard !ids.isEmpty else { return }
-        let sources = doc.nodes.filter { ids.contains($0.id) }.map(\.id)
-        var copies: [UUID] = []
-        edit { copies = $0.duplicate(ids) }
-        selection = Set(zip(sources, copies).filter { selection.contains($0.0) }.map(\.1))
-    }
-
-    func selectAll() {
-        selectedConnection = nil
-        selection = Set(doc.nodes.filter { !$0.isLocked && !$0.isHidden }.map(\.id))
-    }
-
-    func nudge(_ dx: Double, _ dy: Double) {
-        let ids = doc.carried(by: selection)
-        guard !ids.isEmpty else { return }
-        edit(coalescing: "nudge:\(ids.hashValue)") { $0.move(ids, by: CGSize(width: dx, height: dy)) }
-    }
-
-    func reorder(toFront: Bool) {
-        let ids = editableSelection
-        guard !ids.isEmpty else { return }
-        edit { $0.reorder(ids, toFront: toFront) }
-    }
-
-    func step(forward: Bool) {
-        // Start from the end being moved toward so selected neighbors do not leapfrog each other.
-        let ordered = doc.nodes.filter { editableSelection.contains($0.id) }.map(\.id)
-        guard !ordered.isEmpty else { return }
-        edit { doc in for id in forward ? ordered.reversed() : ordered { doc.step(id, forward: forward) } }
-    }
-
-    func frameSelection() {
-        let ids = editableSelection
-        guard !ids.isEmpty else { return }
-        var frame: UUID?
-        edit { frame = $0.wrapInFrame(ids) }
-        if let frame { selection = [frame] }
-    }
-
-    /// Removes selected frames and keeps what they held.
-    func ungroup() {
-        let frames = Set(selectedNodes.filter { $0.kind == .frame && !$0.isLocked }.map(\.id))
-        guard !frames.isEmpty else { return }
-        let held = frames.reduce(into: Set<UUID>()) { $0.formUnion(doc.children(of: $1)) }.subtracting(frames)
-        edit { $0.remove(frames) }
-        selection = held
-    }
-
-    func setLocked(_ locked: Bool) {
-        let ids = selection
-        edit { doc in for id in ids { doc.setLocked(id, locked) } }
-    }
-
-    func setHidden(_ hidden: Bool) {
-        let ids = selection
-        edit { doc in for id in ids { doc.setHidden(id, hidden) } }
-    }
-
-    /// One layer aligns inside the frame that holds it; several align to each other.
-    func align(_ alignment: DesignDocument.Alignment) {
-        let ids = editableSelection
-        let container = ids.count == 1 ? doc.parents[ids.first!].flatMap { doc.node($0)?.bounds } : nil
-        edit { $0.align(ids, alignment, within: container) }
-    }
-
-    var canAlign: Bool {
-        editableSelection.count > 1 || (editableSelection.count == 1 && doc.parents[editableSelection.first!] != nil)
-    }
-
-    func distribute(_ axis: DesignDocument.Axis) {
-        let ids = editableSelection
-        edit { $0.distribute(ids, axis) }
-    }
-
-    // MARK: Clipboard
-
-    @discardableResult
-    func copySelection() -> Bool {
-        let clip = doc.clip(doc.carried(by: selection))
-        guard !clip.nodes.isEmpty, let data = try? JSONEncoder().encode(clip) else { return false }
-        let board = NSPasteboard.general
-        board.clearContents()
-        board.setData(data, forType: Self.pasteboardType)
-        let text = clip.nodes.map(\.text).filter { !$0.isEmpty }.joined(separator: "\n")
-        if !text.isEmpty { board.setString(text, forType: .string) }
-        return true
-    }
-
-    var canPaste: Bool {
-        NSPasteboard.general.availableType(from: [Self.pasteboardType, .string]) != nil
-    }
-
-    /// Pastes copied layers beside their originals while those are in view, or at `location`.
-    func paste(at location: CGPoint? = nil) {
-        let board = NSPasteboard.general
-        let middle = toDoc(CGPoint(x: canvasSize.width / 2, y: canvasSize.height / 2))
-        if let data = board.data(forType: Self.pasteboardType), let clip = try? JSONDecoder().decode(DesignClip.self, from: data),
-           !clip.nodes.isEmpty, clip.nodes.count <= 2_000 {
-            var center = location.map(toDoc)
-            let visible = CGRect(origin: toDoc(.zero), size: CGSize(width: canvasSize.width / zoom, height: canvasSize.height / zoom))
-            if center == nil, !clip.nodes.contains(where: { visible.intersects($0.bounds.offsetBy(dx: 16, dy: 16)) }) { center = middle }
-            var pasted: [UUID] = []
-            edit { pasted = $0.paste(clip, centeredAt: center) }
-            selection = Set(pasted); selectedConnection = nil
-        } else if let text = board.string(forType: .string)?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty {
-            var created: UUID?
-            edit { doc in
-                let id = doc.add(.text, in: CGRect(origin: location.map(toDoc) ?? middle, size: CGSize(width: 100, height: 24)))
-                doc.update([id]) { node in
-                    node.text = String(text.prefix(10_000))
-                    let size = DesignText.size(of: node.text, in: node, width: 480)
-                    node.width = ceil(size.width) + 2; node.height = ceil(size.height)
-                }
-                created = id
-            }
-            if let created { selection = [created]; selectedConnection = nil }
-        }
-    }
-
     // MARK: Text
 
     func beginEditing(_ id: UUID, isNew: Bool = false, autoSizes: Bool = false) {
@@ -891,71 +715,5 @@ final class DesignCanvasModel {
         focusRequests += 1
     }
 
-    // MARK: Chat and export
 
-    var hasDesignReference: Bool {
-        doc.nodes.contains { selection.isEmpty ? !$0.isHidden : selection.contains($0.id) }
-    }
-
-    func useInChat() {
-        guard !preparingReference, let app else { return }
-        preparingReference = true
-        let ids = selection
-        Task {
-            defer { preparingReference = false }
-            do { try await app.useDesignElementsInChat(projectID: projectID, selection: ids) }
-            catch { report("Couldn't use design in chat", error) }
-        }
-    }
-
-    private func report(_ title: String, _ error: Error) {
-        errorTitle = title; errorMessage = error.localizedDescription
-    }
-
-    func copyImage() {
-        do {
-            let png = try DesignRenderer.png(document: doc, selection: selection)
-            NSPasteboard.general.clearContents()
-            NSPasteboard.general.setData(png, forType: .png)
-        } catch { report("Couldn't copy design", error) }
-    }
-
-    func export() {
-        do {
-            let png = try DesignRenderer.png(document: doc, selection: selection)
-            guard let window = NSApp.keyWindow ?? NSApp.mainWindow ?? NSApp.windows.first(where: { $0.isVisible && $0.canBecomeMain }) else {
-                throw DesignToolError("Open a project window to export.")
-            }
-            window.makeKeyAndOrderFront(nil)
-            NSApp.activate()
-            let project = app?.project(id: projectID)
-            let panel = NSSavePanel()
-            panel.allowedContentTypes = [.png]
-            panel.canCreateDirectories = true
-            panel.isExtensionHidden = false
-            panel.directoryURL = project?.url
-            let name = String((project?.name ?? "Marika").map { "/\\:".contains($0) ? "-" : $0 }.prefix(90))
-            panel.nameFieldStringValue = "\(name) design.png"
-            panel.beginSheetModal(for: window) { [weak self] response in
-                guard response == .OK, let url = panel.url else { return }
-                Task {
-                    do { try await Task.detached { try png.write(to: url, options: .atomic) }.value }
-                    catch { self?.report("Couldn't export design", error) }
-                }
-            }
-        } catch { report("Couldn't export design", error) }
-    }
-    func exportSVG() {
-        do {
-            let data = Data(try DesignSVG.render(doc, selection: selection).utf8)
-            let panel = NSSavePanel(); panel.allowedContentTypes = [.svg]; panel.canCreateDirectories = true
-            panel.nameFieldStringValue = "Design.svg"
-            if let project = app?.project(id: projectID) { panel.directoryURL = project.url }
-            guard let window = NSApp.keyWindow ?? NSApp.mainWindow else { return }
-            panel.beginSheetModal(for: window) { [weak self] response in
-                guard response == .OK, let url = panel.url else { return }
-                do { try data.write(to: url, options: .atomic) } catch { self?.report("Couldn't export SVG", error) }
-            }
-        } catch { report("Couldn't export SVG", error) }
-    }
 }

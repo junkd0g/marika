@@ -39,6 +39,8 @@ public struct Project: Codable, Equatable, Hashable, Sendable, Identifiable {
     public var runtime: WorkspaceRuntime?
     public var design: DesignDocument?
     public var designVersions: [DesignVersion]?
+    public var designImport: DesignImportRun?
+    public var containerHub: ContainerHubSettings?
 
     public init(id: UUID = UUID(), path: String, name: String? = nil) {
         self.id = id
@@ -133,6 +135,8 @@ public struct AgentTask: Codable, Equatable, Hashable, Sendable {
     public var workspace: AgentWorkspace?
     public var queueID: UUID?
     public var ticketID: UUID?
+    /// Identifies a read-only UI reconstruction whose output must be reviewed before import.
+    public var designImportID: UUID?
 
     public init(prompt: String, parentSessionID: UUID? = nil) {
         self.prompt = prompt

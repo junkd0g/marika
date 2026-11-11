@@ -100,6 +100,22 @@ public enum DesignTools {
         guard let expected = arguments["baseRevision"]?.string, expected == (try revision(of: current)) else {
             throw DesignToolError("The canvas changed or baseRevision is missing. Read project_get_design again and merge your changes before publishing.")
         }
+        let input = try submission(arguments)
+        let (nodes, identifiers) = try publishedNodes(input.nodes, replacing: current)
+        let edges = try publishedConnections(input.connections ?? [], identifiers: identifiers, replacing: current)
+        var result = DesignDocument()
+        result.title = input.title
+        result.nodes = nodes
+        result.connections = edges.isEmpty ? nil : edges
+        for locked in current.nodes where locked.isLocked {
+            guard result.node(locked.id) == locked else {
+                throw DesignToolError("Layer “\(locked.name)” is locked. Preserve it unchanged, or ask the user to unlock it in Design first.")
+            }
+        }
+        return result
+    }
+
+    private static func submission(_ arguments: JSONValue) throws -> Submission {
         guard let json = arguments["design"]?.string, json.utf8.count <= 1_000_000 else {
             throw DesignToolError("Provide design as a JSON string under 1 MB.")
         }
@@ -110,90 +126,110 @@ public enum DesignTools {
             throw DesignToolError("Keep the canvas within 500 shapes and 1000 connections.")
         }
         guard (input.title?.count ?? 0) <= 200 else { throw DesignToolError("Keep the canvas title under 200 characters.") }
-        var result = DesignDocument()
-        result.title = input.title
+        return input
+    }
+
+    private static func publishedNodes(_ shapes: [Shape], replacing current: DesignDocument) throws -> ([DesignNode], [String: UUID]) {
+        var nodes: [DesignNode] = []
         var identifiers: [String: UUID] = [:]
         var shapeIDs: Set<UUID> = []
-        for (index, shape) in input.nodes.enumerated() {
+        for (index, shape) in shapes.enumerated() {
             guard !shape.id.isEmpty, shape.id.count <= 200, identifiers[shape.id] == nil else {
                 throw DesignToolError("Every shape needs a unique, nonempty id under 200 characters.")
             }
             let id = UUID(uuidString: shape.id) ?? UUID()
             guard shapeIDs.insert(id).inserted else { throw DesignToolError("Shape IDs must be unique, including UUID casing.") }
             identifiers[shape.id] = id
-            guard let kind = DesignNode.Kind.allCases.first(where: { $0.rawValue.lowercased() == (shape.kind ?? "rectangle").lowercased() }) else {
-                throw DesignToolError("Unknown shape kind for \(shape.id). Use rectangle, frame, ellipse, polygon, star, line, arrow, or text.")
-            }
-            let x = shape.x ?? Double(index % 3) * 320, y = shape.y ?? Double(index / 3) * 180
-            let width = shape.width ?? 220, height = shape.height ?? 100
-            guard [x, y, width, height].allSatisfy(\.isFinite), abs(x) <= 100_000, abs(y) <= 100_000,
-                  (DesignDocument.minimumSize...20_000).contains(width), (DesignDocument.minimumSize...20_000).contains(height) else {
-                throw DesignToolError("Shape \(shape.id) needs finite coordinates within ±100000 and sizes from 8 to 20000.")
-            }
-            var component = current.node(id)?.component
-            if let raw = shape.component {
-                if raw.isEmpty { component = nil }
-                else if let value = DesignComponent(rawValue: raw.lowercased()) { component = value }
-                else { throw DesignToolError("Unknown engineering component for \(shape.id). Use " + DesignComponent.allCases.map(\.rawValue).joined(separator: ", ") + ".") }
-            }
-            if kind == .frame || kind == .text || kind == .line || kind == .arrow {
-                guard shape.component == nil || shape.component == "" else { throw DesignToolError("Engineering components need a rectangle, ellipse, polygon, or star shape.") }
-                component = nil
-            }
-            var node = component?.makeNode(centeredAt: CGPoint(x: x + width / 2, y: y + height / 2))
-                ?? DesignNode(id: id, kind: kind, name: shape.name, x: x, y: y, width: width, height: height)
-            node.id = id; node.kind = kind; node.name = shape.name ?? component?.title ?? kind.rawValue
-            node.x = x; node.y = y; node.width = width; node.height = height
-            node.component = component
-            if let links = shape.links {
-                guard links.count <= 20, links.allSatisfy(\.isValid) else { throw DesignToolError("Invalid or too many source links for \(shape.id).") }
-                node.links = links.isEmpty ? nil : links
-            } else { node.links = current.node(id)?.links }
-            if let fill = shape.fill { node.fill = fill.value }
-            node.stroke = shape.stroke?.value ?? (node.isLinear || component != nil ? node.stroke : nil)
-            node.strokeWidth = shape.strokeWidth ?? node.strokeWidth
-            node.cornerRadius = shape.cornerRadius ?? (kind == .rectangle ? 12 : 0)
-            node.opacity = shape.opacity ?? node.opacity
-            node.fontSize = shape.fontSize ?? node.fontSize
-            node.text = shape.text ?? shape.name ?? component?.title ?? shape.id
-            if let description = shape.description { node.description = description }
-            else if let existing = current.node(id) { node.description = existing.description }
-            node.isLocked = shape.isLocked ?? false
-            node.isHidden = shape.isHidden ?? false
-            node.rotation = shape.rotation
-            node.sides = shape.sides
-            node.shadow = shape.shadow.map {
-                DesignShadow(color: $0.color?.value ?? DesignShadow().color, x: $0.x ?? 0, y: $0.y ?? 4, blur: $0.blur ?? 12)
-            }
-            func option<Value: RawRepresentable & CaseIterable>(_ raw: String?, _ field: String) throws -> Value? where Value.RawValue == String {
-                guard let raw else { return nil }
-                guard let value = Value(rawValue: raw.lowercased()) else {
-                    throw DesignToolError("Unknown \(field) for \(shape.id). Use " + Value.allCases.map(\.rawValue).joined(separator: ", ") + ".")
-                }
-                return value
-            }
-            node.fontWeight = try option(shape.fontWeight, "fontWeight")
-            node.textAlign = try option(shape.textAlign, "textAlign")
-            node.strokeStyle = try option(shape.strokeStyle, "strokeStyle")
-            guard (shape.rotation ?? 0).isFinite, abs(shape.rotation ?? 0) <= 360, (3...12).contains(shape.sides ?? 3),
-                  [node.shadow?.x, node.shadow?.y, node.shadow?.blur].allSatisfy({ ($0 ?? 0).isFinite && abs($0 ?? 0) <= 1_000 }),
-                  (node.shadow?.blur ?? 0) >= 0 else {
-                throw DesignToolError("Shape \(shape.id) needs rotation within ±360, 3 to 12 sides, and shadow offsets and blur within 1000.")
-            }
-            guard node.name.count <= 500, node.text.count <= 10_000,
-                  (node.description?.count ?? 0) <= DesignNode.maximumDescriptionLength,
-                  node.strokeWidth.isFinite, (0...100).contains(node.strokeWidth),
-                  node.cornerRadius.isFinite, (0...20_000).contains(node.cornerRadius),
-                  node.opacity.isFinite, (0...1).contains(node.opacity),
-                  node.fontSize.isFinite, (1...500).contains(node.fontSize) else {
-                throw DesignToolError("Invalid text or description length, stroke, radius, opacity, or font size for \(shape.id).")
-            }
-            node.normalize()
-            result.nodes.append(node)
+            nodes.append(try publishedNode(shape, id: id, index: index, replacing: current))
         }
+        return (nodes, identifiers)
+    }
+
+    private static func publishedNode(_ shape: Shape, id: UUID, index: Int, replacing current: DesignDocument) throws -> DesignNode {
+        guard let kind = DesignNode.Kind.allCases.first(where: { $0.rawValue.lowercased() == (shape.kind ?? "rectangle").lowercased() }) else {
+            throw DesignToolError("Unknown shape kind for \(shape.id). Use rectangle, frame, ellipse, polygon, star, line, arrow, or text.")
+        }
+        let x = shape.x ?? Double(index % 3) * 320, y = shape.y ?? Double(index / 3) * 180
+        let width = shape.width ?? 220, height = shape.height ?? 100
+        guard [x, y, width, height].allSatisfy(\.isFinite), abs(x) <= 100_000, abs(y) <= 100_000,
+              (DesignDocument.minimumSize...20_000).contains(width), (DesignDocument.minimumSize...20_000).contains(height) else {
+            throw DesignToolError("Shape \(shape.id) needs finite coordinates within ±100000 and sizes from 8 to 20000.")
+        }
+        var component = current.node(id)?.component
+        if let raw = shape.component {
+            if raw.isEmpty { component = nil }
+            else if let value = DesignComponent(rawValue: raw.lowercased()) { component = value }
+            else { throw DesignToolError("Unknown engineering component for \(shape.id). Use " + DesignComponent.allCases.map(\.rawValue).joined(separator: ", ") + ".") }
+        }
+        if kind == .frame || kind == .text || kind == .line || kind == .arrow {
+            guard shape.component == nil || shape.component == "" else { throw DesignToolError("Engineering components need a rectangle, ellipse, polygon, or star shape.") }
+            component = nil
+        }
+        var node = component?.makeNode(centeredAt: CGPoint(x: x + width / 2, y: y + height / 2))
+            ?? DesignNode(id: id, kind: kind, name: shape.name, x: x, y: y, width: width, height: height)
+        node.id = id; node.kind = kind; node.name = shape.name ?? component?.title ?? kind.rawValue
+        node.x = x; node.y = y; node.width = width; node.height = height
+        node.component = component
+        if let links = shape.links {
+            guard links.count <= 20, links.allSatisfy(\.isValid) else { throw DesignToolError("Invalid or too many source links for \(shape.id).") }
+            node.links = links.isEmpty ? nil : links
+        } else { node.links = current.node(id)?.links }
+        try applyProperties(shape, to: &node, replacing: current.node(id))
+        try validate(node, shape: shape)
+        node.normalize()
+        return node
+    }
+
+    private static func applyProperties(_ shape: Shape, to node: inout DesignNode, replacing existing: DesignNode?) throws {
+        if let fill = shape.fill { node.fill = fill.value }
+        node.stroke = shape.stroke?.value ?? (node.isLinear || node.component != nil ? node.stroke : nil)
+        node.strokeWidth = shape.strokeWidth ?? node.strokeWidth
+        node.cornerRadius = shape.cornerRadius ?? (node.kind == .rectangle ? 12 : 0)
+        node.opacity = shape.opacity ?? node.opacity
+        node.fontSize = shape.fontSize ?? node.fontSize
+        node.text = shape.text ?? shape.name ?? node.component?.title ?? shape.id
+        if let description = shape.description { node.description = description }
+        else if let existing { node.description = existing.description }
+        node.isLocked = shape.isLocked ?? false
+        node.isHidden = shape.isHidden ?? false
+        node.rotation = shape.rotation
+        node.sides = shape.sides
+        node.shadow = shape.shadow.map {
+            DesignShadow(color: $0.color?.value ?? DesignShadow().color, x: $0.x ?? 0, y: $0.y ?? 4, blur: $0.blur ?? 12)
+        }
+        node.fontWeight = try styleOption(shape.fontWeight, field: "fontWeight", shapeID: shape.id)
+        node.textAlign = try styleOption(shape.textAlign, field: "textAlign", shapeID: shape.id)
+        node.strokeStyle = try styleOption(shape.strokeStyle, field: "strokeStyle", shapeID: shape.id)
+    }
+
+    private static func styleOption<Value: RawRepresentable & CaseIterable>(_ raw: String?, field: String, shapeID: String) throws -> Value? where Value.RawValue == String {
+        guard let raw else { return nil }
+        guard let value = Value(rawValue: raw.lowercased()) else {
+            throw DesignToolError("Unknown \(field) for \(shapeID). Use " + Value.allCases.map(\.rawValue).joined(separator: ", ") + ".")
+        }
+        return value
+    }
+
+    private static func validate(_ node: DesignNode, shape: Shape) throws {
+        guard (shape.rotation ?? 0).isFinite, abs(shape.rotation ?? 0) <= 360, (3...12).contains(shape.sides ?? 3),
+              [node.shadow?.x, node.shadow?.y, node.shadow?.blur].allSatisfy({ ($0 ?? 0).isFinite && abs($0 ?? 0) <= 1_000 }),
+              (node.shadow?.blur ?? 0) >= 0 else {
+            throw DesignToolError("Shape \(shape.id) needs rotation within ±360, 3 to 12 sides, and shadow offsets and blur within 1000.")
+        }
+        guard node.name.count <= 500, node.text.count <= 10_000,
+              (node.description?.count ?? 0) <= DesignNode.maximumDescriptionLength,
+              node.strokeWidth.isFinite, (0...100).contains(node.strokeWidth),
+              node.cornerRadius.isFinite, (0...20_000).contains(node.cornerRadius),
+              node.opacity.isFinite, (0...1).contains(node.opacity),
+              node.fontSize.isFinite, (1...500).contains(node.fontSize) else {
+            throw DesignToolError("Invalid text or description length, stroke, radius, opacity, or font size for \(shape.id).")
+        }
+    }
+
+    private static func publishedConnections(_ connections: [Connection], identifiers: [String: UUID], replacing current: DesignDocument) throws -> [DesignConnection] {
         var edgeIDs: Set<UUID> = []
         var edgeNames: Set<String> = []
-        let edges = try (input.connections ?? []).map { edge -> DesignConnection in
+        return try connections.map { edge -> DesignConnection in
             guard let from = identifiers[edge.from], let to = identifiers[edge.to], from != to else {
                 throw DesignToolError("Every connection must join two different shape IDs in this document.")
             }
@@ -213,13 +249,6 @@ public enum DesignTools {
             result.avoidsObstacles = edge.avoidsObstacles ?? previous?.avoidsObstacles
             return result
         }
-        result.connections = edges.isEmpty ? nil : edges
-        for locked in current.nodes where locked.isLocked {
-            guard result.node(locked.id) == locked else {
-                throw DesignToolError("Layer “\(locked.name)” is locked. Preserve it unchanged, or ask the user to unlock it in Design first.")
-            }
-        }
-        return result
     }
 
     private struct Submission: Decodable {

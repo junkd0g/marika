@@ -221,6 +221,7 @@ private extension AppModel.ProjectTab {
         case .research: "books.vertical"
         case .pipelines: "point.3.connected.trianglepath.dotted"
         case .design: "square.on.circle"
+        case .containers: "shippingbox"
         }
     }
 }

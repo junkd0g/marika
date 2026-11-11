@@ -180,6 +180,9 @@ private struct ProjectWorkspaceView: View {
                     if visible(.design), let canvas = model.designCanvases[project.id] {
                         place(ProjectDesignView(project: project, canvas: canvas), panel: .design, size: geometry.size)
                     }
+                    if visible(.containers), let workspace = model.containerWorkspaces[project.id] {
+                        place(ProjectContainersView(project: project, workspace: workspace, isVisible: visible(.containers)), panel: .containers, size: geometry.size)
+                    }
                     if visible(.stats) {
                         place(ProjectStatsView(project: project), panel: .stats, size: geometry.size)
                     }

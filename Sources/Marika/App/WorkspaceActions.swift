@@ -2,6 +2,60 @@ import AppKit
 import MarikaCore
 
 extension AppModel {
+    var activeEditor: CodeWorkspace? {
+        guard let projectID = selectedSession?.projectID, commandPanel == .code else { return nil }
+        return editors[projectID]
+    }
+
+    var activeBrowser: BrowserWorkspace? {
+        guard let id = selectedSession?.projectID, commandPanel == .browser else { return nil }
+        return browsers[id]
+    }
+
+    var commandPanel: ProjectPanel? {
+        guard !showsWelcome, selectedSpace.section == .projects else { return nil }
+        guard let id = selectedSession?.projectID else { return nil }
+        let primary = projectTabs[id] ?? .conversation
+        if let focused = focusedPanels[id], focused == primary || focused == layout(for: id).secondary { return focused }
+        return primary
+    }
+
+    func selectProjectTab(_ tab: ProjectTab) {
+        guard let meta = selectedSession, let project = project(for: meta) else { return }
+        focusedPanels[project.id] = tab
+        switch tab {
+        case .conversation:
+            openProject(project, tab: .conversation)
+            return
+        case .code: editor(for: project).focusEditor()
+        case .browser: _ = browser(for: project)
+        case .terminal: ensureTerminal(for: project)
+        case .design: _ = design(for: project)
+        case .containers: _ = containers(for: project)
+        case .changes, .agents, .stats, .pipelines, .api, .research: break
+        }
+        projectTabs[project.id] = tab
+    }
+
+    func showCode(quickOpen: Bool = false, focusFiles: Bool = false) {
+        guard let meta = selectedSession, let project = project(for: meta) else { return }
+        let editor = editor(for: project)
+        switchPanel(.code)
+        if quickOpen { editor.showsQuickOpen = true }
+        if focusFiles { editor.focusNavigator() }
+    }
+
+    func showAgents(for preferredProject: Project? = nil, launch: Bool = false) {
+        guard let project = preferredProject ?? selectedSession.flatMap(project(for:)) ?? spaceProjects.first else { return }
+        openSpaceSection(.projects)
+        if selectedSession?.projectID != project.id {
+            openProject(project)
+        }
+        projectTabs[project.id] = .agents
+        if launch { agentLaunchProjectID = project.id }
+    }
+
+
     var selectedProject: Project? { selectedSession.flatMap(project(for:)) }
     func design(for project: Project) -> DesignWorkspace {
         if let existing = designs[project.id] { return existing }
@@ -98,6 +152,7 @@ extension AppModel {
             case .browser: _ = browser(for: project)
             case .terminal: ensureTerminal(for: project)
             case .design: _ = design(for: project)
+            case .containers: _ = containers(for: project)
             default: break
             }
         }

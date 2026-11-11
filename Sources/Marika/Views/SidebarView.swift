@@ -19,7 +19,7 @@ struct SidebarView: View {
 
     var body: some View {
         GeometryReader { geometry in
-            let reserved: CGFloat = model.rateLimits.isEmpty ? 556 : 582
+            let reserved: CGFloat = model.rateLimits.isEmpty ? 591 : 617
             sidebar(spaceRows: max(1, min(4, Int((geometry.size.height - reserved) / 53))))
         }
     }
@@ -56,6 +56,13 @@ struct SidebarView: View {
                 .help("Open the design canvas for this project (⌘G)")
                 #if DEBUG
                     .background(DebugViewMarker(name: "sidebar-open-design"))
+                #endif
+                sidebarAction("Containers", symbol: "shippingbox", selected: model.selectedSpace.section == .projects && model.commandPanel == .containers) {
+                    if let project = model.workspace.preferredProject(in: model.selectedSpace.id) { model.openProject(project, tab: .containers) }
+                }.disabled(model.spaceProjects.isEmpty).accessibilityLabel("Containers in " + model.selectedSpace.name)
+                    .help("Docker and Kubernetes (⌘E)")
+                #if DEBUG
+                    .background(DebugViewMarker(name: "sidebar-open-containers"))
                 #endif
                 Divider().padding(.horizontal, 10).padding(.vertical, 7)
                 sidebarAction("New chat", symbol: "square.and.pencil") { model.newSessionInCurrentProject() }

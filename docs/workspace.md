@@ -84,6 +84,28 @@ and publish into Design without creating a report or opening an external design 
 The chat's tool result includes **Open Design**. Canvas edits from another turn or from you
 invalidate the agent's previous revision, so it must read again before publishing.
 
+### Importing UI design from source
+
+Open a local project, choose **Design → Import**, and select the UI source files to analyze.
+The importer recognizes Swift/SwiftUI/UIKit, Kotlin/Compose, Android XML, HTML/CSS, React
+and Vue files. Dependencies and build output are excluded. You can filter the file list,
+choose up to 40 files, select your configured Claude or Codex agent/model, and describe a
+screen or component to focus on. Imports use saved source; unsaved editor buffers are not sent.
+
+**Generate design draft** runs a dedicated read-only analysis against copies of the selected
+files, without loading the project's hooks or MCP configuration. It reconstructs screens,
+reusable controls, colors, typography and spacing as native editable layers, with source
+links and descriptions. The preview includes the agent's limitations and inferred details;
+runtime data and unavailable images can appear as labeled placeholders. This is a
+code-derived reconstruction, so inspect the preview against the running UI when fidelity matters.
+
+You can close the sheet while analysis runs, open its conversation for progress or approvals,
+and reopen **Import** to review the saved draft. **Add to canvas** places it in a new movable
+section beside the existing artwork, saves a version of the previous canvas, and supports
+one-step undo. Existing layers are preserved. If selected source changes before acceptance,
+generate a fresh draft; a stale analysis cannot be added. Failed or stopped runs leave the
+canvas unchanged and can be retried.
+
 ### Drawing on the canvas
 
 Tools float at the bottom of the canvas: **Move** (V), **Hand** (H, or hold Space), **Frame** (F),
@@ -441,3 +463,104 @@ image; the image must include the required tools. Local browser MCP tools and lo
 are not bridged to remote agent sessions. Generic remote debug adapters use stdio; automatic
 Delve TCP launching currently runs locally. Live SSH connectivity requires your own host and was
 not exercised by the automated fixtures.
+
+## Containers, Docker and Kubernetes
+
+Open **Containers** below Design in the sidebar, or press **⌘E**. Each project remembers
+its engine, context, namespace and Compose file. The hub uses your installed `docker`
+and `kubectl` commands and their existing credentials. Start Docker Desktop (or another
+Docker-compatible engine) before connecting; **Refresh** discovers new contexts.
+
+The **Map** shows Compose stacks, containers and images for Docker, or services,
+workloads and pods for Kubernetes. Colors show readiness, pending work and failures.
+Kubernetes dashed lines follow service selectors to pods; solid lines show workload
+ownership. Select a resource to inspect ports, images, labels, readiness and recent
+Kubernetes events. **List** and the resource filter help with larger environments.
+Resources refresh every ten seconds while the tab is visible. The map displays up to
+90 resources; filtering narrows it. On compact windows, details open in a sheet.
+
+- **Docker:** use **Run image** to start a named container, or **New → Pull image** to
+  download an image reference. Optional published ports bind to `127.0.0.1`. Existing
+  containers have start, stop, restart and recent logs controls. A Compose file at the
+  project root enables **Start stack** and **Stop stack**; stopping does not remove volumes.
+- **Kubernetes:** select a context and namespace (`*` shows all namespaces). Deployments
+  and StatefulSets support scaling; controllers support rolling restarts. Pods expose
+  recent logs, and pods/services support local port forwarding. Port forwards stop when
+  their context changes or Marika closes. **Open** sends the local port to the project browser.
+- **Local clusters:** install `kind`, choose a local Docker context, then choose
+  **New → Create local Kubernetes cluster**. Marika keeps a separate kubeconfig for this
+  cluster and leaves your global current context unchanged. Its **Delete cluster** action
+  removes the cluster and its workloads after confirmation. Clusters remain running when
+  Marika closes; an interrupted creation remains listed if kind began creating it.
+- **Manifests:** choose **New → Apply manifest** and select a YAML/JSON file in this project.
+  Review the `kubectl diff` against the displayed context and namespace, then apply those
+  exact reviewed file contents. Cluster-scoped resources affect the selected cluster.
+
+Operations display their target and run with explicit context/namespace arguments.
+Changing the target invalidates a pending operation; workload actions also check that the
+selected resource has not been replaced. Failed commands report their output in the hub.
+The hub supports existing Kubernetes clusters; `kind` is only needed to create a local one.
+
+### Health, jobs and recovery
+
+Choose **Health** in the Kubernetes view to check every configured context across all
+namespaces. The overview separates unhealthy workloads, failed Jobs, container restarts
+and warning events. Each context shows its own timestamp and connection errors; unreachable
+contexts are not counted as healthy. Health refreshes every 30 seconds while visible, or
+with **Refresh health**. Select an issue to open its resource and namespace.
+
+Jobs show active attempts, completed work, terminal failure reasons, start/finish times and
+CronJob ownership. A successful Job stays completed when earlier attempts failed; running
+retries and suspended Jobs have their own states. CronJobs show their schedule, time zone,
+last scheduled/successful runs and retained child Jobs. Counts describe retained Kubernetes
+resources, so old failed Jobs remain visible until your cluster's retention policy removes them.
+
+**Logs and diagnostics** lets you choose a retained pod and container, including init
+containers. **Previous instance** reads the prior terminated instance's logs. Exit codes,
+restart counts and related events help explain failures. Logs are read-only and limited to
+the latest 300 lines; cleaned-up pods cannot provide logs.
+
+**Retry as new job** and a CronJob's **Run now** prepare an independent Job using the selected
+resource's template. The review shows the exact cluster, namespace, new name, images and
+configuration summary. Confirming starts the work again, so its writes or notifications can
+repeat. The original Job, CronJob and schedule are kept. Custom-controller Jobs and Jobs with
+manual selectors must be managed through their owning controller.
+
+For a Deployment, **History / rollback** lists retained revisions and their images. Select a
+revision, review it, then **Confirm rollback** to restore that entire pod template. Rollback
+keeps the replica count; it can also restore older configuration, not just images. Environment
+values are omitted from the review summary. **Rollout status** and the live resource state
+show the rollout's progress. Opening or cancelling a review runs no recovery action. Before
+confirmation is executed, Marika checks the source UID and configuration again and verifies
+that the chosen rollback revision still exists.
+
+### Log explorer and Grafana / Loki
+
+Choose **Logs** in Containers for a dedicated log explorer. Select a Docker container,
+Kubernetes pod or workload, choose a time range, then **Run query**. Workloads merge their
+retained pods; **All current pods / containers** is available for a broader view. Up to eight
+sources are read at once. **Live → Start live** tails new container output; **Stop**, leaving
+Logs, switching contexts/namespaces or closing Marika stops those streams. **Follow** keeps
+the newest rows in view. Runtime logs only cover what the container engine retains.
+
+Filter returned rows by text and severity, click a row to inspect structured JSON fields,
+and copy or save the visible results. The chart counts loaded, filtered lines, including error
+lines; it is not a measurement of all cluster traffic. The in-memory buffer keeps 2,000 rows
+and reports dropped older rows. Long lines are truncated to bound memory use.
+
+For retained log history, open **Connections**, enter a **Loki base URL**, optional username
+and tenant, and its read-only access token. Tokens stay in macOS Keychain; workspace settings
+contain the endpoint and username, not the token. Use HTTPS for authenticated remote
+connections. **Test Loki** checks access and lists available labels. The **Loki history**
+source accepts LogQL stream queries such as `{namespace="app"} |= "error"`; it requests the
+latest 1,000 entries in the chosen time range. Live history refreshes every five seconds and
+deduplicates returned entries. Narrow queries when the result limit is reached.
+
+A **Grafana URL** enables **Open Grafana** in the project browser, where you sign in normally.
+**Find Grafana link in cluster** checks the selected context's `monitoring/grafana` ConfigMap
+for an existing Grafana Cloud URL. This only reads configuration. It does not install Grafana
+or Loki, start scaled-down deployments, read their secrets or copy browser credentials.
+
+Runtime live sessions follow the pods selected when the query starts; rerun after a rollout
+to include replacement pods. Loki queries use the configured endpoint and the labels in
+LogQL, so include cluster and namespace selectors when querying a shared multi-cluster store.

@@ -119,6 +119,16 @@
                       FileManager.default.fileExists(atPath: workspace.workingPath + "/.setup-ready") else { throw DriverError("Schedule duplicated or worktree setup failed") }
                 log("Scheduled run and worktree setup passed")
                 model.projectSettingsID = project.id
+            case "toolRoutingTest":
+                try await DebugToolRoutingChecks.run(model)
+                log("Tool routing passed: caller isolation, knowledge review, publishers, API merge, scans and child-agent scope")
+            case "designImportPrepare":
+                try DebugDesignImportChecks.prepare(model, response: step["response"]?.string ?? "", delay: step["delay"]?.double ?? 1)
+            case "designImportWait":
+                try await DebugDesignImportChecks.wait(model, status: step["status"]?.string ?? "ready")
+            case "designImportCheck":
+                try await DebugDesignImportChecks.check(model, phase: step["phase"]?.string ?? "preview")
+                log("Design import \(step["phase"]?.string ?? "") passed")
             case "scanReview":
                 guard let caller = model.selectedSession, let project = model.selectedProject else { throw DriverError("No project") }
                 let measured = await model.performAgentTool(["name": "project_scan_stats"], callerID: caller.id, projectID: project.id)
@@ -150,6 +160,13 @@
                       let picker = marker(in: root, named: "research-sections") else { throw DriverError("Research sections not found") }
                 try click(picker, in: window, fractionX: (CGFloat(step["index"]?.int ?? 0) + 0.5) / 3)
                 try await pause(0.2)
+            case "containersPrepare":
+                try await DebugContainersChecks.prepare(model)
+            case "containersLogsPreview":
+                try await DebugContainersChecks.previewLogs(model, name: step["name"]?.string ?? "")
+            case "containersCheck":
+                try await DebugContainersChecks.check(step["phase"]?.string ?? "", model)
+                log("Containers " + (step["phase"]?.string ?? "") + " passed")
             case "designDescriptionsTest":
                 try await DebugDesignChecks.descriptions(model)
                 log("Design descriptions passed: persistence, agent context, draft preservation, and no automatic send")

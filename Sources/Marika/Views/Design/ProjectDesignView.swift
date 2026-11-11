@@ -38,6 +38,9 @@ struct ProjectDesignView: View {
         .sheet(isPresented: Binding(get: { canvas.showsTemplates }, set: { canvas.showsTemplates = $0 })) { DesignTemplatePicker(canvas: canvas) }
         .sheet(isPresented: Binding(get: { canvas.showsHistory }, set: { canvas.showsHistory = $0 })) { DesignHistoryView(canvas: canvas) }
         .sheet(isPresented: Binding(get: { canvas.showsHealth }, set: { canvas.showsHealth = $0 })) { DesignHealthView(canvas: canvas) }
+        .sheet(isPresented: Binding(get: { canvas.showsImport }, set: { canvas.showsImport = $0 })) {
+            if let app = canvas.app { DesignImportView(projectID: project.id, app: app) }
+        }
         .sheet(item: Binding(get: { canvas.ticketDraft }, set: { canvas.ticketDraft = $0 })) { DesignTicketEditor(canvas: canvas, draft: $0) }
         .alert(canvas.errorTitle, isPresented: Binding(
             get: { canvas.errorMessage != nil }, set: { if !$0 { canvas.errorMessage = nil } }
@@ -50,6 +53,13 @@ struct ProjectDesignView: View {
     private var foldedPanels: some View {
         HStack(spacing: 6) {
             HStack(spacing: 6) {
+                Button { canvas.showsImport = true } label: {
+                    Label { if width >= 800 { Text(importLabel) } } icon: { Image(systemName: "square.and.arrow.down") }
+                }
+                .buttonStyle(WorkspaceButtonStyle(compact: true)).accessibilityLabel("Import design from project")
+                #if DEBUG
+                .background(DebugViewMarker(name: "design-import-toggle"))
+                #endif
                 Button { showsComponents.toggle() } label: {
                     Label { if width >= 800 { Text("Components") } } icon: { Image(systemName: "square.stack.3d.up") }
                 }
@@ -119,6 +129,12 @@ struct ProjectDesignView: View {
                 .modifier(DesignFloatingSurface())
             }
         }
+    }
+
+    private var importLabel: String {
+        let run = canvas.app?.project(id: project.id)?.designImport
+        if run?.status == .ready { return "Review import" }
+        return run?.isActive == true ? "Importing…" : "Import"
     }
 }
 

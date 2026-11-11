@@ -23,6 +23,12 @@ extension AppModel {
     }
     func prepareTurn(_ session: SessionController, input: UserInput) async throws {
         guard let project = project(for: session.meta) else { return }
+        if let id = session.meta.agentTask?.designImportID {
+            guard project.designImport?.id == id, project.designImport?.status == .running else {
+                throw DesignToolError("Start a new import from Design to analyze the project again.")
+            }
+            return
+        }
         // Remote files are not snapshots of the local cache. Never advertise local recovery for them.
         guard project.runtime == nil else { return }
         // Finish an interrupted/failed preparation before starting another baseline.
@@ -34,6 +40,7 @@ extension AppModel {
         try await runHooks(.beforeTurn, session: session, project: project)
     }
     func completeTurn(_ session: SessionController) async {
+        if session.meta.agentTask?.designImportID != nil { await finishDesignImport(session); return }
         guard let id = activeCheckpoints.removeValue(forKey: session.id) else { return }
         if let project = project(for: session.meta) {
             do { try await runHooks(.afterTurn, session: session, project: project) }

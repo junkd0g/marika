@@ -35,6 +35,19 @@ identity when available and otherwise signs ad hoc. No signing identity is neede
 - `Sources/MarikaBrowserMCP`: the local browser and agent-tool bridge.
 - `Tests/MarikaCoreTests`: unit and protocol integration tests, including synthetic servers.
 
+`AppModel` owns application state and lifecycle; keep feature actions in focused extensions
+under `App/`. Capture workspace state synchronously in `WorkspaceSnapshot` before awaiting
+storage, so restored layouts and unsaved buffers belong to the same snapshot. In Design,
+keep pointer interactions in the canvas model and editing/export actions in their extensions.
+
+Keep command values and validation in `MarikaCore`, separate from process execution and
+SwiftUI presentation. Container views delegate connection changes to their model; credential
+validation and process launch construction have injectable dependencies for fixture tests.
+Use typed presentation state and preserve persisted raw values when reorganizing code.
+Keep routing and interaction entry points focused on sequencing. Extract validation,
+conversion and feature-specific actions into named helpers when they obscure that flow;
+preserve the order of validation, side effects and asynchronous operations when splitting them.
+
 Use the existing Swift style. Keep blocking work out of the main actor, preserve unsaved editor
 content, and make agent mutations explicit and reviewable. Add tests for protocol handling,
 storage, concurrency and destructive operations. Check visual changes in both light and dark
