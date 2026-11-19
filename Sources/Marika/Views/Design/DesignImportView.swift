@@ -150,7 +150,7 @@ struct DesignImportView: View {
                 ScrollView {
                     VStack(alignment: .leading) {
                         ForEach(plan.conflicts) { conflict in
-                            Toggle("Use generated: " + conflict.name + " — " + conflict.reason, isOn: Binding(get: { model.useGenerated.contains(conflict.id) }, set: { if $0 { model.useGenerated.insert(conflict.id) } else { model.useGenerated.remove(conflict.id) } })).font(.caption)
+                            Toggle("Use generated: " + conflict.name + " — " + conflict.reason, isOn: Binding(get: { model.useGenerated.contains(conflict.id) }, set: { if $0 { model.useGenerated.insert(conflict.id) } else { model.useGenerated.remove(conflict.id) } })).font(.caption).disabled(!conflict.allowsOverride)
                         }
                     }
                 }.frame(maxHeight: 90)

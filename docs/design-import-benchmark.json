@@ -1,0 +1,13 @@
+{
+  "matched": 3,
+  "measured": 3,
+  "meanSizeError": 0.09722222222222222,
+  "date": "2026-11-19",
+  "agent": "Claude Code",
+  "fixture": "Tests/Fixtures/DesignImport/index.html",
+  "method": "Live installed CLI, local WebKit reference capture, source-linked editable proposal",
+  "limitations": [
+    "One HTML fixture only; native runtime fidelity has not been measured.",
+    "Text matching and box sizes are partial checks, not pixel similarity."
+  ]
+}

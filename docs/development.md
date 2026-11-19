@@ -269,3 +269,7 @@ CI tests Xcode 26.3 on macOS 15 and Xcode 26.6 on macOS 26. A separate job build
 Run `python3 scripts/ui-checks.py --artifacts /path/to/results` after a debug build. It retains the normal macOS temporary directory for WebKit/compiler subprocesses, then copies fixture screenshots and logs to the requested folder. No agent account is used by those fixture checks.
 
 `Tests/Fixtures/DesignImport` contains repeatable SwiftUI, Compose, HTML, React and Vue examples. `scripts/benchmark-design-import.py` is an opt-in live CLI benchmark with a local rendered reference. Its exported measurements count matching text and size differences only; use the captured reference and review screenshot to assess visual quality.
+
+To rebuild the README gallery, run `scripts/capture-readme.py`, `scripts/capture-readme-extras.py`, then `scripts/capture-gallery.py --artifacts build/ui-checks --extras <printed-extras-directory>`. The gallery script requires every listed capture and writes `docs/screenshot-coverage.json`; it does not substitute generated mockups for missing screenshots.
+
+The [2026-11-19 live HTML benchmark](design-import-benchmark.json) matched 3 of 3 measured text elements with a 9.7% mean size difference. This is one small case, not a cross-framework fidelity guarantee.

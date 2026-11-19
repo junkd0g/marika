@@ -45,6 +45,7 @@ struct DesignImportMergeTests {
         current.update([button]) { $0.isLocked = true }
         incoming.nodes[0].text = "New"
         let plan = try DesignImportMerge(batch: batch, current: current, targets: [button], proposal: incoming)
+        #expect(plan.conflicts.first?.allowsOverride == false)
         #expect(try plan.applying(useGenerated: [button]).document.node(button) == current.node(button))
     }
 }

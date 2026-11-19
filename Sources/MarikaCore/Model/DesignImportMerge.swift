@@ -17,6 +17,7 @@ public struct DesignImportConflict: Identifiable, Sendable {
     public var id: UUID
     public var name: String
     public var reason: String
+    public var allowsOverride = true
 }
 public struct DesignImportMerge: Sendable {
     public let conflicts: [DesignImportConflict]
@@ -76,7 +77,7 @@ public struct DesignImportMerge: Sendable {
             }
             guard live != mapped[original.id] else { continue }
             if live != original || live.isLocked {
-                conflicts.append(DesignImportConflict(id: live.id, name: live.name, reason: live.isLocked ? "Locked layer is preserved" : mapped[live.id] == nil ? "Removed in source; manually edited layer is preserved" : "Manual edits differ from the generated update"))
+                conflicts.append(DesignImportConflict(id: live.id, name: live.name, reason: live.isLocked ? "Locked layer is preserved" : mapped[live.id] == nil ? "Removed in source; manually edited layer is preserved" : "Manual edits differ from the generated update", allowsOverride: !live.isLocked))
             }
         }
         self.conflicts = conflicts

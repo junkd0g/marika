@@ -64,17 +64,23 @@ import MarikaCore
     }
     static func metrics(_ model: AppModel) async throws {
         guard DebugFixtureSettings.value("MARIKA_DATA") != nil, let project = model.selectedProject else { throw ContainerHubError("Isolated fixture required") }
+        let inventory = #"{"items":[{"kind":"Pod","metadata":{"name":"api","namespace":"default","uid":"api"},"spec":{"containers":[{"name":"api","image":"copper/api:v2"}]},"status":{"phase":"Running","containerStatuses":[{"name":"api","ready":true,"restartCount":1}]}}]}"#
         let workspace = ContainerWorkspace(project: project, environment: [:], clusterDirectory: project.url, runner: { command in
-            if command.arguments.contains("stats") { return ContainerCommandResult(output: #"{"Name":"api","CPUPerc":"82%","MemUsage":"180MiB / 2GiB"}"#) }
-            if command.arguments.contains("ps") { return ContainerCommandResult(output: #"{"ID":"api","Names":"api","State":"running","Status":"Up 2 hours"}"#) }
-            return ContainerCommandResult(output: "[]")
+            if command.arguments.contains("--raw") {
+                return ContainerCommandResult(output: #"{"items":[{"metadata":{"name":"api","namespace":"default"},"containers":[{"usage":{"cpu":"820m","memory":"180Mi"}}]}]}"#)
+            }
+            if command.arguments.contains("events") {
+                let date = Date().addingTimeInterval(-300).ISO8601Format()
+                return ContainerCommandResult(output: "{\"items\":[{\"metadata\":{\"uid\":\"rollout\"},\"involvedObject\":{\"uid\":\"api\"},\"reason\":\"Started\",\"message\":\"API moved to release v2\",\"type\":\"Normal\",\"lastTimestamp\":\"" + date + "\"}]}")
+            }
+            return ContainerCommandResult(output: inventory)
         })
-        workspace.discovered = true; workspace.settings.dockerContext = "demo"
-        workspace.dockerTargets = [ContainerTarget(name: "demo", endpoint: "unix:///var/run/docker.sock")]
-        let resource = ContainerResource(id: "docker:api", name: "api", kind: .container)
-        workspace.inventory.resources = [resource]; workspace.selectedID = resource.id
+        workspace.discovered = true; workspace.settings.provider = .kubernetes; workspace.settings.kubeContext = "kind-demo"
+        workspace.kubeTargets = [ContainerTarget(name: "kind-demo")]
+        workspace.inventory.resources = try ContainerDecoding.kubernetes(Data(inventory.utf8))
+        let resource = workspace.inventory.resources[0]; workspace.selectedID = resource.id
         await workspace.metrics.sample(workspace)
-        guard workspace.metrics.history.points.count == 2 else { throw ContainerHubError("Metrics did not reach charts") }
+        guard workspace.metrics.history.points.count == 3 else { throw ContainerHubError("Metrics did not reach charts") }
         let now = Date()
         var samples: [ContainerMetricPoint] = []
         for index in 0..<60 {
@@ -84,7 +90,7 @@ import MarikaCore
             }
         }
         workspace.metrics.history.append(samples)
-        workspace.inventory.events = [ContainerEvent(id: "deploy", resourceUID: "", reason: "Deployment restarted", message: "Sample rollout: API moved to release v2", warning: false, timestamp: now.addingTimeInterval(-300))]
+        workspace.inventory.events = [ContainerEvent(id: "deploy", resourceUID: "api", reason: "Deployment restarted", message: "Sample rollout: API moved to release v2", warning: false, timestamp: now.addingTimeInterval(-300))]
         workspace.display = .metrics
         model.containerWorkspaces[project.id] = workspace
         model.setSplit(nil)

@@ -20,6 +20,10 @@ struct ContainerMetricsView: View {
                 controls
                 Text("Resource metrics are recorded every 15 seconds while this view is visible. Up to one hour stays in memory. Missing metrics stay blank.")
                     .font(.caption).foregroundStyle(.secondary)
+                if workspace.settings.metricsConnection != nil {
+                    Text("Latency and errors use the configured Prometheus query scope. The resource picker filters CPU, memory and restarts.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
                 if let error = metrics.error { Text(error).font(.caption).foregroundStyle(.orange).textSelection(.enabled) }
                 if let error = metrics.queryError { Text(error).font(.caption).foregroundStyle(.orange).textSelection(.enabled) }
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 280), spacing: 16)], spacing: 16) {

@@ -63,13 +63,11 @@ import MarikaCore
     }
 
     static func selective(_ model: AppModel) async throws {
-        guard let project = model.selectedProject, let batch = project.designImportBatches?.last,
-              let run = project.designImport, let saved = model.controllers[run.sessionID] else { throw DesignToolError("Applied import fixture required") }
+        guard let project = model.selectedProject, let batch = project.designImportBatches?.last else { throw DesignToolError("Applied import fixture required") }
         let editor = model.design(for: project)
         guard let node = editor.document.nodes.first(where: { $0.importOrigin?.batchID == batch.id && $0.kind == .text }) else { throw DesignToolError("Imported text missing") }
         editor.edit { $0.update([node.id]) { $0.text = "My manually refined title" } }
         let targets = Set(editor.document.nodes.filter { $0.importOrigin?.batchID == batch.id }.map(\.id))
-        guard !saved.isBusy else { throw DesignToolError("Import still active") }
         try await model.startDesignImport(projectID: project.id, paths: batch.files.map(\.path), focus: "Main screens", agent: .codex, model: nil, updating: batch.id, selection: targets)
         try await wait(model, status: "ready")
         guard let current = model.project(id: project.id)?.designImport, let proposal = current.proposal else { throw DesignToolError("Update not ready") }

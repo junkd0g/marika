@@ -12,6 +12,7 @@ root = Path(tempfile.mkdtemp(prefix='marika-readme-extras-'))
 data, project = root / 'data', root / 'Copper'
 data.mkdir(); project.mkdir(); (project / '.github/workflows').mkdir(parents=True)
 (project / '.github/workflows/check.yml').write_text('name: Check\non: [push]\njobs:\n  test:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo "check the project"\n')
+(project / 'notes.txt').write_text('A plain text note for the editor comparison.\n')
 (project / 'README.md').write_text('# Copper\n\nA focused project workspace.\n\n- [x] Review the interface\n- [ ] Ship the next iteration\n')
 (project / 'main.go').write_text('package main\nimport "fmt"\nfunc add(a, b int) int { return a + b }\nfunc main() {\n value := add(2, 3)\n fmt.Println(value)\n}\n')
 (project / 'go.mod').write_text('module example.test/copper\n\ngo 1.24\n')

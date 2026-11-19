@@ -1,4 +1,5 @@
 import AppKit
+import ImageIO
 import MarikaCore
 import UniformTypeIdentifiers
 
@@ -22,10 +23,17 @@ extension DesignImportModel {
         guard panel.runModal() == .OK, let url = panel.url else { return }
         do {
             guard (try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? Int.max) <= 8_000_000,
-                  let image = NSImage(contentsOf: url), let tiff = image.tiffRepresentation,
-                  let bitmap = NSBitmapImageRep(data: tiff), bitmap.pixelsWide <= 20_000, bitmap.pixelsHigh <= 20_000,
-                  let png = bitmap.representation(using: .png, properties: [:]), png.count <= 8_000_000 else {
-                throw DesignToolError("Choose a PNG or JPEG screenshot up to 8 MB and 20,000 pixels per side.")
+                  let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+                  let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+                  let width = properties[kCGImagePropertyPixelWidth] as? Int,
+                  let height = properties[kCGImagePropertyPixelHeight] as? Int,
+                  width > 0, height > 0, width <= 8192, height <= 8192, width * height <= 16_777_216,
+                  let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else {
+                throw DesignToolError("Choose a PNG or JPEG screenshot up to 8 MB and 16 megapixels.")
+            }
+            let bitmap = NSBitmapImageRep(cgImage: image)
+            guard let png = bitmap.representation(using: .png, properties: [:]), png.count <= 8_000_000 else {
+                throw DesignToolError("The converted screenshot exceeds 8 MB. Choose a smaller screenshot.")
             }
             reference = DesignImportReference(source: url.lastPathComponent, width: Double(bitmap.pixelsWide), height: Double(bitmap.pixelsHigh))
             referenceImage = png; error = nil
