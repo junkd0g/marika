@@ -15,6 +15,7 @@ struct ProjectBrowserView: View {
     @State private var showsSiteInfo = false
     @State private var showsFind = false
     @State private var showsPreviewLogs = false
+    @State private var allowsCurrentSite = false
     @FocusState private var addressFocused: Bool
     @FocusState private var findFocused: Bool
 
@@ -69,7 +70,7 @@ struct ProjectBrowserView: View {
         }
         .background(Theme.canvas)
         .sheet(isPresented: $browser.showsHistory) { BrowserLibraryView(browser: browser) }
-        .onAppear { syncAddress() }
+        .onAppear { syncAddress(); syncSiteAccess() }
         .task(id: browser.selectedPage?.navigationError) {
             let root = project.url
             let detected = await Task.detached { ProjectPreview.detect(at: root) }.value
@@ -80,7 +81,11 @@ struct ProjectBrowserView: View {
             syncAddress()
             suggestionIndex = nil
         }
-        .onChange(of: browser.selectedPage?.url) { _, _ in if !addressFocused { syncAddress() } }
+        .onChange(of: browser.selectedPage?.url) { _, _ in
+            if !addressFocused { syncAddress() }
+            syncSiteAccess()
+        }
+        .onChange(of: browser.allowedOrigins) { _, _ in syncSiteAccess() }
         .onChange(of: address) { _, _ in suggestionIndex = nil }
         .onChange(of: browser.addressFocusRequest) { _, _ in focusAddress() }
         .onChange(of: browser.findRequest) { _, _ in focusFind() }
@@ -306,8 +311,8 @@ struct ProjectBrowserView: View {
             Menu("Agent Access") {
                 Toggle("Allow agents on local previews", isOn: $browser.allowsLocalAgentAccess)
                 if let url = browser.selectedPage?.url, !url.isFileURL, !BrowserAddress.isLocal(url) {
-                    Toggle("Allow agents on \(url.host ?? "this site")", isOn: Binding(
-                        get: { browser.allowedOrigins.contains(BrowserAddress.origin(url)) }, set: browser.allowCurrentSite))
+                    Toggle("Allow agents on \(url.host ?? "this site")", isOn: $allowsCurrentSite)
+                        .onChange(of: allowsCurrentSite) { _, allowed in browser.allowCurrentSite(allowed) }
                 }
                 Text("Page content is shared when you use browser tools or attach feedback.")
             }
@@ -586,6 +591,9 @@ struct ProjectBrowserView: View {
         return url.scheme == "https" ? "The connection to this site is encrypted with HTTPS." : "This page uses HTTP. The connection is not encrypted."
     }
 
+    private func syncSiteAccess() {
+        allowsCurrentSite = browser.selectedPage?.url.map { browser.allowedOrigins.contains(BrowserAddress.origin($0)) } ?? false
+    }
     private func syncAddress() { address = browser.selectedPage?.url?.absoluteString ?? "" }
     private func focusFind() {
         addressFocused = false
