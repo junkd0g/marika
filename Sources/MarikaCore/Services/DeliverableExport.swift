@@ -38,18 +38,7 @@ public enum DeliverableExport {
     public static func html(_ value: Deliverable) -> String {
         var body = "<h1>" + escape(value.title) + "</h1>"
         switch value.kind {
-        case .report: body += MarkdownParser.parse(value.body ?? "").map { block in
-            switch block {
-            case .heading(let level, let text): return "<h\(level)>" + escape(text) + "</h\(level)>"
-            case .paragraph(let text): return "<p>" + escape(text).replacingOccurrences(of: "\n", with: "<br>") + "</p>"
-            case .code(_, let text): return "<pre><code>" + escape(text) + "</code></pre>"
-            case .quote(let text): return "<blockquote>" + escape(text) + "</blockquote>"
-            case .list(let items): return "<ul>" + items.map { "<li>" + escape($0.text) + "</li>" }.joined() + "</ul>"
-            case .table(let header, let rows): return "<table><thead><tr>" + header.map { "<th>" + escape($0) + "</th>" }.joined() + "</tr></thead><tbody>" + rows.map { "<tr>" + $0.map { "<td>" + escape($0) + "</td>" }.joined() + "</tr>" }.joined() + "</tbody></table>"
-            case .rule: return "<hr>"
-            case .image(let alt, let source): return "<p>" + escape(alt + " — " + source) + "</p>"
-            }
-        }.joined(separator: "\n")
+        case .report: body += MarkdownParser.parse(value.body ?? "").map(htmlBlock).joined(separator: "\n")
         case .presentation:
             for slide in value.slides ?? [] {
                 body += "<section class=slide><h2>" + escape(slide.title) + "</h2><ul>" + slide.bullets.map { "<li>" + escape($0) + "</li>" }.joined() + "</ul>"
@@ -58,14 +47,38 @@ public enum DeliverableExport {
             }
         case .spreadsheet:
             for sheet in value.sheets ?? [] {
-                body += "<h2>" + escape(sheet.name) + "</h2><table><thead><tr>" + sheet.columns.map { "<th>" + escape($0) + "</th>" }.joined() + "</tr></thead><tbody>"
-                body += sheet.rows.map { "<tr>" + $0.map { "<td>" + escape($0) + "</td>" }.joined() + "</tr>" }.joined() + "</tbody></table>"
+                body += "<h2>" + escape(sheet.name) + "</h2>"
+                body += htmlTable(header: sheet.columns, rows: sheet.rows)
             }
         }
         if let sources = value.sources, !sources.isEmpty { body += "<h2>Sources</h2><ul>" + sources.map { "<li>" + escape($0.title + " — " + $0.url + " — " + $0.excerpt) + "</li>" }.joined() + "</ul>" }
         return """
         <!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'"><title>\(escape(value.title))</title><style>body{font:18px system-ui;max-width:1100px;margin:40px auto;padding:24px;color:#172333}h1,h2{line-height:1.2}pre{white-space:pre-wrap;font:inherit;line-height:1.6}.slide{padding:50px;border:1px solid #ccd4df;min-height:420px;margin:30px 0;break-after:page}li{margin:16px 0}aside{font-size:14px;color:#536174;white-space:pre-wrap}table{border-collapse:collapse;width:100%;overflow-wrap:anywhere}td,th{border:1px solid #ccd4df;padding:10px;text-align:left}th{background:#eef3fa}@media print{body{margin:0}.slide{border:0}}</style></head><body>\(body)</body></html>
         """
+    }
+
+    private static func htmlBlock(_ block: MarkdownBlock) -> String {
+        switch block {
+        case .heading(let level, let text): return "<h\(level)>" + escape(text) + "</h\(level)>"
+        case .paragraph(let text): return "<p>" + escape(text).replacingOccurrences(of: "\n", with: "<br>") + "</p>"
+        case .code(_, let text): return "<pre><code>" + escape(text) + "</code></pre>"
+        case .quote(let text): return "<blockquote>" + escape(text) + "</blockquote>"
+        case .list(let items): return "<ul>" + items.map { "<li>" + escape($0.text) + "</li>" }.joined() + "</ul>"
+        case .table(let header, let rows): return htmlTable(header: header, rows: rows)
+        case .rule: return "<hr>"
+        case .image(let alt, let source): return "<p>" + escape(alt + " — " + source) + "</p>"
+        }
+    }
+
+    private static func htmlTable(header: [String], rows: [[String]]) -> String {
+        let headings = htmlCells(header, tag: "th")
+        var body = ""
+        for row in rows { body += "<tr>" + htmlCells(row, tag: "td") + "</tr>" }
+        return "<table><thead><tr>" + headings + "</tr></thead><tbody>" + body + "</tbody></table>"
+    }
+
+    private static func htmlCells(_ cells: [String], tag: String) -> String {
+        cells.map { "<\(tag)>" + escape($0) + "</\(tag)>" }.joined()
     }
     private static func pdf(_ value: Deliverable) throws -> Data {
         let data = NSMutableData()
