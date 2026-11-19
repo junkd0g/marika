@@ -208,7 +208,7 @@ struct ProjectBrowserView: View {
             iconButton("clock", label: "History and bookmarks") { browser.showLibrary("History") }
             iconButton("arrow.down.circle", label: "Downloads") { browser.showsDownloads.toggle() }
                 .overlay(alignment: .topTrailing) {
-                    if browser.downloads.contains(where: \.isRunning) {
+                    if browser.downloads.contains(where: { $0.isRunning }) {
                         Circle().fill(Color.accentColor).frame(width: 5, height: 5).allowsHitTesting(false)
                     }
                 }
