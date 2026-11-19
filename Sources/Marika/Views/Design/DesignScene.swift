@@ -162,10 +162,11 @@ struct DesignScene: View {
             if let component = node.component {
                 var icon = layer.resolve(Image(systemName: component.symbol))
                 icon.shading = .color(node.componentColor)
-                let scale = min(24 / max(1, icon.size.width), min(26, node.height * 0.5) / max(1, icon.size.height))
+                let nodeHeight = CGFloat(node.height)
+                let scale: CGFloat = min(24 / max(1, icon.size.width), min(26, nodeHeight * 0.5) / max(1, icon.size.height))
                 let size = CGSize(width: icon.size.width * scale, height: icon.size.height * scale)
-                layer.draw(icon, in: CGRect(x: 26 - size.width / 2, y: node.height / 2 - size.height / 2,
-                                           width: size.width, height: size.height))
+                let origin = CGPoint(x: 26 - size.width / 2, y: nodeHeight / 2 - size.height / 2)
+                layer.draw(icon, in: CGRect(origin: origin, size: size))
             }
         }
     }
