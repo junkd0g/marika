@@ -25,7 +25,7 @@ struct DesignLayersPanel: View {
                 Text(canvas.doc.title ?? "Untitled design").font(.system(size: 13, weight: .semibold)).lineLimit(1).truncationMode(.middle)
                 Text(projectName).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
             }
-            .padding(.horizontal, 12).frame(height: 40)
+            .padding(.horizontal, 16).frame(height: 48)
             Divider()
             HStack {
                 Text("Layers").font(.system(size: 11, weight: .semibold))
@@ -34,7 +34,7 @@ struct DesignLayersPanel: View {
                     Text("\(canvas.doc.nodes.count)").font(.system(size: 11).monospacedDigit()).foregroundStyle(.secondary)
                 }
             }
-            .padding(.horizontal, 12).padding(.top, 10).padding(.bottom, 4)
+            .padding(.horizontal, 16).padding(.top, 14).padding(.bottom, 8)
             if canvas.doc.nodes.isEmpty {
                 Text("Layers appear here as you draw, or when your project chat designs on this canvas.")
                     .font(.caption).foregroundStyle(.secondary).padding(.horizontal, 12).padding(.top, 4)

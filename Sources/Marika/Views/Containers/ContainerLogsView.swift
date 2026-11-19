@@ -10,6 +10,8 @@ struct ContainerLogsView: View {
     let workspace: ContainerWorkspace
     @Bindable var logs: ContainerLogsWorkspace
     @State private var connectionSheet = false
+    @State private var width: CGFloat = 1000
+    @State private var height: CGFloat = 600
     private var sources: [ContainerResource] { workspace.inventory.resources.filter { [.container, .pod, .deployment, .statefulSet, .daemonSet, .job, .cronJob, .service].contains($0.kind) }.sorted { $0.name < $1.name } }
     private var source: ContainerResource? { sources.first { $0.id == logs.sourceID } }
     private var containers: [String] {
@@ -19,49 +21,29 @@ struct ContainerLogsView: View {
     var body: some View {
         VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 12) {
-                HStack {
-                    Text("Logs").font(.title2.weight(.semibold))
-                    Picker("Source", selection: $logs.backend) { Text("Containers").tag(ContainerLogBackend.runtime); Text("Loki history").tag(ContainerLogBackend.loki) }.pickerStyle(.segmented).labelsHidden().frame(width: 225)
-                        #if DEBUG
-                        .background(DebugViewMarker(name: "log-backend"))
-                        #endif
-                    Spacer()
-                    if let text = workspace.settings.logConnection?.grafanaURL, !text.isEmpty {
-                        Button("Open Grafana") { model.browser(for: project).navigate(text); model.switchPanel(.browser) }
-                    }
-                    Button("Connections…") { connectionSheet = true }
-                        #if DEBUG
-                        .background(DebugViewMarker(name: "log-connections"))
-                        #endif
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 12) { heading; Spacer(minLength: 8); connectionActions }
+                    VStack(alignment: .leading, spacing: 10) { heading; connectionActions }
                 }
                 if logs.backend == .runtime {
-                    HStack {
-                        Picker("Workload", selection: $logs.sourceID) {
-                            Text("Choose a workload or pod").tag("")
-                            Text("All current pods / containers (up to 8)").tag("all")
-                            ForEach(sources) { Text($0.name + " · " + $0.kind.rawValue + ($0.namespace.isEmpty ? "" : " · " + $0.namespace)).tag($0.id) }
-                        }.frame(maxWidth: .infinity)
-                            #if DEBUG
-                            .background(DebugViewMarker(name: "log-source"))
-                            #endif
-                        if workspace.settings.provider == .kubernetes {
-                            Picker("Container", selection: $logs.container) {
-                                Text("All").tag(""); ForEach(containers, id: \.self) { Text($0).tag($0) }
-                            }.frame(maxWidth: 230)
-                        }
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: 10) { workloadPicker; containerPicker }
+                        VStack(alignment: .leading, spacing: 10) { workloadPicker; containerPicker }
                     }
                 } else {
-                    TextField(#"LogQL, e.g. {namespace="app"} |= "error""#, text: $logs.query).textFieldStyle(.roundedBorder).font(.system(size: 12, design: .monospaced))
+                    TextField(#"LogQL, e.g. {namespace="app"} |= "error""#, text: $logs.query).textFieldStyle(.workspace).font(.system(size: 12, design: .monospaced))
                         .onSubmit(run)
                 }
-                HStack {
-                    Picker("Range", selection: $logs.since) { Text("Last 5 minutes").tag(300); Text("Last 15 minutes").tag(900); Text("Last hour").tag(3_600); Text("Last 6 hours").tag(21_600); Text("Last 24 hours").tag(86_400) }.frame(maxWidth: 230)
+                HStack(spacing: 12) {
+                    WorkspaceSelect(title: "Range", selection: $logs.since, options: [300, 900, 3_600, 21_600, 86_400], label: {
+                        switch $0 { case 300: "Last 5 minutes"; case 900: "Last 15 minutes"; case 3_600: "Last hour"; case 21_600: "Last 6 hours"; default: "Last 24 hours" }
+                    }, height: 32).frame(maxWidth: 190)
                     Toggle("Live", isOn: $logs.live).toggleStyle(.checkbox)
                         #if DEBUG
                         .background(DebugViewMarker(name: "log-live"))
                         #endif
-                    Toggle("Follow", isOn: $logs.follow).toggleStyle(.checkbox)
-                    Spacer()
+                    if width >= 600 { Toggle("Follow", isOn: $logs.follow).toggleStyle(.checkbox) }
+                    Spacer(minLength: 0)
                     if logs.isLoading { ProgressView().controlSize(.small) }
                     Button(logs.live ? "Start live" : "Run query", action: run).buttonStyle(WorkspaceButtonStyle(kind: .primary, compact: true)).disabled(logs.isLoading)
                         #if DEBUG
@@ -72,20 +54,26 @@ struct ContainerLogsView: View {
                         .background(DebugViewMarker(name: "log-stop"))
                         #endif
                 }
-                HStack {
-                    TextField("Filter returned lines", text: $logs.search).textFieldStyle(.roundedBorder)
+                HStack(spacing: 10) {
+                    WorkspaceSearchField(placeholder: "Filter returned lines", text: $logs.search)
                         #if DEBUG
                         .background(DebugViewMarker(name: "log-search"))
                         #endif
-                    Picker("Level", selection: $logs.severity) { Text("All levels").tag(ContainerLogSeverityFilter.all); Text("Warnings + errors").tag(ContainerLogSeverityFilter.warningsAndErrors); Text("Errors").tag(ContainerLogSeverityFilter.errors) }.labelsHidden().frame(width: 165)
-                    Button("Copy") { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(exportText, forType: .string) }.disabled(logs.entries.isEmpty)
-                    Button("Save…", action: save).disabled(logs.entries.isEmpty)
+                    WorkspaceSelect(title: "Level", selection: $logs.severity, options: [.all, .warningsAndErrors, .errors], label: {
+                        switch $0 { case .all: "All levels"; case .warningsAndErrors: "Warnings + errors"; case .errors: "Errors" }
+                    }, height: 36).frame(width: width < 600 ? 120 : 165)
+                    Menu {
+                        Toggle("Follow new entries", isOn: $logs.follow)
+                        Button("Copy logs") { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(exportText, forType: .string) }.disabled(logs.entries.isEmpty)
+                        Button("Save logs…", action: save).disabled(logs.entries.isEmpty)
+                    } label: { Image(systemName: "ellipsis").frame(width: 24, height: 28) }
+                        .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().accessibilityLabel("Log options")
                 }
                 if let error = logs.error { Label(error, systemImage: "exclamationmark.triangle").font(.caption).foregroundStyle(.red).textSelection(.enabled) }
                 if let note = logs.note { Text(note).font(.caption).foregroundStyle(.secondary) }
             }.padding(16).background(Theme.panel)
             Divider()
-            if !logs.entries.isEmpty {
+            if !logs.entries.isEmpty, height >= 500 {
                 volume.padding(.horizontal, 16).padding(.top, 8)
                 Divider()
             }
@@ -97,7 +85,7 @@ struct ContainerLogsView: View {
                     ScrollView {
                         if selected.fields.isEmpty { Text(selected.message).font(.system(size: 11, design: .monospaced)).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading) }
                         else { ForEach(selected.fields, id: \.0) { key, value in HStack(alignment: .top) { Text(key).foregroundStyle(.secondary).frame(width: 130, alignment: .leading); Text(value).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading) }.font(.system(size: 11, design: .monospaced)) } }
-                    }.frame(maxHeight: 160)
+                    }.frame(maxHeight: height < 440 ? 72 : 160)
                 }.padding(12).background(Theme.panel)
             }
             HStack {
@@ -105,9 +93,10 @@ struct ContainerLogsView: View {
                 Text(logs.isRunning && logs.live ? (logs.backend == .loki ? "Live · refreshing every 5s" : "Live") : "Snapshot")
                 Text("· \(logs.entries.count) shown · \(logs.buffer.entries.count) buffered")
                 if logs.buffer.dropped > 0 { Text("· \(logs.buffer.dropped) older lines dropped") }
-                Spacer(); Button("Clear") { logs.buffer.clear(); logs.selectedID = nil }
-            }.font(.caption).foregroundStyle(.secondary).padding(10).background(Theme.panel)
+                Spacer(); Button("Clear") { logs.buffer.clear(); logs.selectedID = nil }.buttonStyle(WorkspaceButtonStyle(kind: .quiet, compact: true))
+            }.font(.caption).foregroundStyle(.secondary).padding(.horizontal, 14).padding(.vertical, 6).background(Theme.panel)
         }
+        .onGeometryChange(for: CGSize.self) { $0.size } action: { width = $0.width; height = $0.height }
         .onAppear {
             chooseSource()
             if logs.query == #"{namespace="default"}"#, workspace.settings.namespace != "*" { logs.query = "{namespace=" + String(decoding: (try? JSONValue.string(workspace.settings.namespace).serialized()) ?? Data("\"default\"".utf8), as: UTF8.self) + "}" }
@@ -123,6 +112,45 @@ struct ContainerLogsView: View {
         #if DEBUG
         .background(DebugViewMarker(name: "containers-logs-view"))
         #endif
+    }
+
+    private var heading: some View {
+        HStack(spacing: 12) {
+            Text("Logs").font(.title2.weight(.semibold))
+            WorkspaceTabPicker(title: "Source", selection: $logs.backend, options: [.runtime, .loki], label: { $0 == .runtime ? "Containers" : "Loki history" }).frame(width: 225)
+                #if DEBUG
+                .background(DebugViewMarker(name: "log-backend"))
+                #endif
+        }
+    }
+    private var connectionActions: some View {
+        HStack(spacing: 8) {
+            if let text = workspace.settings.logConnection?.grafanaURL, !text.isEmpty {
+                Button("Open Grafana") { model.browser(for: project).navigate(text); model.switchPanel(.browser) }
+                    .buttonStyle(WorkspaceButtonStyle(kind: .quiet, compact: true))
+            }
+            Button("Connections…") { connectionSheet = true }
+                .buttonStyle(WorkspaceButtonStyle(compact: true))
+                #if DEBUG
+                .background(DebugViewMarker(name: "log-connections"))
+                #endif
+        }
+    }
+    private var workloadPicker: some View {
+        WorkspaceSelect(title: "Workload", selection: $logs.sourceID, options: ["", "all"] + sources.map(\.id), label: { id in
+            if id == "all" { return "All current pods / containers (up to 8)" }
+            guard let source = sources.first(where: { $0.id == id }) else { return "Choose a workload or pod" }
+            return source.name + " · " + source.kind.rawValue + (source.namespace.isEmpty ? "" : " · " + source.namespace)
+        }, height: 32)
+            #if DEBUG
+            .background(DebugViewMarker(name: "log-source"))
+            #endif
+    }
+    @ViewBuilder private var containerPicker: some View {
+        if workspace.settings.provider == .kubernetes {
+            WorkspaceSelect(title: "Container", selection: $logs.container, options: [""] + containers,
+                label: { $0.isEmpty ? "All containers" : $0 }, height: 32).frame(maxWidth: 230)
+        }
     }
     private var entries: some View {
         ScrollViewReader { proxy in

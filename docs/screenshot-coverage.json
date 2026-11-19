@@ -41,14 +41,16 @@
       "feature": "notes",
       "caption": "Editable notes with headings, lists and checklists",
       "image": "docs/images/notes.png",
-      "capture": "space-content/**/notes-dark.png"
+      "capture": "Native visual review, isolated Copper fixture",
+      "reviewedAt": "2026-11-19"
     },
     {
       "group": "Notes and tickets",
       "feature": "tickets",
       "caption": "Ticket board, priorities and project links",
       "image": "docs/images/tickets.png",
-      "capture": "space-content/**/ticket-board-dark.png"
+      "capture": "Native visual review, isolated Copper fixture",
+      "reviewedAt": "2026-11-19"
     },
     {
       "group": "Notes and tickets",
@@ -97,7 +99,8 @@
       "feature": "pipelines",
       "caption": "Pipeline discovery and saved run output; sample history",
       "image": "docs/images/pipelines.png",
-      "capture": "extra:pipelines.png"
+      "capture": "Native visual review, isolated Copper fixture",
+      "reviewedAt": "2026-11-19"
     },
     {
       "group": "Browser, APIs and pipelines",
@@ -144,9 +147,10 @@
     {
       "group": "Design and source import",
       "feature": "design-editor",
-      "caption": "Editable architecture, layers, styles and source-linked descriptions",
+      "caption": "Editable design layers, reusable components and inspector controls",
       "image": "docs/images/design-editor.png",
-      "capture": "design/**/wide-light-selected.png"
+      "capture": "Native visual review, isolated Copper fixture",
+      "reviewedAt": "2026-11-19"
     },
     {
       "group": "Design and source import",
@@ -195,28 +199,32 @@
       "feature": "docker-map",
       "caption": "Docker containers, images and network relationships",
       "image": "docs/images/docker-map.png",
-      "capture": "containers/**/docker-map.png"
+      "capture": "Native visual review, isolated Copper fixture",
+      "reviewedAt": "2026-11-19"
     },
     {
       "group": "Containers and observability",
       "feature": "kubernetes-map",
       "caption": "Kubernetes workloads, services and pods",
       "image": "docs/images/kubernetes-map.png",
-      "capture": "containers/**/kubernetes-map.png"
+      "capture": "Native visual review, isolated Copper fixture",
+      "reviewedAt": "2026-11-19"
     },
     {
       "group": "Containers and observability",
       "feature": "cluster-health",
       "caption": "Cluster health and failing workloads",
       "image": "docs/images/cluster-health.png",
-      "capture": "containers/**/cluster-health-light.png"
+      "capture": "Native visual review, isolated Copper fixture",
+      "reviewedAt": "2026-11-19"
     },
     {
       "group": "Containers and observability",
       "feature": "container-logs",
       "caption": "Searchable runtime logs and structured fields",
       "image": "docs/images/container-logs.png",
-      "capture": "containers/**/logs-structured.png"
+      "capture": "Native visual review, isolated Copper fixture",
+      "reviewedAt": "2026-11-19"
     },
     {
       "group": "Containers and observability",
@@ -301,6 +309,22 @@
       "caption": "MCP connections, configuration and connection checks",
       "image": "docs/images/connections.jpg",
       "capture": "existing native fixture capture"
+    },
+    {
+      "group": "Projects, chats and agent work",
+      "feature": "chat-start",
+      "caption": "A centered new conversation and project-aware draft composer",
+      "image": "docs/images/chat-start.png",
+      "capture": "Native visual review, isolated Copper fixture",
+      "reviewedAt": "2026-11-19"
+    },
+    {
+      "group": "Containers and observability",
+      "feature": "logs-compact",
+      "caption": "Runtime log controls and entries in a 900 by 600 window",
+      "image": "docs/images/logs-compact.png",
+      "capture": "Native visual review, isolated Copper fixture",
+      "reviewedAt": "2026-11-19"
     }
   ]
 }

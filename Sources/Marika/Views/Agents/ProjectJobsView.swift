@@ -20,7 +20,7 @@ struct ProjectJobsView: View {
                     }
                     Spacer(minLength: 10)
                     Button { addJob() } label: { Label("New job", systemImage: "plus") }
-                        .buttonStyle(.borderedProminent).controlSize(.regular)
+                        .buttonStyle(WorkspaceButtonStyle(kind: .primary, compact: true)).controlSize(.regular)
                         #if DEBUG
                             .background(DebugViewMarker(name: "jobs-create"))
                         #endif
@@ -208,7 +208,7 @@ private struct ProjectJobEditor: View {
                     #endif
                 Button("Save job") {
                     do { try save(candidate); dismiss() } catch { self.error = error.localizedDescription }
-                }.buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction)
+                }.buttonStyle(WorkspaceButtonStyle(kind: .primary, compact: true)).keyboardShortcut(.defaultAction)
                     .disabled(candidate.name.isEmpty || candidate.prompt.isEmpty || (try? nextRun.get()) == nil)
                     #if DEBUG
                         .background(DebugViewMarker(name: "job-editor-save"))

@@ -43,9 +43,9 @@ struct DesignIconButton: View {
     var body: some View {
         Button(action: action) {
             Image(systemName: symbol).font(.system(size: size > 28 ? 14 : 12, weight: .medium))
-                .foregroundStyle(active ? Color.white : Theme.ink)
+                .foregroundStyle(active ? Theme.canvas : Theme.ink)
                 .frame(width: size, height: size)
-                .background(active ? Theme.action : hovered && isEnabled ? Color.primary.opacity(0.08) : .clear,
+                .background(active ? Theme.ink : hovered && isEnabled ? Color.primary.opacity(0.08) : .clear,
                             in: RoundedRectangle(cornerRadius: size > 28 ? 8 : 6, style: .continuous))
                 .contentShape(Rectangle())
         }
@@ -61,8 +61,8 @@ private struct DesignFieldSurface: ViewModifier {
     func body(content: Content) -> some View {
         content
             .padding(.horizontal, 7).frame(maxWidth: .infinity, minHeight: 28, alignment: .leading)
-            .background(Theme.surface, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
-            .overlay { RoundedRectangle(cornerRadius: 6, style: .continuous).strokeBorder(focused ? Theme.action : .clear, lineWidth: 1.5) }
+            .background(Theme.field, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .overlay { RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(focused ? Theme.action : Theme.hairline.opacity(0.5), lineWidth: focused ? 1.5 : 1) }
     }
 }
 

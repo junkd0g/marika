@@ -30,7 +30,7 @@ struct ProjectToolsView: View {
                 Text(project.name).font(.title2.bold())
                 Spacer()
                 Button("Cancel") { dismiss() }
-                Button("Save") { if save() { dismiss() } }.buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction)
+                Button("Save") { if save() { dismiss() } }.buttonStyle(WorkspaceButtonStyle(kind: .primary, compact: true)).keyboardShortcut(.defaultAction)
                     #if DEBUG
                     .background(DebugViewMarker(name: "project-tools-save"))
                     #endif
@@ -62,7 +62,7 @@ struct ProjectToolsView: View {
                 }.frame(maxWidth: .infinity, alignment: .leading)
             }
             }
-        }.font(.system(size: 12)).controlSize(.small).textFieldStyle(.roundedBorder).padding(20).frame(width: 820, height: 650).background(Theme.canvas)
+        }.font(.system(size: 12)).controlSize(.small).textFieldStyle(.workspace).padding(20).frame(width: 820, height: 650).background(Theme.canvas)
         .onAppear {
             section = initialSection
             draft = model.project(id: project.id)?.tools ?? ProjectTools()

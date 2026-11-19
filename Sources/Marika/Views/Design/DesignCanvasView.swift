@@ -93,7 +93,7 @@ private struct DesignChrome: View {
                 }
             }
             func badge(_ text: String, below rect: CGRect) {
-                let resolved = context.resolve(Text(text).font(.system(size: 11, weight: .medium)).foregroundStyle(.white))
+                let resolved = context.resolve(Text(text).font(.system(size: 11, weight: .medium)).foregroundStyle(Theme.canvas))
                 let size = resolved.measure(in: CGSize(width: 400, height: 40))
                 let pill = CGRect(x: rect.midX - size.width / 2 - 6, y: rect.maxY + 8, width: size.width + 12, height: size.height + 4)
                 context.fill(Path(roundedRect: pill, cornerRadius: 4), with: .color(Theme.action))
@@ -114,7 +114,7 @@ private struct DesignChrome: View {
                 context.stroke(path, with: .color(Theme.action), style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round))
                 if !edge.label.isEmpty {
                     // Repaint the label over the highlight so it stays readable.
-                    let text = context.resolve(Text(edge.label).font(.system(size: 11 * zoom)).foregroundStyle(.white))
+                    let text = context.resolve(Text(edge.label).font(.system(size: 11 * zoom)).foregroundStyle(Theme.canvas))
                     let size = text.measure(in: CGSize(width: 2_000, height: 200))
                     let middle = screen(DesignConnection.point(on: route, fraction: edge.labelFraction))
                     let pill = CGRect(x: middle.x - size.width / 2 - 5 * zoom, y: middle.y - size.height / 2 - 3 * zoom,

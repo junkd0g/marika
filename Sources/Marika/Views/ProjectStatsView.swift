@@ -94,7 +94,7 @@ struct ProjectStatsView: View {
                     .help("Review model").popover(isPresented: $showsSettings) { settings.padding(20).frame(width: 300) }
                 Button { Task { await startAnalysis() } } label: {
                     Label("Run review", systemImage: "sparkle").font(.system(size: 12, weight: .semibold)).padding(.vertical, 3)
-                }.buttonStyle(.borderedProminent).tint(.teal).disabled(active)
+                }.buttonStyle(WorkspaceButtonStyle(kind: .primary, compact: true)).tint(.teal).disabled(active)
                 #if DEBUG
                     .background(DebugViewMarker(name: "stats-run-review"))
                 #endif

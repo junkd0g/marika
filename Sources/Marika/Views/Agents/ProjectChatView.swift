@@ -31,7 +31,6 @@ struct ProjectChatView: View {
                 }
                 VStack(spacing: 0) {
                     header(canShowPeople: !agents.isEmpty && geometry.size.width >= 700)
-                    Divider()
                     if showsJobs {
                         ProjectJobsView(project: project, onOpenChat: { showsJobs = false })
                     } else {
@@ -133,7 +132,7 @@ struct ProjectChatView: View {
             .buttonStyle(.plain).foregroundStyle(Theme.ink)
             .padding(4)
         }
-        .background(Theme.chrome)
+        .background(Theme.panel)
     }
 
     private func sectionLabel(_ text: String) -> some View {

@@ -14,6 +14,7 @@ struct ComposerTextView: NSViewRepresentable {
     @Binding var text: String
     var placeholder: String
     var isActive = true
+    var minimumHeight: CGFloat = 44
     /// Changing this moves keyboard focus into the field.
     var focusToken: AnyHashable
     var onSubmit: () -> Void
@@ -21,7 +22,7 @@ struct ComposerTextView: NSViewRepresentable {
     /// Return true if the key was used, for example to drive the command list.
     var onKey: (Key) -> Bool
 
-    private static let minHeight: CGFloat = 22
+    private static let fontSize: CGFloat = 15
     private static let maxHeight: CGFloat = 190
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
@@ -35,7 +36,7 @@ struct ComposerTextView: NSViewRepresentable {
         textView.isAutomaticDashSubstitutionEnabled = false
         textView.isAutomaticTextReplacementEnabled = false
         textView.isAutomaticSpellingCorrectionEnabled = false
-        textView.font = .systemFont(ofSize: 14)
+        textView.font = .systemFont(ofSize: Self.fontSize)
         textView.textColor = .labelColor
         textView.backgroundColor = .clear
         textView.drawsBackground = false
@@ -90,11 +91,11 @@ struct ComposerTextView: NSViewRepresentable {
     // between AppKit's document frame and the containing split view.
     func sizeThatFits(_ proposal: ProposedViewSize, nsView: NSScrollView, context: Context) -> CGSize? {
         guard let width = proposal.width, width > 0 else { return nil }
-        return CGSize(width: width, height: min(Self.maxHeight, max(Self.minHeight, Self.textHeight(text, width: width))))
+        return CGSize(width: width, height: min(Self.maxHeight, max(minimumHeight, Self.textHeight(text, width: width))))
     }
 
     fileprivate static func textHeight(_ text: String, width: CGFloat) -> CGFloat {
-        let storage = NSTextStorage(string: text, attributes: [.font: NSFont.systemFont(ofSize: 14)])
+        let storage = NSTextStorage(string: text, attributes: [.font: NSFont.systemFont(ofSize: Self.fontSize)])
         let manager = NSLayoutManager()
         let container = NSTextContainer(size: NSSize(width: max(1, width), height: .greatestFiniteMagnitude))
         container.lineFragmentPadding = 0

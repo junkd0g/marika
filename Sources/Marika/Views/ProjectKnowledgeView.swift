@@ -21,7 +21,7 @@ struct ProjectKnowledgeView: View {
             }
             Text("Approved documents, links and decisions are searchable by every project agent. Proposed memory changes wait for your review. Imported text is a saved snapshot.")
                 .font(.caption).foregroundStyle(.secondary)
-            TextField("Search documents and decisions…", text: $query).textFieldStyle(.roundedBorder)
+            TextField("Search documents and decisions…", text: $query).textFieldStyle(.workspace)
                 .background(SpaceContentMarker(name: "knowledge-search"))
             if let error { Text(error).foregroundStyle(Theme.attention).textSelection(.enabled) }
             ScrollView {
@@ -154,16 +154,16 @@ private struct KnowledgeEditor: View {
             Text(draft.original == nil ? "Add project knowledge" : "Edit knowledge snapshot").font(.title2.bold())
             ScrollView {
             VStack(alignment: .leading, spacing: 14) {
-            TextField("Title", text: $title).textFieldStyle(.roundedBorder)
+            TextField("Title", text: $title).textFieldStyle(.workspace)
             Picker("Kind", selection: $kind) { ForEach(KnowledgeEntry.Kind.allCases, id: \.self) { Text($0.rawValue.capitalized).tag($0) } }.pickerStyle(.segmented)
-            TextField(kind == .link ? "Source URL (https://…)" : "Source or provenance (optional)", text: $source).textFieldStyle(.roundedBorder)
+            TextField(kind == .link ? "Source URL (https://…)" : "Source or provenance (optional)", text: $source).textFieldStyle(.workspace)
             Text("Saved text or decision").font(.headline)
             TextEditor(text: $content).font(.body).frame(minHeight: 200).border(Theme.hairline)
             Text("Links store the text you supply. To capture current web evidence, ask a research agent to retrieve the URL and propose a knowledge item.").font(.caption).foregroundStyle(.secondary)
             if let error { Text(error).foregroundStyle(Theme.attention) }
             }
             }
-            HStack { Button("Cancel") { dismiss() }; Spacer(); Button("Save knowledge") { do { try save(KnowledgeEntry(title: title, kind: kind, content: content, source: source.isEmpty ? nil : source, sessionID: draft.original?.sessionID)) } catch { self.error = error.localizedDescription } }.buttonStyle(.borderedProminent) }
+            HStack { Button("Cancel") { dismiss() }; Spacer(); Button("Save knowledge") { do { try save(KnowledgeEntry(title: title, kind: kind, content: content, source: source.isEmpty ? nil : source, sessionID: draft.original?.sessionID)) } catch { self.error = error.localizedDescription } }.buttonStyle(WorkspaceButtonStyle(kind: .primary, compact: true)) }
         }.padding(24).frame(width: 580, height: 570)
         .onAppear { if let entry = draft.original { title = entry.title; content = entry.content; source = entry.source ?? ""; kind = entry.kind } }
     }

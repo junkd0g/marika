@@ -35,7 +35,7 @@ struct RootView: View {
             )) {
                 SidebarView()
                     .disabled(model.workspaceLoadFailed)
-                    .navigationSplitViewColumnWidth(min: 210, ideal: 240, max: 340)
+                    .navigationSplitViewColumnWidth(min: 210, ideal: 260, max: 340)
             } detail: {
                 if model.workspaceLoadFailed {
                     ContentUnavailableView {
@@ -49,11 +49,11 @@ struct RootView: View {
                 } else if !model.isReady {
                     Color.clear
                 } else if model.selectedSpace.section == .attention {
-                    AttentionInboxView()
+                    AttentionInboxView().workspaceInset().padding(.top, 10)
                 } else if model.selectedSpace.section == .notes {
-                    SpaceNotesView(spaceID: model.selectedSpace.id).id(model.selectedSpace.id)
+                    SpaceNotesView(spaceID: model.selectedSpace.id).id(model.selectedSpace.id).workspaceInset().padding(.top, 10)
                 } else if model.selectedSpace.section == .tickets {
-                    SpaceTicketsView(spaceID: model.selectedSpace.id).id(model.selectedSpace.id)
+                    SpaceTicketsView(spaceID: model.selectedSpace.id).id(model.selectedSpace.id).workspaceInset().padding(.top, 10)
                 } else if model.showsWelcome {
                     WelcomeView()
                 } else if let meta = model.selectedSession, let project = model.project(for: meta) {
@@ -78,6 +78,8 @@ struct RootView: View {
         }
         .font(.system(size: 12))
         .controlSize(.small)
+        .tint(Theme.ink)
+        .background(Theme.chrome)
         .background(WorkspaceWindowChrome())
         .dropDestination(for: URL.self) { urls, _ in
             guard !model.workspaceLoadFailed else { return false }
@@ -154,7 +156,6 @@ private struct ProjectWorkspaceView: View {
         let shouldPresentInspector = inspectorEligible && model.showsInspector
         VStack(spacing: 0) {
             projectHeader
-            Divider()
             GeometryReader { geometry in
                 ZStack(alignment: .topLeading) {
                     place(ProjectChatView(project: project, selection: meta)
@@ -201,8 +202,9 @@ private struct ProjectWorkspaceView: View {
             #if DEBUG
                 .background(DebugViewMarker(name: "workspace-content"))
             #endif
+            .workspaceInset()
         }
-        .background(Theme.canvas)
+        .background(Theme.chrome)
         .inspector(isPresented: $inspectorPresented) {
             if let session = model.controllers[meta.id] {
                 ChangesInspector(session: session, project: project)
@@ -307,45 +309,50 @@ struct SessionView: View {
     var body: some View {
         // A plain stack, not a safe-area inset. The scroll view needs its true height at first
         // layout, or opening a session stops short of the end by the height of the composer.
-        VStack(spacing: 0) {
-            Group {
-                if session.hasStarted {
-                    TranscriptView(session: session)
-                } else {
-                    SessionStartView(session: session, project: project)
+        GeometryReader { geometry in
+            let compact = geometry.size.height < 560
+            VStack(spacing: 0) {
+                if !session.hasStarted { Spacer(minLength: 12) }
+                Group {
+                    if session.hasStarted {
+                        TranscriptView(session: session)
+                    } else {
+                        SessionStartView(session: session, project: project, compact: compact)
+                    }
                 }
+                .frame(maxWidth: .infinity, maxHeight: session.hasStarted ? .infinity : nil)
+
+                VStack(spacing: 8) {
+                    if let approval = session.pendingApproval {
+                        ApprovalPanel(request: approval, session: session)
+                            .id(approval.id)
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
+                    }
+                    if !session.todos.isEmpty, session.isBusy {
+                        TodoStrip(todos: session.todos)
+                    }
+                    if session.hasStarted, agentNeedsAttention {
+                        AgentStatusLine(agent: session.meta.agent)
+                    }
+                    ComposerView(session: session)
+                }
+                .frame(maxWidth: Theme.transcriptWidth + 36)
+                .padding(.horizontal, 16)
+                .padding(.top, session.hasStarted || compact ? 10 : 22)
+                .padding(.bottom, 18)
+                .frame(maxWidth: .infinity)
+                .overlay(alignment: .top) {
+                    // Lets the transcript fade out instead of ending at a hard line.
+                    LinearGradient(colors: [Theme.canvas.opacity(0), Theme.canvas], startPoint: .top, endPoint: .bottom)
+                        .frame(height: 20)
+                        .offset(y: -20)
+                        .allowsHitTesting(false)
+                }
+                .animation(.easeOut(duration: 0.18), value: session.pendingApproval?.id)
+                if !session.hasStarted { Spacer(minLength: 24) }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-            VStack(spacing: 8) {
-                if let approval = session.pendingApproval {
-                    ApprovalPanel(request: approval, session: session)
-                        .id(approval.id)
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
-                }
-                if !session.todos.isEmpty, session.isBusy {
-                    TodoStrip(todos: session.todos)
-                }
-                if session.hasStarted, agentNeedsAttention {
-                    AgentStatusLine(agent: session.meta.agent)
-                }
-                ComposerView(session: session)
-            }
-            .frame(maxWidth: Theme.transcriptWidth + 36)
-            .padding(.horizontal, 16)
-            .padding(.top, 6)
-            .padding(.bottom, 14)
-            .frame(maxWidth: .infinity)
-            .overlay(alignment: .top) {
-                // Lets the transcript fade out instead of ending at a hard line.
-                LinearGradient(colors: [Theme.canvas.opacity(0), Theme.canvas], startPoint: .top, endPoint: .bottom)
-                    .frame(height: 20)
-                    .offset(y: -20)
-                    .allowsHitTesting(false)
-            }
-            .animation(.easeOut(duration: 0.18), value: session.pendingApproval?.id)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Theme.canvas)
         .environment(\.projectRoot, project.url)
     }

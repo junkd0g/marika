@@ -41,7 +41,7 @@ struct RepositoryHistoryView: View {
                     Spacer()
                     Button("Use current") { result = merge.current }
                     Button("Use incoming") { result = merge.incoming }
-                    Button("Mark resolved") { run { try await repository.resolve(merge, text: result); self.merge = nil } }.buttonStyle(.borderedProminent)
+                    Button("Mark resolved") { run { try await repository.resolve(merge, text: result); self.merge = nil } }.buttonStyle(WorkspaceButtonStyle(kind: .primary, compact: true))
                 }
                 HSplitView {
                     ScrollView { Text(merge.current).font(.caption.monospaced()).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading) }

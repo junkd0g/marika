@@ -55,7 +55,7 @@ struct IDEDrawer: View {
                     }
                 }
                 if !ide.pendingEdits.isEmpty {
-                    HStack { Button("Apply to drafts") { ide.applyEdits() }.buttonStyle(.borderedProminent); Button("Discard") { ide.pendingEdits = [] } }
+                    HStack { Button("Apply to drafts") { ide.applyEdits() }.buttonStyle(WorkspaceButtonStyle(kind: .primary, compact: true)); Button("Discard") { ide.pendingEdits = [] } }
                 }
             }.font(.system(size: 12)).padding(12).frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -86,7 +86,7 @@ struct IDEDrawer: View {
     }
     private var debugger: some View {
         VStack(spacing: 6) {
-            if !ide.debug.isActive { TextField("Go program directory (defaults to project root)", text: $ide.debugProgram).textFieldStyle(.roundedBorder).font(.caption).padding(.horizontal, 8) }
+            if !ide.debug.isActive { TextField("Go program directory (defaults to project root)", text: $ide.debugProgram).textFieldStyle(.workspace).font(.caption).padding(.horizontal, 8) }
             HStack {
                 Text(ide.debug.status).font(.caption.bold())
                 Button("Start") { ide.launchDebugger() }.disabled(ide.debug.isActive)

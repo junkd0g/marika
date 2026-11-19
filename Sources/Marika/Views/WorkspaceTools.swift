@@ -30,7 +30,7 @@ struct ProjectSearchView: View {
                 if searching { ProgressView().controlSize(.small) }
             }.padding(18)
             HStack {
-                TextField("Replace with…", text: $replacement).textFieldStyle(.roundedBorder)
+                TextField("Replace with…", text: $replacement).textFieldStyle(.workspace)
                 Button("Preview replacement") {
                     Task {
                         do {
@@ -51,7 +51,7 @@ struct ProjectSearchView: View {
                             for change in replacements { editor.documents.first(where: { $0.path == change.snapshot.path })?.text = change.updated }
                             replacements = []; dismiss(); model.showCode()
                         }
-                    }.buttonStyle(.borderedProminent)
+                    }.buttonStyle(WorkspaceButtonStyle(kind: .primary, compact: true))
                 }
             }.controlSize(.small).padding(.horizontal, 18).padding(.bottom, 12)
             if let error { Text(error).font(.caption).foregroundStyle(.secondary).padding(.horizontal, 18) }
@@ -209,9 +209,9 @@ struct PreviewConsoleView: View {
                 Spacer(); PreviewStatusLabel(preview: preview)
                 Button { model.previewProjectID = nil } label: { Image(systemName: "xmark") }.buttonStyle(.plain)
             }
-            TextField("Run command, e.g. npm run dev", text: $command).textFieldStyle(.roundedBorder)
+            TextField("Run command, e.g. npm run dev", text: $command).textFieldStyle(.workspace)
                 .disabled(preview.isActive).accessibilityLabel("Preview run command")
-            TextField("Preview URL, e.g. http://localhost:3000", text: $address).textFieldStyle(.roundedBorder)
+            TextField("Preview URL, e.g. http://localhost:3000", text: $address).textFieldStyle(.workspace)
                 .disabled(preview.isActive).accessibilityLabel("Preview URL")
             HStack {
                 Button(preview.isActive ? "Stop" : "Run Preview") {
@@ -220,7 +220,7 @@ struct PreviewConsoleView: View {
                         model.savePreviewConfiguration(PreviewConfiguration(command: command, address: address), for: project)
                         model.runPreview(for: model.project(id: project.id))
                     }
-                }.buttonStyle(.borderedProminent).disabled(command.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }.buttonStyle(WorkspaceButtonStyle(kind: .primary, compact: true)).disabled(command.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 if preview.state == .running {
                     Button("Open Preview") { model.previewProjectID = nil; model.openRunningPreview(for: project) }
                 }

@@ -5,53 +5,54 @@ struct SessionStartView: View {
     @Environment(AppModel.self) private var model
     let session: SessionController
     let project: Project
+    var compact = false
 
     var body: some View {
-        GeometryReader { geometry in
-            ScrollView {
-                VStack(spacing: 22) {
-                    VStack(spacing: 12) {
-                        Image(systemName: "chevron.left.forwardslash.chevron.right")
-                            .font(.system(size: 30, weight: .light)).foregroundStyle(Theme.ink)
-                            .padding(.bottom, 6).accessibilityHidden(true)
-                        Text("What would you like to build?")
-                            .font(.system(size: geometry.size.width < 420 ? 22 : 28, weight: .medium))
-                            .tracking(-0.6).multilineTextAlignment(.center)
-                            .fixedSize(horizontal: false, vertical: true)
-                        Label(project.name, systemImage: "folder")
-                            .font(.system(size: 12)).foregroundStyle(.secondary)
-                            .lineLimit(1).truncationMode(.middle).help(project.path)
-                    }
+        VStack(spacing: compact ? 12 : 18) {
+            if !compact {
+                Image(systemName: "chevron.left.forwardslash.chevron.right")
+                    .font(.system(size: 28, weight: .light)).foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
+            }
+            Text("What would you like to build?")
+                .font(compact ? .custom("Georgia", size: 28, relativeTo: .title) : Theme.displayTitle).tracking(-1)
+                .multilineTextAlignment(.center).lineLimit(2).minimumScaleFactor(0.8)
+                .fixedSize(horizontal: false, vertical: true)
 
-                    if model.statuses[session.meta.agent]?.readiness != .ready {
-                        AgentStatusLine(agent: session.meta.agent)
-                    }
-
-                    if !session.meta.hasDraft {
-                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), spacing: 10)], spacing: 10) {
-                            ForEach(SessionStarter.allCases) { starter in
-                                Button { model.prepareStarter(starter, for: session.id) } label: {
-                                    VStack(alignment: .leading, spacing: 12) {
-                                        Image(systemName: starter.symbol).font(.system(size: 14)).foregroundStyle(.secondary)
-                                        Text(starter.title).font(.system(size: 12)).lineLimit(2)
-                                    }
-                                    .frame(maxWidth: .infinity, minHeight: 58, alignment: .leading)
-                                    .padding(14)
-                                    .background(Theme.surface, in: RoundedRectangle(cornerRadius: 12))
-                                    .overlay { RoundedRectangle(cornerRadius: 12).strokeBorder(Theme.hairline.opacity(0.6)) }
-                                    .contentShape(RoundedRectangle(cornerRadius: 12))
-                                }
-                                .buttonStyle(.plain).help("Add this prompt to your draft")
+            if model.statuses[session.meta.agent]?.readiness != .ready {
+                AgentStatusLine(agent: session.meta.agent)
+            }
+            if !session.meta.hasDraft {
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 8) { starters }.fixedSize()
+                    Menu {
+                        ForEach(SessionStarter.allCases) { starter in
+                            Button { model.prepareStarter(starter, for: session.id) } label: {
+                                Label(starter.title, systemImage: starter.symbol)
                             }
                         }
+                    } label: {
+                        Label("Choose a starting point", systemImage: "sparkle")
                     }
+                    .menuStyle(.borderlessButton).fixedSize()
+                    .font(.system(size: 11.5, weight: .medium)).foregroundStyle(.secondary)
                 }
-                .frame(maxWidth: 530)
-                .padding(geometry.size.width < 420 ? 24 : 40)
-                .frame(maxWidth: .infinity)
-                .frame(minHeight: geometry.size.height, alignment: .center)
             }
-            .defaultScrollAnchor(.center, for: .alignment)
+        }
+        .frame(maxWidth: 660)
+        .padding(.horizontal, 24).padding(.top, compact ? 12 : 20)
+        .frame(maxWidth: .infinity)
+    }
+
+    @ViewBuilder private var starters: some View {
+        ForEach(SessionStarter.allCases) { starter in
+            Button { model.prepareStarter(starter, for: session.id) } label: {
+                Label(starter.title, systemImage: starter.symbol)
+                    .font(.system(size: 11.5, weight: .medium)).foregroundStyle(.secondary)
+                    .padding(.horizontal, 12).padding(.vertical, 9)
+                    .background(Theme.surface.opacity(0.45), in: Capsule())
+                    .overlay { Capsule().strokeBorder(Theme.hairline.opacity(0.6)) }
+            }.buttonStyle(.plain).help("Add this prompt to your draft")
         }
     }
 }

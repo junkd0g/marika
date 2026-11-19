@@ -345,7 +345,7 @@ struct ProjectBrowserView: View {
                             Text("Make sure your development server is running.").font(.system(size: 12)).foregroundStyle(.secondary)
                         }
                         if !canRecoverPreview {
-                            Button("Try Again") { browser.selectedPage?.reload() }.buttonStyle(.borderedProminent)
+                            Button("Try Again") { browser.selectedPage?.reload() }.buttonStyle(WorkspaceButtonStyle(kind: .primary, compact: true))
                         }
                     }
                     .multilineTextAlignment(.center).padding(30)
@@ -371,7 +371,7 @@ struct ProjectBrowserView: View {
                     guard let page = browser.selectedPage else { return }
                     model.runPreview(for: project, recovering: page)
                 }
-                .buttonStyle(.borderedProminent).disabled(preview?.isActive == true)
+                .buttonStyle(WorkspaceButtonStyle(kind: .primary, compact: true)).disabled(preview?.isActive == true)
                 #if DEBUG
                     .background(DebugViewMarker(name: "browser-start-project-preview"))
                 #endif
@@ -500,7 +500,7 @@ struct ProjectBrowserView: View {
                     .buttonStyle(.plain).accessibilityLabel("Cancel browser comment")
             }
             HStack {
-                TextField("What should change here?", text: $browser.comment).textFieldStyle(.roundedBorder)
+                TextField("What should change here?", text: $browser.comment).textFieldStyle(.workspace)
                 Button(browser.isCapturing ? "Capturing…" : "Add to Message") { Task { await browser.attachFeedback() } }
                     .disabled(browser.isCapturing || browser.comment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
@@ -520,11 +520,9 @@ struct ProjectBrowserView: View {
 
     private func footerContents(compact: Bool) -> some View {
         HStack(spacing: 12) {
-            Picker("Viewport", selection: $browser.viewport) {
-                Text("Desktop").tag("Desktop")
-                Text("Tablet · 768").tag("Tablet")
-                Text("Mobile · 390").tag("Mobile")
-            }.labelsHidden().frame(width: 125).controlSize(.small)
+            WorkspaceSelect(title: "Viewport", selection: $browser.viewport, options: ["Desktop", "Tablet", "Mobile"],
+                            label: { ["Tablet": "Tablet · 768", "Mobile": "Mobile · 390"][$0] ?? $0 }, symbol: "macwindow", height: 28)
+                .frame(width: 150)
             if !compact {
                 Label(browser.canUseAgent ? "Agent access on" : "Agent access off", systemImage: "person.crop.circle")
                     .fixedSize()

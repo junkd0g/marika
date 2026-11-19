@@ -23,12 +23,8 @@ struct BrowserLibraryView: View {
                 Spacer()
                 Button("Done") { dismiss() }.keyboardShortcut(.cancelAction)
             }
-            Picker("Section", selection: $browser.librarySection) {
-                Text("History").tag("History")
-                Text("Bookmarks").tag("Bookmarks")
-                Text("Website Data").tag("Website Data")
-            }.pickerStyle(.segmented)
-            TextField("Search \(browser.librarySection.lowercased())", text: $query).textFieldStyle(.roundedBorder)
+            WorkspaceTabPicker("Section", selection: $browser.librarySection, options: ["History", "Bookmarks", "Website Data"])
+            TextField("Search \(browser.librarySection.lowercased())", text: $query).textFieldStyle(.workspace)
             if browser.librarySection == "Website Data" { websiteData }
             else { savedLocations }
             HStack {

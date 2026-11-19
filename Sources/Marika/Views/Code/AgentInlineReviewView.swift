@@ -56,7 +56,7 @@ struct AgentInlineReviewView: View {
                 Spacer(minLength: 4)
                 Button("Feedback", systemImage: "bubble.left") { review.beginFeedback() }.disabled(review.agentIsBusy)
                 Button("Accept remaining") { Task { await review.acceptRemaining() } }
-                    .buttonStyle(.borderedProminent).disabled(!review.canDecide || review.hunks.isEmpty)
+                    .buttonStyle(WorkspaceButtonStyle(kind: .primary, compact: true)).disabled(!review.canDecide || review.hunks.isEmpty)
             }.controlSize(.small).font(.system(size: 11)).padding(.horizontal, 12).padding(.vertical, 9)
         }
         .background(Theme.canvas)
@@ -245,7 +245,7 @@ private struct ReviewFeedbackView: View {
             HStack {
                 Button("Cancel") { review.showsFeedback = false }.keyboardShortcut(.cancelAction)
                 Spacer()
-                Button("Send to agent") { Task { await review.sendFeedback() } }.buttonStyle(.borderedProminent)
+                Button("Send to agent") { Task { await review.sendFeedback() } }.buttonStyle(WorkspaceButtonStyle(kind: .primary, compact: true))
                     .disabled(review.feedback.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || review.busy || review.agentIsBusy)
             }.controlSize(.small)
         }.padding(22).frame(width: 480).background(Theme.panel)

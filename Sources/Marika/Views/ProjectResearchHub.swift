@@ -19,12 +19,13 @@ struct ProjectResearchHub: View {
         }.background(Theme.canvas)
     }
     private var sections: some View {
-        Picker("Research workspace", selection: Binding(get: { model.researchSections[project.id] ?? "Research" }, set: { model.researchSections[project.id] = $0 })) {
-            Text("Research").tag("Research"); Text("Compare models").tag("Compare"); Text("Knowledge").tag("Knowledge")
-        }.pickerStyle(.segmented).frame(maxWidth: 420)
+        WorkspaceTabPicker(title: "Research workspace",
+                           selection: Binding(get: { model.researchSections[project.id] ?? "Research" }, set: { model.researchSections[project.id] = $0 }),
+                           options: ["Research", "Compare", "Knowledge"],
+                           label: { $0 == "Compare" ? "Compare models" : $0 }, fillsWidth: false)
             .background(SpaceContentMarker(name: "research-sections"))
     }
-    private var deliverables: some View { Button("Deliverables", systemImage: "doc.richtext") { model.showExperience("Artifacts", project: project) }.controlSize(.small) }
+    private var deliverables: some View { Button("Deliverables", systemImage: "doc.richtext") { model.showExperience("Artifacts", project: project) }.buttonStyle(WorkspaceButtonStyle(compact: true)) }
 }
 
 struct ProjectComparisonView: View {
@@ -40,7 +41,7 @@ struct ProjectComparisonView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text("Two independent answers. One considered conclusion.").font(.headline)
-            TextField("What should Claude and Codex investigate?", text: $question, axis: .vertical).lineLimit(1...4).textFieldStyle(.roundedBorder)
+            TextField("What should Claude and Codex investigate?", text: $question, axis: .vertical).lineLimit(1...4).textFieldStyle(.workspace)
             ViewThatFits(in: .horizontal) {
                 HStack { controls; Spacer(); start }
                 VStack(alignment: .leading) { controls; start }
@@ -77,7 +78,7 @@ struct ProjectComparisonView: View {
         Button(starting ? "Starting…" : "Compare Claude + Codex", systemImage: "arrow.triangle.branch") {
             starting = true; error = nil
             Task { defer { starting = false }; do { selectedID = try await model.launchComparison(question, synthesizer: synthesizer, project: project); question = "" } catch { self.error = error.localizedDescription } }
-        }.buttonStyle(.borderedProminent).disabled(starting || question.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        }.buttonStyle(WorkspaceButtonStyle(kind: .primary, compact: true)).disabled(starting || question.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
     }
     private func answer(_ agent: AgentKind, run: ModelComparison) -> some View {
         let id = run.sessionID(for: agent)

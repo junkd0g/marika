@@ -36,7 +36,7 @@ items=[
  ('Research, knowledge and deliverables','report','extra:report.png','Report preview, review comments and export'),
  ('Research, knowledge and deliverables','spreadsheet','extra:spreadsheet.png','Spreadsheet deliverable preview and export'),
  ('Research, knowledge and deliverables','presentation','extra:presentation.png','Presentation deliverable preview and export'),
- ('Design and source import','design-editor','design/**/wide-light-selected.png','Editable architecture, layers, styles and source-linked descriptions'),
+ ('Design and source import','design-editor','design/**/wide-light-selected.png','Editable design layers, reusable components and inspector controls'),
  ('Design and source import','engineering-components','design/**/engineering-components.png','Engineering component library and connected diagrams'),
  ('Design and source import','design-system','workspace-six/**/design-system.png','Shared color, type and spacing tokens; reusable components and variants'),
  ('Design and source import','design-layout','workspace-six/**/design-system-canvas.png','Reusable instances and automatic frame layout'),
@@ -78,6 +78,12 @@ for group,name,file,caption in [
  ('Getting started and settings','connections','connections.jpg','MCP connections, configuration and connection checks')]:
     if not (images/file).is_file(): raise SystemExit('Missing existing capture: '+file)
     records.append(dict(group=group,feature=name,caption=caption,image='docs/images/'+file,capture='existing native fixture capture'))
+
+for group, name, caption in [
+ ('Projects, chats and agent work', 'chat-start', 'A centered new conversation and project-aware draft composer'),
+ ('Containers and observability', 'logs-compact', 'Runtime log controls and entries in a 900 by 600 window')]:
+    if (images/(name+'.png')).is_file():
+        records.append(dict(group=group,feature=name,caption=caption,image='docs/images/'+name+'.png',capture='native visual review with isolated sample data'))
 
 (repo/'docs/screenshot-coverage.json').write_text(json.dumps(dict(note='Real native UI; isolated local projects, sample agent output, fixture monitoring data. No production credentials or clusters.',screenshots=records),indent=2)+'\n')
 section=['<!-- gallery:start -->','## Complete screenshot gallery','','Every major workspace area is shown below. Expand a workflow to see its screenshots. Captures use disposable demo projects; agent answers, monitoring history and update feeds are sample data.','']

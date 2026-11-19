@@ -9,13 +9,11 @@ struct ContainerHealthView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 HStack {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Cluster health").font(.title2.weight(.semibold))
-                        Text("All configured Kubernetes contexts · all namespaces").font(.caption).foregroundStyle(.secondary)
-                    }
+                    WorkspaceHeading(title: "Cluster health", subtitle: "All configured Kubernetes contexts · all namespaces")
                     Spacer()
                     if workspace.isRefreshingHealth { ProgressView().controlSize(.small) }
                     Button("Refresh health") { Task { await workspace.refreshHealth() } }.disabled(workspace.isRefreshingHealth)
+                        .buttonStyle(WorkspaceButtonStyle(compact: true))
                         #if DEBUG
                         .background(DebugViewMarker(name: "containers-health-refresh"))
                         #endif
@@ -33,7 +31,7 @@ struct ContainerHealthView: View {
                 ForEach(workspace.healthSnapshots) { snapshot in
                     VStack(alignment: .leading, spacing: 12) {
                         HStack {
-                            Image(systemName: snapshot.error == nil ? "server.rack" : "wifi.exclamationmark").foregroundStyle(snapshot.error == nil ? Color.blue : .orange)
+                            Image(systemName: snapshot.error == nil ? "server.rack" : "wifi.exclamationmark").foregroundStyle(snapshot.error == nil ? Theme.ink : .orange)
                             Text(snapshot.target.name).font(.headline).textSelection(.enabled)
                             Spacer()
                             Text(snapshot.checkedAt, style: .time).font(.caption).foregroundStyle(.secondary)

@@ -113,7 +113,7 @@ struct ProjectCodeView: View {
                         Text("Open code, images, PDFs, and other files from the list on the left.")
                             .font(.system(size: 13)).foregroundStyle(.secondary)
                         Button("Open File…  ⌘P") { editor.showsQuickOpen = true }
-                            .buttonStyle(.borderedProminent).padding(.vertical, 4)
+                            .buttonStyle(WorkspaceButtonStyle(kind: .primary, compact: true)).padding(.vertical, 4)
                         Text("⌘S to save  ·  ⌘F to find  ·  ⇧⌘E for files")
                             .font(.system(size: 11)).foregroundStyle(.secondary)
                     }

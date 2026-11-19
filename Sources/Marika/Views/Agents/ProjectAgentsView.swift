@@ -35,6 +35,7 @@ struct ProjectAgentsView: View {
                 HStack(spacing: 20) { heading.fixedSize(); Spacer(minLength: 0); filters }
                 VStack(alignment: .leading, spacing: 12) { heading; filters }
             }
+            .fixedSize(horizontal: false, vertical: true)
             .padding(24)
             if tasks.isEmpty {
                 ContentUnavailableView {
@@ -43,11 +44,11 @@ struct ProjectAgentsView: View {
                     Text("Give Claude or Codex a task and follow its progress here.")
                 } actions: {
                     Button("New Agent") { model.agentLaunchProjectID = project.id }
-                        .buttonStyle(.borderedProminent)
-                }
+                        .buttonStyle(WorkspaceButtonStyle(kind: .primary))
+                }.frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if visibleTasks.isEmpty {
                 ContentUnavailableView(filter == .needsAttention ? "No agents need attention" : "No \(filter.rawValue.lowercased()) agents", systemImage: "person.2",
-                    description: Text("Choose All to see every agent in this project."))
+                    description: Text("Choose All to see every agent in this project.")).frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ScrollView {
                     LazyVStack(spacing: 0) {
@@ -73,6 +74,7 @@ struct ProjectAgentsView: View {
             .font(.system(size: 11)).foregroundStyle(.secondary)
             .padding(.horizontal, 16).padding(.vertical, 10)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(Theme.canvas)
         .task(id: tasks.map(\.id)) {
             for task in tasks { await model.open(task.id) }
@@ -89,16 +91,15 @@ struct ProjectAgentsView: View {
             HStack {
                 Button("Queue (\((model.project(id: project.id)?.taskQueue?.pendingCount ?? 0) + (model.project(id: project.id)?.taskQueue?.items.count { $0.state == .failed } ?? 0)))", systemImage: "list.bullet.clipboard") { model.taskQueueProjectID = project.id }
                 Button("Activity (\((model.project(id: project.id)?.taskActivity ?? []).count { !$0.isRead }))", systemImage: "bell") { model.taskActivityProjectID = project.id }
-            }.controlSize(.small)
+            }.buttonStyle(WorkspaceButtonStyle(compact: true))
             Button("Review plans and results") { model.showExperience("Artifacts", project: project) }.buttonStyle(.link).font(.caption)
             Text("\(activeCount) active · \(attentionCount) need attention · \(tasks.count) in this project")
                 .font(.system(size: 12)).foregroundStyle(.secondary)
         }
     }
     private var filters: some View {
-        Picker("Show agents", selection: $filter) {
-            ForEach(AgentTaskFilter.allCases, id: \.self) { Text($0.rawValue).tag($0) }
-        }.pickerStyle(.segmented).labelsHidden().frame(width: 340).controlSize(.small)
+        WorkspaceTabPicker(title: "Show agents", selection: $filter, options: Array(AgentTaskFilter.allCases),
+                           label: { $0.rawValue }, fillsWidth: false)
     }
 
 }
@@ -222,7 +223,7 @@ struct LaunchAgentView: View {
                 }
             }
             VStack(alignment: .leading, spacing: 7) {
-                TextField("Agent name (optional)", text: $name).textFieldStyle(.roundedBorder)
+                TextField("Agent name (optional)", text: $name).textFieldStyle(.workspace)
                     .accessibilityLabel("Agent name")
                 Text(name.isEmpty ? "Suggested name: \(AgentTaskName.suggested(from: prompt))" : "You can rename the agent later.")
                     .font(.caption).foregroundStyle(.secondary)
@@ -264,7 +265,7 @@ struct LaunchAgentView: View {
                 Button("Cancel") { launchTask?.cancel(); dismiss() }.keyboardShortcut(.cancelAction)
                 if ticketLaunch == nil { Button("Queue task") { enqueue() }.disabled(isLaunching || prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) }
                 Button(isLaunching ? "Launching…" : ticketLaunch == nil ? "Launch Agent" : "Start work", action: launch)
-                    .buttonStyle(.borderedProminent).keyboardShortcut(.return, modifiers: .command)
+                    .buttonStyle(WorkspaceButtonStyle(kind: .primary, compact: true)).keyboardShortcut(.return, modifiers: .command)
                     .disabled(isLaunching || (ticketLaunch == nil && prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty))
                     .background(SpaceContentMarker(name: ticketLaunch == nil ? "agent-launch-submit" : "ticket-launch-submit"))
             }

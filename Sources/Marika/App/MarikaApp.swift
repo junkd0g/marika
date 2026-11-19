@@ -23,7 +23,7 @@ struct MarikaApp: App {
                     Task { await model.refreshAgents() }
                 }
         }
-        .defaultSize(width: 1240, height: 820)
+        .defaultSize(Self.initialWindowSize)
         .windowStyle(.hiddenTitleBar)
         .windowToolbarStyle(.unifiedCompact)
         .commands { MarikaCommands(model: model) }
@@ -38,6 +38,18 @@ struct MarikaApp: App {
             SettingsView()
                 .environment(model)
         }
+    }
+
+    private static var initialWindowSize: CGSize {
+        #if DEBUG
+        // Isolated review bundles can exercise a compact first layout without synthesized events.
+        if let width = DebugFixtureSettings.value("MARIKA_INITIAL_WIDTH").flatMap(Double.init),
+           let height = DebugFixtureSettings.value("MARIKA_INITIAL_HEIGHT").flatMap(Double.init),
+           width.isFinite, height.isFinite {
+            return CGSize(width: max(900, width), height: max(600, height))
+        }
+        #endif
+        return CGSize(width: 1240, height: 820)
     }
 }
 

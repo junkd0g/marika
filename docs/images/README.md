@@ -47,3 +47,19 @@ Capture the app window through native screenshot controls, review the image at f
 save the image in the format indicated by its filename. Keep the complete workspace visible so the tab and view
 controls are understandable. Verify the captions and relative links in the tour after replacing
 an image.
+
+## November 2026 visual refresh
+
+The workspace, code editor, new-chat composer, Notes, Tickets, Design editor, Docker and
+Kubernetes maps, cluster health, pipeline history, and runtime log captures were reviewed
+again on 19 November using an isolated Copper sample project. `chat-start.png` shows light
+appearance; `logs-compact.png` shows the 900 by 600 layout. Pipeline history is labeled
+sample data; the sample Swift package was also run successfully through Pipelines.
+
+The Design capture uses sample reusable components and authored colors. Container data and
+log lines come from the local fixture engine, not a production cluster. Existing screenshots
+for other features remain from their documented captures.
+
+For compact first-layout reviews, debug test bundles can set `MARIKA_INITIAL_WIDTH` and
+`MARIKA_INITIAL_HEIGHT` in their `MarikaTesting` dictionary. Both dimensions retain the
+app's minimum size of 900 by 600. Release builds always use the normal window defaults.

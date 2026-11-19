@@ -23,11 +23,11 @@ struct ProjectContainersView: View {
     @State private var width: CGFloat = 1000
     @State private var diagnostics: ContainerDiagnosticRequest?
     @State private var recovery: ContainerRecoveryRequest?
+    private var compactMonitoring: Bool { width >= 600 && width < 850 && [.logs, .metrics].contains(workspace.display) }
 
     var body: some View {
         VStack(spacing: 0) {
             header
-            Divider()
             targets
             Divider()
             if let forward = workspace.forward, forward.running { forwardBar(forward) }
@@ -81,21 +81,18 @@ struct ProjectContainersView: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Containers").font(.system(size: 22, weight: .semibold))
-                    Text("Docker and Kubernetes · " + project.name).font(.caption).foregroundStyle(.secondary)
-                }
+                if compactMonitoring { Text("Containers").font(.system(size: 20, weight: .semibold)).tracking(-0.4) }
+                else { WorkspaceHeading(title: "Containers", subtitle: "Docker and Kubernetes · " + project.name) }
                 Spacer(minLength: 8)
-                if width >= 850 { headerActions }
+                if width >= 850 || compactMonitoring { headerActions }
             }
-            if width < 850 { headerActions }
-        }.padding(18)
+            if width < 850 && !compactMonitoring { headerActions }
+        }.padding(20)
     }
     private var headerActions: some View {
         HStack(spacing: 12) {
-            Picker("Engine", selection: Binding(get: { workspace.settings.provider }, set: { workspace.changeProvider($0) })) {
-                ForEach(ContainerProvider.allCases, id: \.self) { Text($0.rawValue).tag($0) }
-            }.pickerStyle(.segmented).labelsHidden().frame(width: 205).disabled(workspace.isBusy)
+            WorkspaceTabPicker(title: "Engine", selection: Binding(get: { workspace.settings.provider }, set: { workspace.changeProvider($0) }),
+                options: ContainerProvider.allCases, label: { $0.rawValue }).frame(width: 205).disabled(workspace.isBusy)
             #if DEBUG
             .background(DebugViewMarker(name: "containers-engine"))
             #endif
@@ -122,13 +119,14 @@ struct ProjectContainersView: View {
     private var targets: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 12) {
-                Picker("Context", selection: Binding(get: { workspace.target?.id ?? "" }, set: { workspace.changeTarget($0) })) {
-                    if workspace.targets.isEmpty { Text("No contexts available").tag("") }
-                    ForEach(workspace.targets) { Text($0.name + ($0.kubeconfig == nil ? "" : " · local")).tag($0.id) }
-                }.frame(maxWidth: 380).disabled(workspace.isBusy)
+                WorkspaceSelect(title: "Context", selection: Binding(get: { workspace.target?.id ?? "" }, set: { workspace.changeTarget($0) }),
+                    options: workspace.targets.isEmpty ? [""] : workspace.targets.map(\.id), label: { id in
+                        guard let target = workspace.targets.first(where: { $0.id == id }) else { return "No contexts available" }
+                        return target.name + (target.kubeconfig == nil ? "" : " · local")
+                    }, symbol: "server.rack", height: 34).frame(maxWidth: 380).disabled(workspace.isBusy)
                 if workspace.settings.provider == .kubernetes {
                     HStack(spacing: 4) {
-                        TextField("Namespace or *", text: $namespace).textFieldStyle(.roundedBorder).frame(width: 130)
+                        TextField("Namespace or *", text: $namespace).textFieldStyle(.workspace).frame(width: 130)
                             .onSubmit { workspace.changeNamespace(namespace) }.onAppear { namespace = workspace.settings.namespace }
                             .onChange(of: workspace.settings.namespace) { _, value in namespace = value }
                         Menu { Button("All namespaces") { workspace.changeNamespace("*") }; ForEach(workspace.namespaces, id: \.self) { value in Button(value) { workspace.changeNamespace(value) } } }
@@ -143,9 +141,8 @@ struct ProjectContainersView: View {
             }
             if workspace.settings.provider == .docker, !workspace.composeFiles.isEmpty {
                 HStack {
-                    Picker("Project stack", selection: Binding(get: { workspace.settings.composeFile }, set: { workspace.settings.composeFile = $0 })) {
-                        ForEach(workspace.composeFiles, id: \.self) { Text($0).tag($0) }
-                    }.frame(maxWidth: 340)
+                    WorkspaceSelect(title: "Project stack", selection: Binding(get: { workspace.settings.composeFile }, set: { workspace.settings.composeFile = $0 }),
+                        options: workspace.composeFiles, label: { $0 }, height: 34).frame(maxWidth: 340)
                     Button("Start stack") { compose("up") }.buttonStyle(WorkspaceButtonStyle(compact: true))
                     Button("Stop stack…") { compose("down") }.buttonStyle(WorkspaceButtonStyle(compact: true))
                 }.disabled(workspace.isBusy || workspace.target == nil)
@@ -159,7 +156,7 @@ struct ProjectContainersView: View {
                         scope: workspace.scope, operation: .delete(cluster)) }.buttonStyle(WorkspaceButtonStyle(kind: .destructive, compact: true)).disabled(workspace.isBusy)
                 }
             }
-        }.padding(.horizontal, 18).padding(.vertical, 12).background(Theme.panel)
+        }.padding(.horizontal, 20).padding(.bottom, 16)
     }
     @ViewBuilder private var content: some View {
         if workspace.display == .logs {
@@ -175,7 +172,7 @@ struct ProjectContainersView: View {
         } else {
             VStack(spacing: 0) {
                 HStack {
-                    TextField("Filter resources", text: $workspace.filter).textFieldStyle(.roundedBorder).frame(maxWidth: 260)
+                    WorkspaceSearchField(placeholder: "Filter resources", text: $workspace.filter).frame(maxWidth: 260)
                     Spacer()
                     Text("\(workspace.resources.count) resources").font(.caption).foregroundStyle(.secondary)
                     viewPicker
@@ -190,13 +187,13 @@ struct ProjectContainersView: View {
                             HStack(spacing: 10) {
                                 Image(systemName: resource.kind.symbol).foregroundStyle(resource.condition.color).frame(width: 22)
                                 VStack(alignment: .leading, spacing: 3) {
-                                    Text(resource.name).font(.system(size: 12, weight: .medium))
+                                    Text(resource.name).font(.system(size: 13, weight: .medium))
                                     Text(resource.namespace.isEmpty ? resource.image : resource.namespace + " · " + resource.kind.rawValue).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                                 }
                                 Spacer(); Text(resource.status).font(.caption).foregroundStyle(resource.condition.color)
-                            }.padding(.vertical, 4).tag(resource.id)
+                            }.padding(.vertical, 8).tag(resource.id)
                         }
-                    }.listStyle(.plain)
+                    }.listStyle(.plain).scrollContentBackground(.hidden)
                 }
             }
         }
@@ -302,10 +299,9 @@ struct ProjectContainersView: View {
         }.disabled(workspace.isBusy)
     }
     private var viewPicker: some View {
-        Picker("View", selection: $workspace.display) {
-            Text("Map").tag(ContainerViewMode.map); Text("List").tag(ContainerViewMode.list); Text("Logs").tag(ContainerViewMode.logs); Text("Metrics").tag(ContainerViewMode.metrics)
-            if workspace.settings.provider == .kubernetes { Text("Health").tag(ContainerViewMode.health) }
-        }.pickerStyle(.segmented).labelsHidden().frame(width: workspace.settings.provider == .kubernetes ? 360 : 290)
+        WorkspaceTabPicker(title: "View", selection: $workspace.display,
+            options: workspace.settings.provider == .kubernetes ? [.map, .list, .logs, .metrics, .health] : [.map, .list, .logs, .metrics],
+            label: { $0.rawValue }).frame(width: workspace.settings.provider == .kubernetes ? 360 : 290)
             #if DEBUG
             .background(DebugViewMarker(name: "containers-view"))
             #endif

@@ -64,16 +64,25 @@ struct ContainerMetricsView: View {
         #endif
     }
     private var controls: some View {
-        HStack {
-            Picker("Resource", selection: Binding(get: { workspace.selectedID ?? "" }, set: { workspace.selectedID = $0.isEmpty ? nil : $0 })) {
-                Text("All resources").tag("")
-                ForEach(workspace.resources.filter { $0.kind != .image }) { Text($0.name).tag($0.id) }
-            }.frame(maxWidth: 300)
-            Spacer()
-            Button(metrics.recording ? "Pause" : "Record metrics") { metrics.recording.toggle() }
-            Button("Sample now") { Task { await metrics.sample(workspace) } }.disabled(metrics.isLoading)
-            Button("Prometheus…") { showsConnection = true }
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 12) { resourcePicker; Spacer(minLength: 0); recordingActions }
+            VStack(alignment: .leading, spacing: 12) { resourcePicker; recordingActions }
         }
+    }
+    private var resourcePicker: some View {
+        WorkspaceSelect(title: "Resource", selection: Binding(get: { workspace.selectedID ?? "" }, set: { workspace.selectedID = $0.isEmpty ? nil : $0 }),
+            options: [""] + workspace.resources.filter { $0.kind != .image }.map(\.id),
+            label: { id in workspace.resources.first(where: { $0.id == id })?.name ?? "All resources" }, symbol: "shippingbox", height: 34)
+            .frame(minWidth: 180, maxWidth: 300)
+    }
+    private var recordingActions: some View {
+        HStack(spacing: 8) {
+            Button(metrics.recording ? "Pause" : "Record metrics") { metrics.recording.toggle() }
+                .buttonStyle(WorkspaceButtonStyle(kind: .primary, compact: true))
+            Button("Sample now") { Task { await metrics.sample(workspace) } }.disabled(metrics.isLoading)
+                .buttonStyle(WorkspaceButtonStyle(compact: true))
+            Button("Prometheus…") { showsConnection = true }.buttonStyle(WorkspaceButtonStyle(kind: .quiet, compact: true))
+        }.fixedSize()
     }
     private func chart(_ metric: ContainerMetric) -> some View {
         let values = metrics.series(metric, ids: ids)

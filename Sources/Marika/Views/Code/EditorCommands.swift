@@ -57,14 +57,14 @@ struct RenameSymbolView: View {
         VStack(alignment: .leading, spacing: 12) {
             Label("Rename symbol", systemImage: "pencil.line").font(.system(size: 13, weight: .semibold))
             TextField("New symbol name", text: $ide.renameText)
-                .textFieldStyle(.roundedBorder).focused($focused).onSubmit(rename)
+                .textFieldStyle(.workspace).focused($focused).onSubmit(rename)
             Text("Review the changes across your project before applying them.")
                 .font(.system(size: 11)).foregroundStyle(.secondary)
             HStack {
                 Button("Cancel", action: dismiss).keyboardShortcut(.cancelAction)
                 Spacer()
                 Button("Preview Changes", action: rename)
-                    .buttonStyle(.borderedProminent).disabled(ide.renameText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .buttonStyle(WorkspaceButtonStyle(kind: .primary, compact: true)).disabled(ide.renameText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }.controlSize(.small)
         }.padding(18).frame(width: 310).onAppear { focused = true }
     }

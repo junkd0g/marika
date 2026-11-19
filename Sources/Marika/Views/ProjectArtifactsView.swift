@@ -26,7 +26,7 @@ struct ProjectArtifactsView: View {
                 Text("Plan").tag("Plan"); Text("Report").tag("report"); Text("Spreadsheet").tag("spreadsheet"); Text("Presentation").tag("presentation")
             }.pickerStyle(.segmented)
             HStack {
-                TextField(creation == "Plan" ? "Describe a task to plan…" : "Describe the deliverable and its sources…", text: $task).textFieldStyle(.roundedBorder)
+                TextField(creation == "Plan" ? "Describe a task to plan…" : "Describe the deliverable and its sources…", text: $task).textFieldStyle(.workspace)
                 Button(launching ? "Starting…" : creation == "Plan" ? "Draft plan" : "Create deliverable") { launchPlan() }.disabled(launching || task.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
             HStack {
@@ -85,7 +85,7 @@ struct ProjectArtifactsView: View {
             Stepper("Comment on line \(line)", value: $line, in: 1...max(1, lines.count)).font(.caption)
             Text(lines.indices.contains(line - 1) ? lines[line - 1] : "").font(.caption.monospaced()).foregroundStyle(.secondary).lineLimit(3)
             HStack {
-                TextField("Feedback on this passage", text: $comment).textFieldStyle(.roundedBorder)
+                TextField("Feedback on this passage", text: $comment).textFieldStyle(.workspace)
                 Button("Add") {
                     model.updateProject(owner.id) { current in
                         if let index = current.artifacts?.firstIndex(where: { $0.id == artifact.id }) {
@@ -100,7 +100,7 @@ struct ProjectArtifactsView: View {
                 Spacer()
                 if artifact.kind == .plan {
                     Button(artifact.approved ? "Continue implementation" : "Approve and implement") { Task { await model.submitArtifact(artifact, projectID: owner.id, approve: true) } }
-                        .buttonStyle(.borderedProminent).disabled(model.controllers[artifact.sessionID]?.isBusy == true)
+                        .buttonStyle(WorkspaceButtonStyle(kind: .primary, compact: true)).disabled(model.controllers[artifact.sessionID]?.isBusy == true)
                 } else {
                     Button(artifact.approved ? "Reviewed" : "Mark reviewed") {
                         model.updateProject(owner.id) { current in

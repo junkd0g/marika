@@ -112,21 +112,33 @@ struct ComposerView: View {
             ComposerTextView(
                 text: $session.draft, placeholder: placeholder,
                 isActive: conversationIsVisible && !isRoutingMessage,
+                minimumHeight: session.hasStarted ? 44 : 68,
                 focusToken: [session.id, model.composerFocusRequest],
                 onSubmit: { submit() }, onPasteImage: { data in addImage(data: data) }, onKey: { key in handleKey(key) }
             )
             .fixedSize(horizontal: false, vertical: true)
 
             controls
+            if !session.hasStarted, let project = model.project(for: session.meta) {
+                HStack(spacing: 7) {
+                    Image(systemName: "folder")
+                    Text(project.name).lineLimit(1)
+                    Spacer(minLength: 0)
+                    Text("Project workspace").foregroundStyle(.tertiary)
+                }
+                .font(.system(size: 11.5)).foregroundStyle(.secondary)
+                .padding(.top, 14).padding(.bottom, 2)
+                .overlay(alignment: .top) { Rectangle().fill(Theme.hairline.opacity(0.6)).frame(height: 1).padding(.top, 4) }
+            }
         }
-        .padding(.horizontal, 16)
-        .padding(.top, 16)
-        .padding(.bottom, 12)
-        .background(Theme.composer, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .overlay { RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(Theme.hairline) }
+        .padding(.horizontal, 20)
+        .padding(.top, 20)
+        .padding(.bottom, 14)
+        .background(Theme.composer, in: RoundedRectangle(cornerRadius: Theme.composerRadius, style: .continuous))
+        .overlay { RoundedRectangle(cornerRadius: Theme.composerRadius, style: .continuous).strokeBorder(Theme.hairline) }
         .overlay {
             if isDropTargeted {
-                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                RoundedRectangle(cornerRadius: Theme.composerRadius, style: .continuous)
                     .strokeBorder(Color.accentColor, lineWidth: 2)
             }
         }
@@ -181,7 +193,7 @@ struct ComposerView: View {
                 }
             }
         }
-        .font(.system(size: 12))
+        .font(.system(size: 12)).foregroundStyle(.secondary)
     }
 
     private enum Density {
@@ -367,7 +379,7 @@ struct ComposerView: View {
                 session.interrupt()
             } label: {
                 Image(systemName: "stop.circle.fill")
-                    .font(.system(size: 23))
+                    .font(.system(size: 28))
                     .foregroundStyle(.primary)
             }
             .buttonStyle(.plain)
@@ -376,7 +388,7 @@ struct ComposerView: View {
         if !session.isBusy || canSend {
             Button(action: submit) {
                 Image(systemName: "arrow.up.circle.fill")
-                    .font(.system(size: 23))
+                    .font(.system(size: 28))
                     .foregroundStyle(canSend ? Theme.ink : Color.secondary.opacity(0.35))
             }
             .buttonStyle(.plain)

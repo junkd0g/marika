@@ -38,7 +38,7 @@ struct MCPConnectionsView: View {
                 }
                 Spacer()
                 Button("Import JSON") { importing = true }
-                Button("Add server", systemImage: "plus") { editing = MCPServerDraft() }.buttonStyle(.borderedProminent)
+                Button("Add server", systemImage: "plus") { editing = MCPServerDraft() }.buttonStyle(WorkspaceButtonStyle(kind: .primary, compact: true))
                     .accessibilityIdentifier("mcp-add-server")
                     #if DEBUG
                     .background(DebugViewMarker(name: "mcp-add-server"))
@@ -46,7 +46,7 @@ struct MCPConnectionsView: View {
             }
             Text("Changes apply on the next agent connection after you save. Testing starts a temporary connection and lists capabilities; it does not call any tools.")
                 .font(.system(size: 11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            TextField("Search connections", text: $query).textFieldStyle(.roundedBorder).accessibilityLabel("Search connections")
+            TextField("Search connections", text: $query).textFieldStyle(.workspace).accessibilityLabel("Search connections")
             Picker("Connections", selection: $showsCatalog) {
                 Text("Catalog").tag(true)
                 Text("Configured (\(servers.count))").tag(false)
@@ -97,10 +97,10 @@ struct MCPConnectionsView: View {
                     CopyButton(text: setup)
                 }
                 if entry.requiresClientID {
-                    TextField("Approved OAuth client ID", text: $catalogClientID).textFieldStyle(.roundedBorder)
-                    TextField("Registered loopback redirect", text: $catalogRedirect).textFieldStyle(.roundedBorder)
+                    TextField("Approved OAuth client ID", text: $catalogClientID).textFieldStyle(.workspace)
+                    TextField("Registered loopback redirect", text: $catalogRedirect).textFieldStyle(.workspace)
                 }
-                if entry.usesToken { SecureField("Personal access token", text: $catalogToken).textFieldStyle(.roundedBorder) }
+                if entry.usesToken { SecureField("Personal access token", text: $catalogToken).textFieldStyle(.workspace) }
                 Link("Official setup guide", destination: URL(string: entry.documentation)!)
                 Text(entry.usesToken ? "Connect stores the token in Keychain. Save Project Settings to retain the credential reference." : entry.usesOAuth ? "Connect opens the service's sign-in page. Credentials stay in Keychain. Save Project Settings to keep this connection." : "Connect adds the server. Use Test connection to check access, then Save Project Settings.")
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
@@ -109,7 +109,7 @@ struct MCPConnectionsView: View {
                     Button("Cancel") { catalogSelection = nil }.disabled(connecting)
                     Spacer()
                     Button(connecting ? "Connecting…" : "Connect") { connectCatalog(entry) }
-                        .buttonStyle(.borderedProminent).disabled(connecting || (entry.requiresClientID && catalogClientID.isEmpty) || (entry.usesToken && catalogToken.isEmpty))
+                        .buttonStyle(WorkspaceButtonStyle(kind: .primary, compact: true)).disabled(connecting || (entry.requiresClientID && catalogClientID.isEmpty) || (entry.usesToken && catalogToken.isEmpty))
                 }
             }.padding(24).frame(width: 520)
                 .onDisappear { catalogToken = ""; catalogClientID = "" }.interactiveDismissDisabled(connecting)
@@ -135,7 +135,7 @@ struct MCPConnectionsView: View {
                             for server in try MCPConfigurationEditor.servers(in: importText) { result = try MCPConfigurationEditor.save(server, in: result) }
                             configuration = result; importText = ""; error = nil; importing = false; showsCatalog = false; query = ""
                         } catch { self.error = error.localizedDescription }
-                    }.buttonStyle(.borderedProminent)
+                    }.buttonStyle(WorkspaceButtonStyle(kind: .primary, compact: true))
                 }
             }.padding(20).frame(width: 520)
         }
@@ -171,7 +171,7 @@ struct MCPConnectionsView: View {
                     Text(entry.category).font(.caption).foregroundStyle(.secondary)
                 }
                 Spacer()
-                Button("Connect") { error = nil; catalogClientID = ""; catalogToken = ""; catalogSelection = entry }.buttonStyle(.borderedProminent)
+                Button("Connect") { error = nil; catalogClientID = ""; catalogToken = ""; catalogSelection = entry }.buttonStyle(WorkspaceButtonStyle(kind: .primary, compact: true))
                     .accessibilityLabel("Connect " + entry.name)
             }
             Text(entry.summary)
@@ -433,7 +433,7 @@ private struct MCPServerEditor: View {
                 Text(draft.originalName == nil ? "Add MCP server" : "Edit MCP server").font(.system(size: 18, weight: .semibold))
                 Spacer()
                 Button("Cancel") { dismiss() }
-                Button("Save server") { do { try save(draft.server()) } catch { self.error = error.localizedDescription } }.buttonStyle(.borderedProminent)
+                Button("Save server") { do { try save(draft.server()) } catch { self.error = error.localizedDescription } }.buttonStyle(WorkspaceButtonStyle(kind: .primary, compact: true))
                     #if DEBUG
                     .background(DebugViewMarker(name: "mcp-save-server"))
                     #endif
@@ -466,7 +466,7 @@ private struct MCPServerEditor: View {
                         .font(.system(size: 11)).foregroundStyle(.secondary)
                 }.padding(.vertical, 3)
             }
-        }.font(.system(size: 12)).controlSize(.small).textFieldStyle(.roundedBorder).padding(20).frame(width: 550, height: 460).background(Theme.canvas)
+        }.font(.system(size: 12)).controlSize(.small).textFieldStyle(.workspace).padding(20).frame(width: 550, height: 460).background(Theme.canvas)
             #if DEBUG
             .background(DebugViewMarker(name: "mcp-server-editor"))
             #endif

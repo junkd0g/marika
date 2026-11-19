@@ -39,7 +39,7 @@ struct UpdatesView: View {
                 if updates.status == .available, let release = updates.release {
                     if updates.supportsInstallation {
                         Button("Download and Install…") { updates.install() }
-                            .buttonStyle(.borderedProminent).disabled(!model.canInstallAppUpdate)
+                            .buttonStyle(WorkspaceButtonStyle(kind: .primary, compact: true)).disabled(!model.canInstallAppUpdate)
                             .help(model.canInstallAppUpdate ? "Review and install the signed update" : "Finish active agents and save editor changes first")
                     } else {
                         Link("View Release", destination: release.url)

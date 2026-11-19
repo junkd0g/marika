@@ -28,9 +28,9 @@ struct SidebarView: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 10) {
                 Image(systemName: model.selectedSpace.symbol).font(.system(size: 18, weight: .semibold))
-                    .foregroundStyle(model.selectedSpace.color.tint).frame(width: 40, height: 40)
-                    .background(model.selectedSpace.color.tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
-                    .overlay { RoundedRectangle(cornerRadius: 12).strokeBorder(model.selectedSpace.color.tint.opacity(0.16)) }
+                    .foregroundStyle(Theme.ink).frame(width: 36, height: 36)
+                    .background(Theme.surface, in: RoundedRectangle(cornerRadius: 11))
+                    .overlay(alignment: .bottomTrailing) { Circle().fill(model.selectedSpace.color.tint).frame(width: 6, height: 6).padding(2) }
                 Text(model.selectedSpace.name).font(.system(size: 15, weight: .semibold)).lineLimit(1)
                 Spacer(minLength: 0)
                 Menu {
@@ -88,7 +88,7 @@ struct SidebarView: View {
             }
             .font(.system(size: 11.5))
             .padding(.horizontal, 10).padding(.vertical, 8)
-            .background(Theme.surface, in: RoundedRectangle(cornerRadius: 7))
+            .background(Theme.surface, in: RoundedRectangle(cornerRadius: 10))
             .padding(.horizontal, 12).padding(.bottom, 8)
 
             ScrollView {
@@ -130,11 +130,6 @@ struct SidebarView: View {
             SpaceSwitcher(visibleRows: spaceRows) { pendingSpaceDeletion = $0 }
             UsageFooter()
         }
-        .background(alignment: .topLeading) {
-            RadialGradient(colors: [model.selectedSpace.color.tint.opacity(0.10), .clear],
-                center: .topLeading, startRadius: 0, endRadius: 220)
-                .frame(height: 200).allowsHitTesting(false)
-        }
         .background(Theme.sidebar)
         .onChange(of: model.selectedSpace.id) { _, _ in searchText = "" }
         .confirmationDialog("Delete “\(pendingSpaceDeletion?.name ?? "")”?", isPresented: Binding(
@@ -156,9 +151,9 @@ struct SidebarView: View {
                 Text(title)
                 Spacer(minLength: 4)
                 if count > 0 { Text(String(count)).font(.system(size: 10)).monospacedDigit().foregroundStyle(.secondary) }
-            }.font(.system(size: 12.5)).padding(.horizontal, 10).padding(.vertical, 9)
+            }.font(.system(size: 13.5)).padding(.horizontal, 10).padding(.vertical, 9)
                 .contentShape(Rectangle())
-                .background(model.selectedSpace.section == section ? Theme.selection : .clear, in: RoundedRectangle(cornerRadius: 7))
+                .background(model.selectedSpace.section == section ? Theme.selection : .clear, in: RoundedRectangle(cornerRadius: 10))
         }.buttonStyle(.plain).accessibilityLabel(title + " in " + model.selectedSpace.name)
             .accessibilityAddTraits(model.selectedSpace.section == section ? [.isSelected] : [])
             #if DEBUG
@@ -169,9 +164,9 @@ struct SidebarView: View {
     private func sidebarAction(_ title: String, symbol: String, selected: Bool = false, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Label(title, systemImage: symbol)
-                .font(.system(size: 12.5)).frame(maxWidth: .infinity, alignment: .leading)
+                .font(.system(size: 13.5)).frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 10).padding(.vertical, 9).contentShape(Rectangle())
-                .background(selected ? Theme.selection : .clear, in: RoundedRectangle(cornerRadius: 7))
+                .background(selected ? Theme.selection : .clear, in: RoundedRectangle(cornerRadius: 10))
         }
         .buttonStyle(.plain).foregroundStyle(Theme.ink)
         .accessibilityAddTraits(selected ? [.isSelected] : [])
@@ -249,7 +244,7 @@ private struct SpaceSwitchButton: View {
             HStack(spacing: 10) {
                 Image(systemName: space.symbol).font(.system(size: 14, weight: .medium))
                     .foregroundStyle(space.color.tint).frame(width: 32, height: 32)
-                    .background(space.color.tint.opacity(selected ? 0.16 : 0.07), in: RoundedRectangle(cornerRadius: 9))
+                    .background(Theme.surface.opacity(selected ? 1 : 0.5), in: RoundedRectangle(cornerRadius: 9))
                 VStack(alignment: .leading, spacing: 3) {
                     Text(space.name).font(.system(size: 12, weight: selected ? .semibold : .medium)).lineLimit(1)
                     Text("\(projectCount) \(projectCount == 1 ? "project" : "projects")")
@@ -261,13 +256,13 @@ private struct SpaceSwitchButton: View {
                         .frame(width: 7, height: 7)
                 }
                 if selected {
-                    Image(systemName: "checkmark").font(.system(size: 11, weight: .semibold)).foregroundStyle(space.color.tint)
+                    Image(systemName: "checkmark").font(.system(size: 11, weight: .semibold)).foregroundStyle(Theme.ink)
                 }
             }
             .padding(.horizontal, 10).frame(maxWidth: .infinity).frame(height: 48)
-            .background(selected ? space.color.tint.opacity(0.10) : hovered ? Theme.selection : .clear,
+            .background(selected ? Theme.selection : hovered ? Theme.surface : .clear,
                 in: RoundedRectangle(cornerRadius: 10))
-            .overlay { RoundedRectangle(cornerRadius: 10).strokeBorder(selected ? space.color.tint.opacity(0.22) : .clear) }
+            .overlay { RoundedRectangle(cornerRadius: 10).strokeBorder(selected ? Theme.hairline.opacity(0.6) : .clear) }
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain).foregroundStyle(Theme.ink).onHover { hovered = $0 }

@@ -6,24 +6,27 @@ enum Theme {
     static let code = Font.system(size: 12, design: .monospaced)
     static let codeSmall = Font.system(size: 11, design: .monospaced)
     static let body = Font.system(size: 14)
-    static let radius: CGFloat = 10
+    static let displayTitle = Font.custom("Georgia", size: 34, relativeTo: .largeTitle)
+    static let radius: CGFloat = 14
+    static let workspaceRadius: CGFloat = 22
+    static let composerRadius: CGFloat = 24
 
     static let addition = Color.green
     static let deletion = Color.red
     static let attention = Color.orange
-    static let surface = Color.primary.opacity(0.04)
-    static let hairline = Color.primary.opacity(0.10)
-    static let canvas = adaptive(light: 0xFFFFFF, dark: 0x202020)
-    static let designCanvas = adaptive(light: 0xF1F1F3, dark: 0x1A1A1A)
-    static let panel = adaptive(light: 0xFAFAFA, dark: 0x272727)
-    static let chrome = adaptive(light: 0xFAFAFA, dark: 0x1D1D1D)
-    static let sidebar = adaptive(light: 0xF5F5F5, dark: 0x181818)
-    static let composer = adaptive(light: 0xF9F9F9, dark: 0x292929)
-    static let selection = Color.primary.opacity(0.07)
-    static let messageBubble = adaptive(light: 0xF0F0F0, dark: 0x303030)
-    static let ink = adaptive(light: 0x202020, dark: 0xEEEEEE)
-    static let action = adaptive(light: 0x6254D9, dark: 0x6959DF)
-    static let field = adaptive(light: 0xFFFFFF, dark: 0x242426)
+    static let surface = adaptive(light: 0xF0EFEB, dark: 0x20211F)
+    static let hairline = adaptive(light: 0xDEDFD9, dark: 0x343632)
+    static let canvas = adaptive(light: 0xFCFBF8, dark: 0x141513)
+    static let designCanvas = adaptive(light: 0xF0F0EB, dark: 0x191B18)
+    static let panel = adaptive(light: 0xF5F4F0, dark: 0x1C1E1B)
+    static let chrome = adaptive(light: 0xEBECE6, dark: 0x252623)
+    static let sidebar = chrome
+    static let composer = adaptive(light: 0xF0F0EB, dark: 0x20221F)
+    static let selection = adaptive(light: 0xDDE0D8, dark: 0x373A34)
+    static let messageBubble = adaptive(light: 0xECEDE7, dark: 0x292C26)
+    static let ink = adaptive(light: 0x272A25, dark: 0xE6E7E1)
+    static let action = adaptive(light: 0x187D86, dark: 0x64B5BE)
+    static let field = adaptive(light: 0xF9F9F5, dark: 0x242722)
 
     private static func adaptive(light: UInt32, dark: UInt32) -> Color {
         Color(nsColor: NSColor(name: nil) { appearance in
@@ -46,9 +49,22 @@ enum Theme {
 }
 
 extension View {
+    func workspaceInset() -> some View {
+        background(Theme.canvas)
+            .clipShape(RoundedRectangle(cornerRadius: Theme.workspaceRadius, style: .continuous))
+            .overlay { RoundedRectangle(cornerRadius: Theme.workspaceRadius, style: .continuous).strokeBorder(Theme.hairline.opacity(0.7)) }
+            .padding(.leading, 3).padding(.trailing, 10).padding(.bottom, 10)
+    }
+
+    func workspaceCard(padding: CGFloat = 18) -> some View {
+        self.padding(padding)
+            .background(Theme.panel, in: RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
+            .overlay { RoundedRectangle(cornerRadius: Theme.radius, style: .continuous).strokeBorder(Theme.hairline.opacity(0.7)) }
+    }
+
     /// A raised panel. Solid rather than glass: these hold diffs and text that must stay legible
     /// over a scrolling transcript, and it looks the same on every supported macOS.
-    func floatingPanel(cornerRadius: CGFloat = 12) -> some View {
+    func floatingPanel(cornerRadius: CGFloat = 16) -> some View {
         background(Theme.panel, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous).strokeBorder(Theme.hairline)

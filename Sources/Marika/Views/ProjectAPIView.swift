@@ -55,7 +55,7 @@ private struct APIPlaygroundView: View {
                         Text("Generate requests from the routes and handlers in your project, then edit, send and compare responses here.")
                     } actions: {
                         Button("Generate collection", systemImage: "sparkles") { generate() }
-                            .buttonStyle(.borderedProminent).disabled(generating)
+                            .buttonStyle(WorkspaceButtonStyle(kind: .primary, compact: true)).disabled(generating)
                     }
                 } else if geometry.size.width >= 760 {
                     HStack(spacing: 0) {
@@ -96,6 +96,7 @@ private struct APIPlaygroundView: View {
             }
             if !entries.isEmpty {
                 Button("Regenerate", systemImage: "arrow.clockwise") { generate() }.disabled(generating)
+                    .buttonStyle(WorkspaceButtonStyle(compact: true))
             }
         }.padding(.horizontal, 18).padding(.vertical, 14)
     }
@@ -138,9 +139,9 @@ private struct APIPlaygroundView: View {
                             Spacer(minLength: 0)
                             if workspace.runningRequests.contains(endpoint.id) { ProgressView().controlSize(.mini) }
                             else if workspace.hasChanges(endpoint.id) { Circle().fill(Color.accentColor).frame(width: 5, height: 5).padding(.top, 5).help("Unsaved changes") }
-                        }.padding(.vertical, 5).tag(endpoint.id).help(endpoint.method + " " + endpoint.path)
+                        }.padding(.vertical, 5).tag(endpoint.id).listRowSeparator(.hidden).help(endpoint.method + " " + endpoint.path)
                     }
-                }.listStyle(.sidebar).padding(.horizontal, -10)
+                }.listStyle(.plain).scrollContentBackground(.hidden).padding(.horizontal, -6)
             }
         }.padding(.horizontal, 12).background(Theme.panel)
     }
@@ -238,32 +239,34 @@ private struct APIRequestDetail: View {
                             Text(endpoint.name).font(.system(size: 16, weight: .semibold)).lineLimit(2)
                             Spacer(minLength: 8)
                             Button("Source", systemImage: "chevron.left.forwardslash.chevron.right") { model.openLocation(path: endpoint.source, line: endpoint.line ?? 1, root: project.url) }
+                                .buttonStyle(WorkspaceButtonStyle(compact: true))
                                 .help(endpoint.source + ":" + String(endpoint.line ?? 1))
                             Button(workspace.hasChanges(endpoint.id) ? "Save changes" : "Saved", systemImage: workspace.hasChanges(endpoint.id) ? "square.and.arrow.down" : "checkmark") {
                                 workspace.save(endpoint, project: project, model: model)
-                            }.disabled(!workspace.hasChanges(endpoint.id) || sending)
+                            }.buttonStyle(WorkspaceButtonStyle(kind: workspace.hasChanges(endpoint.id) ? .primary : .quiet, compact: true))
+                                .disabled(!workspace.hasChanges(endpoint.id) || sending)
                         }
                         if let error = workspace.requestErrors[endpoint.id] { Text(error).font(.caption).foregroundStyle(.red) }
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text("Base URL").font(.caption).foregroundStyle(.secondary)
+                        WorkspaceFormField(title: "Base URL") {
                             TextField(draft.method == "GRPC" ? "grpc://localhost:9090" : "http://localhost:8080", text: $draft.baseURL)
-                                .textFieldStyle(.roundedBorder).accessibilityLabel("API base URL")
+                                .textFieldStyle(.workspace).accessibilityLabel("API base URL")
                         }.disabled(sending)
                         HStack(spacing: 8) {
                             if APICollection.methods.contains(endpoint.method) {
-                                Picker("Method", selection: $draft.method) {
-                                    ForEach(APICollection.methods, id: \.self) { Text($0).tag($0) }
-                                }.labelsHidden().frame(width: 94).accessibilityLabel("HTTP method").disabled(sending)
+                                WorkspaceSelect(title: "HTTP method", selection: $draft.method, options: APICollection.methods,
+                                                label: { $0 }, height: 32)
+                                    .font(.system(size: 12, weight: .semibold, design: .monospaced)).frame(width: 104).disabled(sending)
                             } else { APIMethodBadge(method: endpoint.method) }
                             TextField(draft.method == "GRPC" ? "package.Service/Method" : "/path?query=value", text: $draft.path)
-                                .textFieldStyle(.roundedBorder).font(.system(size: 12, design: .monospaced))
+                                .textFieldStyle(.workspace).font(.system(size: 12, design: .monospaced))
                                 .accessibilityLabel("API request path").disabled(sending)
                             if sending {
                                 Button("Cancel", systemImage: "stop.fill") { workspace.cancel(endpoint.id) }
+                                    .buttonStyle(WorkspaceButtonStyle(compact: true)).frame(height: 32)
                             } else {
                                 Button("Send", systemImage: "paperplane.fill") {
                                     workspace.send(endpoint, project: project, environment: model.gitEnvironment)
-                                }.buttonStyle(.borderedProminent).keyboardShortcut(.return, modifiers: .command)
+                                }.buttonStyle(WorkspaceButtonStyle(kind: .primary, compact: true)).keyboardShortcut(.return, modifiers: .command)
                                     .disabled(!draft.validationErrors.isEmpty)
                                     .help("Send request (⌘Return)")
                                     #if DEBUG
@@ -286,9 +289,7 @@ private struct APIRequestDetail: View {
                                 Button("Undo restore") { workspace.undoRestore(endpoint.id) }.disabled(sending)
                             }.font(.caption)
                         }
-                        Picker("Request section", selection: $section) {
-                            ForEach(sections, id: \.self) { Text($0).tag($0) }
-                        }.pickerStyle(.segmented).labelsHidden()
+                        WorkspaceTabPicker("Request section", selection: $section, options: sections)
                         requestFields.disabled(sending)
                         if let note = endpoint.note { Text(note).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true) }
                     }.padding(16)
@@ -312,7 +313,7 @@ private struct APIRequestDetail: View {
     /// A short form should not inherit half of a very tall window's unused space.
     /// Keep a compact form on smaller windows and give extra height to the response.
     private func requestHeight(in available: CGFloat) -> CGFloat {
-        let preferred: CGFloat = ["Parameters", "Compare"].contains(section) ? 320 : 390
+        let preferred: CGFloat = ["Parameters", "Compare"].contains(section) ? 360 : 420
         let minimum = min(210, available * 0.5)
         let maximum = max(minimum, available - min(150, available * 0.35) - 7)
         return min(maximum, max(minimum, resizedRequestHeight ?? min(preferred, available * 0.52)))
@@ -352,7 +353,7 @@ private struct APIRequestDetail: View {
             VStack(alignment: .leading, spacing: 8) {
                 Text("Send the same request to a second environment and compare response bodies.").font(.caption).foregroundStyle(.secondary)
                 HStack {
-                    TextField("Second base URL", text: $draft.comparisonBaseURL).textFieldStyle(.roundedBorder).accessibilityLabel("Comparison base URL")
+                    TextField("Second base URL", text: $draft.comparisonBaseURL).textFieldStyle(.workspace).accessibilityLabel("Comparison base URL")
                     Button("Compare responses") { workspace.send(endpoint, project: project, environment: model.gitEnvironment, compare: true) }
                         .disabled(!draft.validationErrors.isEmpty || { var other = draft; other.baseURL = draft.comparisonBaseURL; return !other.validationErrors.isEmpty }())
                 }
@@ -365,7 +366,7 @@ private struct APIRequestDetail: View {
                         HStack {
                             Text(name).font(.system(size: 12, design: .monospaced)).frame(width: 90, alignment: .leading)
                             TextField("Required", text: Binding(get: { draft.pathParameters[name] ?? "" }, set: { draft.pathParameters[name] = $0 }))
-                                .textFieldStyle(.roundedBorder).accessibilityLabel("Path parameter " + name)
+                                .textFieldStyle(.workspace).accessibilityLabel("Path parameter " + name)
                         }
                     }
                 }
@@ -377,9 +378,9 @@ private struct APIRequestDetail: View {
                 }
                 ForEach(Array(draft.queryParameters.indices), id: \.self) { index in
                     HStack {
-                        TextField("Name", text: queryField(index, \.name)).textFieldStyle(.roundedBorder)
+                        TextField("Name", text: queryField(index, \.name)).textFieldStyle(.workspace)
                             .accessibilityLabel("Query parameter name \(index + 1)")
-                        TextField("Value", text: queryField(index, \.value)).textFieldStyle(.roundedBorder)
+                        TextField("Value", text: queryField(index, \.value)).textFieldStyle(.workspace)
                             .accessibilityLabel("Query parameter value \(index + 1)")
                         Button {
                             if draft.queryParameters.indices.contains(index) { draft.queryParameters.remove(at: index) }
@@ -446,7 +447,7 @@ private struct APIResponseArea: View {
                                 else { Text(title) }
                             }
                         }
-                    }.fixedSize().accessibilityLabel("Response history")
+                    }.menuStyle(.borderlessButton).fixedSize().accessibilityLabel("Response history")
                     if let result {
                         Button { inspectedRun = result } label: { Image(systemName: "doc.text.magnifyingglass") }
                             .help("View the saved request").accessibilityLabel("View request snapshot")
@@ -455,21 +456,20 @@ private struct APIResponseArea: View {
                             .help("Rerun this request snapshot").accessibilityLabel("Rerun response request")
                     }
                 }
-                Picker("Response section", selection: $section) {
-                    ForEach(["Body", "Headers", "Raw"], id: \.self) { Text($0).tag($0) }
-                }.pickerStyle(.segmented).labelsHidden().frame(width: 190)
+                WorkspaceTabPicker("Response section", selection: $section, options: ["Body", "Headers", "Raw"], fillsWidth: false)
             }.padding(.horizontal, 16).padding(.vertical, 10)
             Divider()
             if let result {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 12) {
                         if !result.difference.isEmpty { Label(result.difference, systemImage: "arrow.left.arrow.right").font(.caption).foregroundStyle(.secondary) }
-                        HStack {
+                        HStack(spacing: 4) {
                             Text(selectedRun == nil ? "Latest response" : "Earlier response · saved request")
+                            Text("·")
+                            Text(result.date, format: .dateTime.hour().minute().second())
                             Spacer()
-                            Button("View request") { inspectedRun = result }
+                            Button("View request") { inspectedRun = result }.buttonStyle(.link)
                         }.font(.caption).foregroundStyle(.secondary)
-                        Text(result.date, format: .dateTime.hour().minute().second()).font(.caption).foregroundStyle(.secondary)
                         APIResponseCard(response: result.primary, target: result.target, section: section,
                                         project: project, workspace: workspace, openEnvironment: openEnvironment)
                         if let comparison = result.comparison {

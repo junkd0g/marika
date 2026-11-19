@@ -5,6 +5,9 @@
 Keep conversations, code, local previews and agent reviews in one window. Organize projects
 into spaces, open the tools you need as tabs, and return to your work with drafts intact.
 
+A quiet, rounded workspace keeps the focus on your work, with matching light and dark
+appearances and compact controls for smaller windows.
+
 [![macOS checks](https://github.com/junkd0g/marika/actions/workflows/ci.yml/badge.svg)](https://github.com/junkd0g/marika/actions/workflows/ci.yml)
 ![macOS 15+](https://img.shields.io/badge/macOS-15%2B-24292f)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
@@ -149,6 +152,10 @@ Every major workspace area is shown below. Expand a workflow to see its screensh
 <details>
 <summary>Projects, chats and agent work</summary>
 
+**A centered new conversation and project-aware draft composer**
+
+![A centered new conversation and project-aware draft composer](docs/images/chat-start.png)
+
 **Project conversation, model, reasoning and speed controls**
 
 ![Project conversation, model, reasoning and speed controls](docs/images/chat-controls.png)
@@ -266,7 +273,7 @@ Every major workspace area is shown below. Expand a workflow to see its screensh
 <details>
 <summary>Design and source import</summary>
 
-**Editable architecture, layers, styles and source-linked descriptions**
+**Editable design layers, reusable components and inspector controls**
 
 ![Editable architecture, layers, styles and source-linked descriptions](docs/images/design-editor.png)
 
@@ -298,6 +305,10 @@ Every major workspace area is shown below. Expand a workflow to see its screensh
 
 <details>
 <summary>Containers and observability</summary>
+
+**Runtime log controls and entries in a 900 by 600 window**
+
+![Runtime log controls and entries in a 900 by 600 window](docs/images/logs-compact.png)
 
 **Docker containers, images and network relationships**
 

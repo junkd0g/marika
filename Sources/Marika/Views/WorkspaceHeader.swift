@@ -74,17 +74,17 @@ struct WorkspaceHeader: View {
                         if geometry.size.width >= 530 { Label("New Agent", systemImage: "person.badge.plus") }
                         else { Image(systemName: "person.badge.plus") }
                     }
-                    .controlSize(.small)
+                    .buttonStyle(WorkspaceButtonStyle(kind: .quiet, compact: true))
                     .fixedSize()
                     .accessibilityLabel("New Agent")
                     .help("Launch an agent in \(project.name) (⇧⌘N)")
                 }
                 .padding(.horizontal, 16)
-                .frame(width: geometry.size.width, height: 42)
+                .frame(width: geometry.size.width, height: 52)
             }
         }
-        .frame(height: 42)
-        .background(Theme.canvas)
+        .frame(height: 52)
+        .background(Theme.chrome)
         #if DEBUG
             .background(DebugViewMarker(name: "workspace-header"))
         #endif
@@ -152,14 +152,14 @@ struct WorkspaceHeader: View {
             Button { select(tab) } label: {
                 HStack(spacing: 6) {
                     Image(systemName: tab.symbol).font(.system(size: 12, weight: .medium))
-                    Text(tab.title).font(.system(size: 11.5, weight: selected ? .semibold : .medium)).lineLimit(1)
+                    Text(tab.title).font(.system(size: 12.5, weight: selected ? .semibold : .medium)).lineLimit(1)
                     if tab == .agents, activeAgents > 0 {
                         Text(String(activeAgents)).font(.system(size: 9, weight: .semibold)).monospacedDigit()
                             .padding(.horizontal, 4).padding(.vertical, 1).background(Theme.selection, in: Capsule())
                     }
                 }
                 .foregroundStyle(selected ? Theme.ink : .secondary)
-                .frame(height: 30).contentShape(Rectangle())
+                .frame(height: 36).contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .background(MiddleClickTarget { select(tab) })
@@ -181,8 +181,8 @@ struct WorkspaceHeader: View {
             }
         }
         .padding(.leading, 10).padding(.trailing, tab == .conversation ? 10 : 4)
-        .background(RoundedRectangle(cornerRadius: 7).fill(selected ? Theme.selection : hovered == tab ? Theme.surface : .clear))
-        .overlay { RoundedRectangle(cornerRadius: 7).strokeBorder(selected ? Theme.hairline : .clear) }
+        .background(RoundedRectangle(cornerRadius: 12).fill(selected ? Theme.selection : hovered == tab ? Theme.surface : .clear))
+        .overlay { RoundedRectangle(cornerRadius: 12).strokeBorder(selected ? Theme.hairline : .clear) }
         .onHover { hovered = $0 ? tab : nil }
         .contextMenu {
             ForEach(ProjectSplitEdge.allCases, id: \.self) { edge in

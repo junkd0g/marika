@@ -27,7 +27,7 @@ struct ProjectResearchView: View {
                     Button("Connections") { model.openProjectSettings(project, section: "MCP") }
                 }
                 TextField("What should we investigate?", text: $question, axis: .vertical)
-                    .lineLimit(1...4).textFieldStyle(.roundedBorder).accessibilityLabel("Research question")
+                    .lineLimit(1...4).textFieldStyle(.workspace).accessibilityLabel("Research question")
                 ViewThatFits(in: .horizontal) {
                     HStack { controls; Spacer(); startButton }
                     VStack(alignment: .leading) { controls; startButton }
@@ -99,8 +99,10 @@ struct ProjectResearchView: View {
 
     private var controls: some View {
         HStack {
-            Picker("Scope", selection: $focus) { ForEach(ResearchFocus.allCases, id: \.self) { Text($0.rawValue).tag($0) } }.fixedSize()
-            Picker("Provider", selection: $agent) { ForEach(AgentKind.allCases) { Text($0.shortName).tag($0) } }.fixedSize()
+            Text("Scope").font(.caption).foregroundStyle(.secondary)
+            WorkspaceSelect(title: "Scope", selection: $focus, options: Array(ResearchFocus.allCases), label: { $0.rawValue }, height: 32).frame(width: 170)
+            Text("Provider").font(.caption).foregroundStyle(.secondary)
+            WorkspaceSelect(title: "Provider", selection: $agent, options: Array(AgentKind.allCases), label: { $0.shortName }, height: 32).frame(width: 130)
         }.controlSize(.small)
     }
     private var startButton: some View {
@@ -111,7 +113,7 @@ struct ProjectResearchView: View {
                 do { let run = try await model.launchResearch(question: question, focus: focus, agent: agent, project: project); selectedID = run.id; selectedSourceID = nil; question = "" }
                 catch { self.error = error.localizedDescription }
             }
-        }.buttonStyle(.borderedProminent).disabled(launching || question.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        }.buttonStyle(WorkspaceButtonStyle(kind: .primary, compact: true)).disabled(launching || question.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
     }
     private func answer(_ run: ResearchRun, report: ResearchReport) -> some View {
         ScrollView { answerContent(run, report: report).padding(20) }.frame(maxWidth: .infinity)

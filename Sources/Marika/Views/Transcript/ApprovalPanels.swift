@@ -96,7 +96,7 @@ private struct ToolApproval: View {
                     session.answer(request, with: .allow())
                 }
                 .keyboardShortcut(.return, modifiers: .command)
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(WorkspaceButtonStyle(kind: .primary, compact: true))
                 .fixedSize()
             }
         }
@@ -156,7 +156,7 @@ private struct QuestionsApproval: View {
                     session.answer(request, with: .answers(answers))
                 }
                 .keyboardShortcut(.return, modifiers: .command)
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(WorkspaceButtonStyle(kind: .primary, compact: true))
                 .disabled(!isComplete)
             }
         }
@@ -182,7 +182,7 @@ private struct QuestionsApproval: View {
                                 if !question.allowsMultiple, !$0.isEmpty { selections[question.id] = [] }
                             })
                     )
-                    .textFieldStyle(.roundedBorder)
+                    .textFieldStyle(.workspace)
                     .font(.system(size: 12.5))
                 }
             }
@@ -245,7 +245,7 @@ private struct PlanApproval: View {
         Button("Approve, Ask for Each Edit") { session.answer(request, with: .approvePlan(then: nil)) }
         Button("Approve and Accept Edits") { session.answer(request, with: .approvePlan(then: .acceptEdits)) }
             .keyboardShortcut(.return, modifiers: .command)
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(WorkspaceButtonStyle(kind: .primary, compact: true))
     }
 
     var body: some View {

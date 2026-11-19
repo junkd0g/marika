@@ -57,14 +57,14 @@ struct ProjectDesignView: View {
                 Button { canvas.showsImport = true } label: {
                     Label { if width >= 800 { Text(importLabel) } } icon: { Image(systemName: "square.and.arrow.down") }
                 }
-                .buttonStyle(WorkspaceButtonStyle(compact: true)).accessibilityLabel("Import design from project")
+                .buttonStyle(WorkspaceButtonStyle(kind: .quiet, compact: true)).accessibilityLabel("Import design from project")
                 #if DEBUG
                 .background(DebugViewMarker(name: "design-import-toggle"))
                 #endif
                 Button { showsComponents.toggle() } label: {
                     Label { if width >= 800 { Text("Components") } } icon: { Image(systemName: "square.stack.3d.up") }
                 }
-                    .buttonStyle(WorkspaceButtonStyle(compact: true))
+                    .buttonStyle(WorkspaceButtonStyle(kind: .quiet, compact: true))
                     .accessibilityLabel("Components").help("Engineering components")
                     .popover(isPresented: $showsComponents, arrowEdge: .bottom) {
                         DesignComponentLibrary { component in
@@ -91,7 +91,7 @@ struct ProjectDesignView: View {
                 .menuStyle(.borderlessButton).fixedSize().accessibilityLabel("Diagram actions")
                 Button { canvas.showsHealth = true } label: {
                     Label { if width >= 800 { Text("Health") } } icon: { Image(systemName: "checkmark.shield") }
-                }.buttonStyle(WorkspaceButtonStyle(compact: true)).accessibilityLabel("Design health")
+                }.buttonStyle(WorkspaceButtonStyle(kind: .quiet, compact: true)).accessibilityLabel("Design health")
                 #if DEBUG
                 .background(DebugViewMarker(name: "design-health-toggle"))
                 #endif
@@ -99,7 +99,7 @@ struct ProjectDesignView: View {
                     Button { showsLayers.toggle() } label: {
                         Label { if width >= 800 { Text("Layers") } } icon: { Image(systemName: "square.3.layers.3d") }
                     }
-                    .buttonStyle(WorkspaceButtonStyle(compact: true))
+                    .buttonStyle(WorkspaceButtonStyle(kind: .quiet, compact: true))
                     .accessibilityLabel("Layers").help("Layers")
                     .popover(isPresented: $showsLayers, arrowEdge: .bottom) {
                         DesignLayersPanel(canvas: canvas, projectName: project.name).frame(width: 250, height: 380)
@@ -112,7 +112,7 @@ struct ProjectDesignView: View {
                     Button { showsInspector.toggle() } label: {
                         Label { if width >= 800 { Text("Properties") } } icon: { Image(systemName: "slider.horizontal.3") }
                     }
-                    .buttonStyle(WorkspaceButtonStyle(compact: true))
+                    .buttonStyle(WorkspaceButtonStyle(kind: .quiet, compact: true))
                     .accessibilityLabel("Properties").help("Properties")
                     .popover(isPresented: $showsInspector, arrowEdge: .bottom) {
                         DesignInspector(canvas: canvas).frame(width: 250, height: 480)
@@ -122,6 +122,7 @@ struct ProjectDesignView: View {
                     #endif
                 }
             }
+            .modifier(DesignFloatingSurface())
             Spacer(minLength: 4)
             if !hasInspector {
                 HStack(spacing: 0) {
@@ -143,10 +144,10 @@ struct ProjectDesignView: View {
 private struct DesignFloatingSurface: ViewModifier {
     func body(content: Content) -> some View {
         content
-            .padding(4)
-            .background(Theme.panel, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-            .overlay { RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Theme.hairline) }
-            .shadow(color: .black.opacity(0.14), radius: 10, y: 3)
+            .padding(5)
+            .background(Theme.panel, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay { RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Theme.hairline.opacity(0.8)) }
+            .shadow(color: .black.opacity(0.1), radius: 10, y: 3)
     }
 }
 

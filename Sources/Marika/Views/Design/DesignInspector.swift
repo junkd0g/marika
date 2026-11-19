@@ -28,7 +28,7 @@ struct DesignInspector: View {
                 Spacer(minLength: 4)
                 DesignExportMenu(canvas: canvas)
             }
-            .padding(.horizontal, 6).frame(height: 40)
+            .padding(.horizontal, 8).frame(height: 48)
             Divider()
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {

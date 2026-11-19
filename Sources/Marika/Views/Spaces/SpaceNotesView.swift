@@ -44,13 +44,13 @@ struct SpaceNotesView: View {
                                     VStack(alignment: .leading, spacing: 7) {
                                         HStack(spacing: 5) {
                                             Image(systemName: note.pinned ? "pin.fill" : "doc.text").foregroundStyle(.secondary)
-                                            Text(note.displayTitle).font(.system(size: 12, weight: .medium)).lineLimit(2)
+                                            Text(note.displayTitle).font(.system(size: 13, weight: .medium)).lineLimit(2)
                                         }
                                         Text(note.blocks.first { !$0.text.isEmpty }?.text ?? "Start writing…")
                                             .font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(2)
                                         Text(note.updatedAt, style: .date).font(.system(size: 10)).foregroundStyle(.tertiary)
                                     }.frame(maxWidth: .infinity, alignment: .leading).padding(12)
-                                        .background(selection == note.id ? Theme.selection : .clear, in: RoundedRectangle(cornerRadius: 8))
+                                        .background(selection == note.id ? Theme.selection : .clear, in: RoundedRectangle(cornerRadius: 12))
                                         .contentShape(Rectangle())
                                 }.buttonStyle(.plain).accessibilityLabel("Note: " + note.displayTitle)
                                     .accessibilityAddTraits(selection == note.id ? [.isSelected] : [])
@@ -144,7 +144,7 @@ private struct SpaceNoteEditor: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 16) {
                         TextField("Untitled note", text: Binding(get: { self.note?.title ?? "" }, set: { value in update { $0.title = value } }), axis: .vertical)
-                            .textFieldStyle(.plain).font(.system(size: 29, weight: .bold)).accessibilityLabel("Note title")
+                            .textFieldStyle(.plain).font(.custom("Georgia", size: 32, relativeTo: .largeTitle)).accessibilityLabel("Note title")
                             .disabled(note.archived).focused($titleFocused)
                             .background(SpaceContentMarker(name: "space-note-title"))
                         if note.archived { Label("Archived note · Restore to continue editing", systemImage: "archivebox").foregroundStyle(.secondary) }
@@ -191,7 +191,7 @@ private struct SpaceNoteEditor: View {
                 .strikethrough(block.kind == .checklist && block.checked)
                 .foregroundStyle(block.kind == .checklist && block.checked ? .secondary : .primary)
                 .padding(block.kind == .code ? 12 : 0)
-                .background(block.kind == .code ? Theme.surface : .clear, in: RoundedRectangle(cornerRadius: 6))
+                .background(block.kind == .code ? Theme.surface : .clear, in: RoundedRectangle(cornerRadius: 10))
                 .focused($focusedBlock, equals: block.id)
                 .onSubmit {
                     if (block.kind == .bullet || block.kind == .checklist) && block.text.isEmpty {

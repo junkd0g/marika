@@ -101,8 +101,8 @@ struct SpaceTicketsView: View {
                     if items.isEmpty { Text(query.isEmpty ? "No tickets" : "No matching tickets").font(.system(size: 11)).foregroundStyle(.tertiary).padding(.vertical, 25) }
                 }.padding(.horizontal, 9).padding(.bottom, 12)
             }
-        }.background(Theme.panel, in: RoundedRectangle(cornerRadius: 10))
-            .overlay { RoundedRectangle(cornerRadius: 10).strokeBorder(Theme.hairline) }
+        }.background(Theme.panel, in: RoundedRectangle(cornerRadius: 16))
+            .overlay { RoundedRectangle(cornerRadius: 16).strokeBorder(Theme.hairline.opacity(0.6)) }
             .background(SpaceContentMarker(name: "space-ticket-column-" + status.rawValue))
     }
     private func card(_ ticket: SpaceTicket) -> some View {
@@ -120,9 +120,9 @@ struct SpaceTicketsView: View {
                 }
                 if !ticket.assignee.isEmpty { Label(ticket.assignee, systemImage: "person.crop.circle").font(.system(size: 10)).foregroundStyle(.secondary).lineLimit(1) }
                 TicketWorkBadge(ticket: ticket)
-            }.frame(maxWidth: .infinity, alignment: .leading).padding(12)
-                .background(Theme.canvas, in: RoundedRectangle(cornerRadius: 8))
-                .overlay { RoundedRectangle(cornerRadius: 8).strokeBorder(Theme.hairline) }
+            }.frame(maxWidth: .infinity, alignment: .leading).padding(14)
+                .background(Theme.canvas, in: RoundedRectangle(cornerRadius: 12))
+                .overlay { RoundedRectangle(cornerRadius: 12).strokeBorder(Theme.hairline.opacity(0.7)) }
                 .contentShape(Rectangle())
         }.buttonStyle(.plain)
             .overlay(alignment: .topTrailing) {

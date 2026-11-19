@@ -90,13 +90,13 @@ struct ProjectExperienceView: View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Run a reproduction, inspect the evidence, and ask an agent to fix and verify it.").font(.callout).foregroundStyle(.secondary)
             HStack {
-                TextField("Reproduction command, e.g. go test ./...", text: $command).textFieldStyle(.roundedBorder)
+                TextField("Reproduction command, e.g. go test ./...", text: $command).textFieldStyle(.workspace)
                 if model.debugTasks[project.id] != nil {
                     ProgressView().controlSize(.small)
                     Button("Stop") { model.debugTasks[project.id]?.cancel() }
                 } else {
                     Button("Run") { model.debugCommands[project.id] = command; model.runDebug(command, project: current) }
-                        .buttonStyle(.borderedProminent).disabled(command.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        .buttonStyle(WorkspaceButtonStyle(kind: .primary, compact: true)).disabled(command.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
             }
             Text("\(current.editorURL.path) · Stops after 2 minutes").font(.caption).foregroundStyle(.secondary)

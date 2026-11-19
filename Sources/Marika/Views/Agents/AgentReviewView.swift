@@ -59,7 +59,7 @@ struct AgentReviewView: View {
                 Spacer()
                 Button("Discard…", role: .destructive) { confirmingDiscard = true }.disabled(busy || agentIsBusy)
                 Button("Apply to Project") { Task { await apply() } }
-                    .buttonStyle(.borderedProminent).keyboardShortcut(.return, modifiers: .command)
+                    .buttonStyle(WorkspaceButtonStyle(kind: .primary, compact: true)).keyboardShortcut(.return, modifiers: .command)
                     .disabled(busy || agentIsBusy || review?.isEmpty != false)
             }.controlSize(.small).padding(16)
         }
