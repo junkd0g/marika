@@ -44,7 +44,7 @@ def run(name, steps):
     assert result.returncode==0 and '[driver] FAILED' not in log.read_text(), str(log)+'\n'+log.read_text()[-3000:]
 run('views',[s('shortcut',key='6'),s('wait',seconds=.8),shot('pipelines'),s('terminalTest'),shot('terminal'),
     s('researchSection',index=1),s('wait',seconds=.4),shot('compare-models'),s('markdownTest',directory=str(root)),
-    s('settingsWindow'),shot('settings',window='Settings')])
+    s('settingsWindow'),s('welcomeStatus',codex='ready',claude='ready'),s('wait',seconds=.2),shot('settings',window='Agents')])
 for i,kind in enumerate(['report','spreadsheet','presentation']):
     for index,entry in enumerate(artifacts): entry['date']='2026-11-19T'+('13' if i==index else '12')+':00:00Z'
     run(kind,[s('experience',section='Artifacts'),s('wait',seconds=.5),shot(kind,sheet=True)])

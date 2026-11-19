@@ -124,6 +124,232 @@ Save named workspace layouts from the layout button beside **+**, or select Desi
 
 Every tool remains available from the **+** menu at any window size.
 
+<!-- gallery:start -->
+## Complete screenshot gallery
+
+Every major workspace area is shown below. Expand a workflow to see its screenshots. Captures use disposable demo projects; agent answers, monitoring history and update feeds are sample data.
+
+<details>
+<summary>Getting started and settings</summary>
+
+**Welcome checklist and provider readiness**
+
+![Welcome checklist and provider readiness](docs/images/welcome.png)
+
+**Settings, provider configuration and editor preferences**
+
+![Settings, provider configuration and editor preferences](docs/images/settings.png)
+
+**MCP connections, configuration and connection checks**
+
+![MCP connections, configuration and connection checks](docs/images/connections.jpg)
+
+</details>
+
+<details>
+<summary>Projects, chats and agent work</summary>
+
+**Project conversation, model, reasoning and speed controls**
+
+![Project conversation, model, reasoning and speed controls](docs/images/chat-controls.png)
+
+**Approvals, blocked work and results needing attention**
+
+![Approvals, blocked work and results needing attention](docs/images/attention.png)
+
+**Search saved messages across projects**
+
+![Search saved messages across projects](docs/images/chat-history.png)
+
+**Named agents and distinct completed, failed and stopped outcomes**
+
+![Named agents and distinct completed, failed and stopped outcomes](docs/images/agents.jpg)
+
+**Agent task details, plan, verification and deliverables**
+
+![Agent task details, plan, verification and deliverables](docs/images/agent-task.jpg)
+
+**Persistent task queue and explicit resume controls**
+
+![Persistent task queue and explicit resume controls](docs/images/task-queue.jpg)
+
+**Task activity, approvals and result history**
+
+![Task activity, approvals and result history](docs/images/task-activity.jpg)
+
+</details>
+
+<details>
+<summary>Notes and tickets</summary>
+
+**Editable notes with headings, lists and checklists**
+
+![Editable notes with headings, lists and checklists](docs/images/notes.png)
+
+**Ticket board, priorities and project links**
+
+![Ticket board, priorities and project links](docs/images/tickets.png)
+
+**Ticket work, checks, acceptance and linked agent activity**
+
+![Ticket work, checks, acceptance and linked agent activity](docs/images/ticket-work.png)
+
+</details>
+
+<details>
+<summary>Code, review and debugging</summary>
+
+**Markdown source and rendered preview together**
+
+![Markdown source and rendered preview together](docs/images/markdown.png)
+
+**Native test explorer, results and coverage**
+
+![Native test explorer, results and coverage](docs/images/code-tests.png)
+
+**Breakpoints, paused execution and watch values**
+
+![Breakpoints, paused execution and watch values](docs/images/debugger.png)
+
+**Review and accept isolated agent changes**
+
+![Review and accept isolated agent changes](docs/images/changes-review.png)
+
+**Interactive project terminal**
+
+![Interactive project terminal](docs/images/terminal.png)
+
+</details>
+
+<details>
+<summary>Browser, APIs and pipelines</summary>
+
+**Pipeline discovery and saved run output; sample history**
+
+![Pipeline discovery and saved run output; sample history](docs/images/pipelines.png)
+
+**API request editing and local response inspection**
+
+![API request editing and local response inspection](docs/images/api-playground.png)
+
+</details>
+
+<details>
+<summary>Research, knowledge and deliverables</summary>
+
+**Compare independent answers and their synthesis; sample analysis**
+
+![Compare independent answers and their synthesis; sample analysis](docs/images/compare-models.png)
+
+**Search and review project knowledge**
+
+![Search and review project knowledge](docs/images/knowledge.png)
+
+**Report preview, review comments and export**
+
+![Report preview, review comments and export](docs/images/report.png)
+
+**Spreadsheet deliverable preview and export**
+
+![Spreadsheet deliverable preview and export](docs/images/spreadsheet.png)
+
+**Presentation deliverable preview and export**
+
+![Presentation deliverable preview and export](docs/images/presentation.png)
+
+**Research findings linked to source evidence**
+
+![Research findings linked to source evidence](docs/images/research.jpg)
+
+</details>
+
+<details>
+<summary>Design and source import</summary>
+
+**Editable architecture, layers, styles and source-linked descriptions**
+
+![Editable architecture, layers, styles and source-linked descriptions](docs/images/design-editor.png)
+
+**Engineering component library and connected diagrams**
+
+![Engineering component library and connected diagrams](docs/images/engineering-components.png)
+
+**Shared color, type and spacing tokens; reusable components and variants**
+
+![Shared color, type and spacing tokens; reusable components and variants](docs/images/design-system.png)
+
+**Reusable instances and automatic frame layout**
+
+![Reusable instances and automatic frame layout](docs/images/design-layout.png)
+
+**Source-to-design draft review before adding editable layers**
+
+![Source-to-design draft review before adding editable layers](docs/images/design-import.png)
+
+**Selective re-import, source changes and preserved manual edits**
+
+![Selective re-import, source changes and preserved manual edits](docs/images/selective-import.png)
+
+**Source-link health checks and actionable design findings**
+
+![Source-link health checks and actionable design findings](docs/images/design-health.png)
+
+</details>
+
+<details>
+<summary>Containers and observability</summary>
+
+**Docker containers, images and network relationships**
+
+![Docker containers, images and network relationships](docs/images/docker-map.png)
+
+**Kubernetes workloads, services and pods**
+
+![Kubernetes workloads, services and pods](docs/images/kubernetes-map.png)
+
+**Cluster health and failing workloads**
+
+![Cluster health and failing workloads](docs/images/cluster-health.png)
+
+**Searchable runtime logs and structured fields**
+
+![Searchable runtime logs and structured fields](docs/images/container-logs.png)
+
+**Retained Loki history and LogQL queries**
+
+![Retained Loki history and LogQL queries](docs/images/loki-history.png)
+
+**CPU, memory, restarts, latency, errors and correlated events; sample data**
+
+![CPU, memory, restarts, latency, errors and correlated events; sample data](docs/images/container-metrics.png)
+
+**Review a deployment rollback before applying it**
+
+![Review a deployment rollback before applying it](docs/images/container-recovery.png)
+
+</details>
+
+<details>
+<summary>Layouts, recovery and updates</summary>
+
+**Named layouts and focused split workspaces**
+
+![Named layouts and focused split workspaces](docs/images/saved-layouts.png)
+
+**Restore unsaved editor work after restart**
+
+![Restore unsaved editor work after restart](docs/images/draft-recovery.png)
+
+**Version details, release notes and update review; fixture feed**
+
+![Version details, release notes and update review; fixture feed](docs/images/app-updates.png)
+
+</details>
+
+[Screenshot coverage and capture sources](docs/screenshot-coverage.json) · [Feature guides](docs/README.md)
+
+<!-- gallery:end -->
+
 ## Useful shortcuts
 
 | Action | Shortcut |

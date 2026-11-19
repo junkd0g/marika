@@ -1,0 +1,306 @@
+{
+  "note": "Real native UI; isolated local projects, sample agent output, fixture monitoring data. No production credentials or clusters.",
+  "screenshots": [
+    {
+      "group": "Getting started and settings",
+      "feature": "welcome",
+      "caption": "Welcome checklist and provider readiness",
+      "image": "docs/images/welcome.png",
+      "capture": "welcome/**/ready-light-wide.png"
+    },
+    {
+      "group": "Getting started and settings",
+      "feature": "settings",
+      "caption": "Settings, provider configuration and editor preferences",
+      "image": "docs/images/settings.png",
+      "capture": "extra:settings.png"
+    },
+    {
+      "group": "Projects, chats and agent work",
+      "feature": "chat-controls",
+      "caption": "Project conversation, model, reasoning and speed controls",
+      "image": "docs/images/chat-controls.png",
+      "capture": "codex-style/**/chat-light.png"
+    },
+    {
+      "group": "Projects, chats and agent work",
+      "feature": "attention",
+      "caption": "Approvals, blocked work and results needing attention",
+      "image": "docs/images/attention.png",
+      "capture": "attention/**/inbox-dark.png"
+    },
+    {
+      "group": "Projects, chats and agent work",
+      "feature": "chat-history",
+      "caption": "Search saved messages across projects",
+      "image": "docs/images/chat-history.png",
+      "capture": "history-updates/**/history-results.png"
+    },
+    {
+      "group": "Notes and tickets",
+      "feature": "notes",
+      "caption": "Editable notes with headings, lists and checklists",
+      "image": "docs/images/notes.png",
+      "capture": "space-content/**/notes-dark.png"
+    },
+    {
+      "group": "Notes and tickets",
+      "feature": "tickets",
+      "caption": "Ticket board, priorities and project links",
+      "image": "docs/images/tickets.png",
+      "capture": "space-content/**/ticket-board-dark.png"
+    },
+    {
+      "group": "Notes and tickets",
+      "feature": "ticket-work",
+      "caption": "Ticket work, checks, acceptance and linked agent activity",
+      "image": "docs/images/ticket-work.png",
+      "capture": "ticket-work/**/accepted-light.png"
+    },
+    {
+      "group": "Code, review and debugging",
+      "feature": "markdown",
+      "caption": "Markdown source and rendered preview together",
+      "image": "docs/images/markdown.png",
+      "capture": "extra:markdown-split.png"
+    },
+    {
+      "group": "Code, review and debugging",
+      "feature": "code-tests",
+      "caption": "Native test explorer, results and coverage",
+      "image": "docs/images/code-tests.png",
+      "capture": "extra:tests.png"
+    },
+    {
+      "group": "Code, review and debugging",
+      "feature": "debugger",
+      "caption": "Breakpoints, paused execution and watch values",
+      "image": "docs/images/debugger.png",
+      "capture": "extra:debugger.png"
+    },
+    {
+      "group": "Code, review and debugging",
+      "feature": "changes-review",
+      "caption": "Review and accept isolated agent changes",
+      "image": "docs/images/changes-review.png",
+      "capture": "workbench/**/review.png"
+    },
+    {
+      "group": "Code, review and debugging",
+      "feature": "terminal",
+      "caption": "Interactive project terminal",
+      "image": "docs/images/terminal.png",
+      "capture": "extra:terminal.png"
+    },
+    {
+      "group": "Browser, APIs and pipelines",
+      "feature": "pipelines",
+      "caption": "Pipeline discovery and saved run output; sample history",
+      "image": "docs/images/pipelines.png",
+      "capture": "extra:pipelines.png"
+    },
+    {
+      "group": "Browser, APIs and pipelines",
+      "feature": "api-playground",
+      "caption": "API request editing and local response inspection",
+      "image": "docs/images/api-playground.png",
+      "capture": "deep-workflows/**/api-light.png"
+    },
+    {
+      "group": "Research, knowledge and deliverables",
+      "feature": "compare-models",
+      "caption": "Compare independent answers and their synthesis; sample analysis",
+      "image": "docs/images/compare-models.png",
+      "capture": "extra:compare-models.png"
+    },
+    {
+      "group": "Research, knowledge and deliverables",
+      "feature": "knowledge",
+      "caption": "Search and review project knowledge",
+      "image": "docs/images/knowledge.png",
+      "capture": "deep-workflows/**/knowledge.png"
+    },
+    {
+      "group": "Research, knowledge and deliverables",
+      "feature": "report",
+      "caption": "Report preview, review comments and export",
+      "image": "docs/images/report.png",
+      "capture": "extra:report.png"
+    },
+    {
+      "group": "Research, knowledge and deliverables",
+      "feature": "spreadsheet",
+      "caption": "Spreadsheet deliverable preview and export",
+      "image": "docs/images/spreadsheet.png",
+      "capture": "extra:spreadsheet.png"
+    },
+    {
+      "group": "Research, knowledge and deliverables",
+      "feature": "presentation",
+      "caption": "Presentation deliverable preview and export",
+      "image": "docs/images/presentation.png",
+      "capture": "extra:presentation.png"
+    },
+    {
+      "group": "Design and source import",
+      "feature": "design-editor",
+      "caption": "Editable architecture, layers, styles and source-linked descriptions",
+      "image": "docs/images/design-editor.png",
+      "capture": "design/**/wide-light-selected.png"
+    },
+    {
+      "group": "Design and source import",
+      "feature": "engineering-components",
+      "caption": "Engineering component library and connected diagrams",
+      "image": "docs/images/engineering-components.png",
+      "capture": "design/**/engineering-components.png"
+    },
+    {
+      "group": "Design and source import",
+      "feature": "design-system",
+      "caption": "Shared color, type and spacing tokens; reusable components and variants",
+      "image": "docs/images/design-system.png",
+      "capture": "workspace-six/**/design-system.png"
+    },
+    {
+      "group": "Design and source import",
+      "feature": "design-layout",
+      "caption": "Reusable instances and automatic frame layout",
+      "image": "docs/images/design-layout.png",
+      "capture": "workspace-six/**/design-system-canvas.png"
+    },
+    {
+      "group": "Design and source import",
+      "feature": "design-import",
+      "caption": "Source-to-design draft review before adding editable layers",
+      "image": "docs/images/design-import.png",
+      "capture": "design-import/**/review.png"
+    },
+    {
+      "group": "Design and source import",
+      "feature": "selective-import",
+      "caption": "Selective re-import, source changes and preserved manual edits",
+      "image": "docs/images/selective-import.png",
+      "capture": "design-import/**/selective-review.png"
+    },
+    {
+      "group": "Design and source import",
+      "feature": "design-health",
+      "caption": "Source-link health checks and actionable design findings",
+      "image": "docs/images/design-health.png",
+      "capture": "design-intelligence/**/health-light.png"
+    },
+    {
+      "group": "Containers and observability",
+      "feature": "docker-map",
+      "caption": "Docker containers, images and network relationships",
+      "image": "docs/images/docker-map.png",
+      "capture": "containers/**/docker-map.png"
+    },
+    {
+      "group": "Containers and observability",
+      "feature": "kubernetes-map",
+      "caption": "Kubernetes workloads, services and pods",
+      "image": "docs/images/kubernetes-map.png",
+      "capture": "containers/**/kubernetes-map.png"
+    },
+    {
+      "group": "Containers and observability",
+      "feature": "cluster-health",
+      "caption": "Cluster health and failing workloads",
+      "image": "docs/images/cluster-health.png",
+      "capture": "containers/**/cluster-health-light.png"
+    },
+    {
+      "group": "Containers and observability",
+      "feature": "container-logs",
+      "caption": "Searchable runtime logs and structured fields",
+      "image": "docs/images/container-logs.png",
+      "capture": "containers/**/logs-structured.png"
+    },
+    {
+      "group": "Containers and observability",
+      "feature": "loki-history",
+      "caption": "Retained Loki history and LogQL queries",
+      "image": "docs/images/loki-history.png",
+      "capture": "containers/**/loki-history.png"
+    },
+    {
+      "group": "Containers and observability",
+      "feature": "container-metrics",
+      "caption": "CPU, memory, restarts, latency, errors and correlated events; sample data",
+      "image": "docs/images/container-metrics.png",
+      "capture": "workspace-six/**/container-metrics.png"
+    },
+    {
+      "group": "Containers and observability",
+      "feature": "container-recovery",
+      "caption": "Review a deployment rollback before applying it",
+      "image": "docs/images/container-recovery.png",
+      "capture": "containers/**/rollback-review.png"
+    },
+    {
+      "group": "Layouts, recovery and updates",
+      "feature": "saved-layouts",
+      "caption": "Named layouts and focused split workspaces",
+      "image": "docs/images/saved-layouts.png",
+      "capture": "workspace-six/**/design-layout.png"
+    },
+    {
+      "group": "Layouts, recovery and updates",
+      "feature": "draft-recovery",
+      "caption": "Restore unsaved editor work after restart",
+      "image": "docs/images/draft-recovery.png",
+      "capture": "recovery/**/recovered-draft.png"
+    },
+    {
+      "group": "Layouts, recovery and updates",
+      "feature": "app-updates",
+      "caption": "Version details, release notes and update review; fixture feed",
+      "image": "docs/images/app-updates.png",
+      "capture": "history-updates/**/updates-available.png"
+    },
+    {
+      "group": "Projects, chats and agent work",
+      "feature": "agents",
+      "caption": "Named agents and distinct completed, failed and stopped outcomes",
+      "image": "docs/images/agents.jpg",
+      "capture": "existing native fixture capture"
+    },
+    {
+      "group": "Projects, chats and agent work",
+      "feature": "agent-task",
+      "caption": "Agent task details, plan, verification and deliverables",
+      "image": "docs/images/agent-task.jpg",
+      "capture": "existing native fixture capture"
+    },
+    {
+      "group": "Projects, chats and agent work",
+      "feature": "task-queue",
+      "caption": "Persistent task queue and explicit resume controls",
+      "image": "docs/images/task-queue.jpg",
+      "capture": "existing native fixture capture"
+    },
+    {
+      "group": "Projects, chats and agent work",
+      "feature": "task-activity",
+      "caption": "Task activity, approvals and result history",
+      "image": "docs/images/task-activity.jpg",
+      "capture": "existing native fixture capture"
+    },
+    {
+      "group": "Research, knowledge and deliverables",
+      "feature": "research",
+      "caption": "Research findings linked to source evidence",
+      "image": "docs/images/research.jpg",
+      "capture": "existing native fixture capture"
+    },
+    {
+      "group": "Getting started and settings",
+      "feature": "connections",
+      "caption": "MCP connections, configuration and connection checks",
+      "image": "docs/images/connections.jpg",
+      "capture": "existing native fixture capture"
+    }
+  ]
+}
