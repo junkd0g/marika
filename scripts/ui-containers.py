@@ -81,7 +81,7 @@ steps = [step('wait', seconds=1), step('size', width=1540, height=950), step('ap
     step('captureMarker', name='container-manifest-review', path=str(root / 'manifest-review.png')),
     step('clickMarker', name='container-apply-submit'), step('wait', seconds=.3), step('containersCheck', phase='applied'),
     step('containersCheck', phase='forward'), step('clickMarker', name='containers-view', fraction=.375), step('wait', seconds=.3), shot('kubernetes-list'),
-    step('containersCheck', phase='health'), step('clickMarker', name='containers-view', fraction=.84), step('wait', seconds=.5), shot('cluster-health-dark'),
+    step('containersCheck', phase='health'), step('clickMarker', name='containers-view', fraction=.90), step('wait', seconds=.5), shot('cluster-health-dark'),
     step('appearance', dark=False), step('wait', seconds=.3), shot('cluster-health-light'),
     step('clickMarker', name='health-issue-kube:job-failed'), step('wait', seconds=.4), step('containersCheck', phase='health-selected'), shot('job-details'),
     step('clickMarker', name='container-diagnostics-open'), step('wait', seconds=.5), step('assertMarker', name='container-diagnostics'), shot('job-diagnostics'),
@@ -99,7 +99,7 @@ steps = [step('wait', seconds=1), step('size', width=1540, height=950), step('ap
     step('clickMarker', name='log-stop'), step('containersCheck', phase='logs-stopped'), step('size', width=900, height=700), step('wait', seconds=.3), shot('logs-compact'), step('size', width=1540, height=950), step('containersCheck', phase='logs-context'),
     step('containersCheck', phase='logs-loki'), step('wait', seconds=.3), step('clickMarker', name='log-run'), step('wait', seconds=.4), step('containersCheck', phase='logs-history'), shot('loki-history'), step('appearance', dark=True), step('wait', seconds=.3), shot('loki-history-dark'), step('appearance', dark=False),
     step('clickMarker', name='log-connections'), step('wait', seconds=.3), step('clickMarker', name='container-log-test-connection'), step('wait', seconds=.3), step('assertMarker', name='container-log-connected'), shot('log-connections'), step('key', code=53), step('wait', seconds=.3),
-    step('clickMarker', name='containers-view', fraction=.84), step('size', width=900, height=700), step('wait', seconds=.4), shot('health-compact'),
+    step('clickMarker', name='containers-view', fraction=.90), step('size', width=900, height=700), step('wait', seconds=.4), shot('health-compact'),
     step('clickMarker', name='containers-view', fraction=.125), step('size', width=900, height=700), step('appearance', dark=False),
     step('wait', seconds=.4), shot('compact-map'), step('clickMarker', name='container-node-kube:api-service'), step('wait', seconds=.4),
     shot('compact-details'), step('key', code=53), step('quit')]

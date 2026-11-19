@@ -41,12 +41,14 @@ import Observation
         generation += 1; task?.cancel(); task = nil
         streams.forEach { $0.stop() }; streams = []; isRunning = false; isLoading = false
     }
-    func runRuntime(_ resources: [ContainerResource], target: ContainerTarget) {
+    func runRuntime(_ resources: [ContainerResource], target: ContainerTarget, window: ClosedRange<Date>? = nil) {
         stop(); buffer.clear(); error = nil; selectedID = nil
-        let sources = Array(resources.prefix(8)), container = container.isEmpty ? nil : container, since = since, follow = live, token = generation
+        let sources = Array(resources.prefix(8)), container = container.isEmpty ? nil : container
+        let since = window.map { min(604_800, max(1, Int(Date().timeIntervalSince($0.lowerBound)))) } ?? since
+        let follow = window == nil && live, token = generation
         note = resources.count > 8 ? "Showing the first 8 of \(resources.count) sources. Select a workload to narrow the stream." : nil
         guard !sources.isEmpty else { error = "Choose a running container, pod or workload with retained pods."; return }
-        start = Date().addingTimeInterval(-Double(since)); end = Date(); isRunning = true; isLoading = true
+        start = window?.lowerBound ?? Date().addingTimeInterval(-Double(since)); end = window?.upperBound ?? Date(); isRunning = true; isLoading = true
         task = Task { [self] in
             if follow {
                 for resource in sources {

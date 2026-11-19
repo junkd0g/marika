@@ -100,6 +100,7 @@ struct DesignInspector: View {
             .disabled(locked)
         }
         Group {
+            DesignSystemInspector(canvas: canvas)
             position
             layout
             if nodes.contains(where: { !$0.isLinear }) { typography }

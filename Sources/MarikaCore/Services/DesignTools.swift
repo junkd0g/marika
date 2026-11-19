@@ -106,6 +106,7 @@ public enum DesignTools {
         var result = DesignDocument()
         result.title = input.title
         result.nodes = nodes
+        result.designSystem = current.designSystem
         result.connections = edges.isEmpty ? nil : edges
         for locked in current.nodes where locked.isLocked {
             guard result.node(locked.id) == locked else {
@@ -168,6 +169,11 @@ public enum DesignTools {
         var node = component?.makeNode(centeredAt: CGPoint(x: x + width / 2, y: y + height / 2))
             ?? DesignNode(id: id, kind: kind, name: shape.name, x: x, y: y, width: width, height: height)
         node.id = id; node.kind = kind; node.name = shape.name ?? component?.title ?? kind.rawValue
+        if let previous = current.node(id) {
+            node.colorTokenID = shape.fill == nil ? previous.colorTokenID : nil
+            node.typeTokenID = shape.fontSize == nil && shape.fontWeight == nil ? previous.typeTokenID : nil
+            node.autoLayout = previous.autoLayout; node.layoutParentID = previous.layoutParentID; node.reusableInstance = previous.reusableInstance; node.importOrigin = previous.importOrigin
+        }
         node.x = x; node.y = y; node.width = width; node.height = height
         node.component = component
         if let links = shape.links {
@@ -175,6 +181,17 @@ public enum DesignTools {
             node.links = links.isEmpty ? nil : links
         } else { node.links = current.node(id)?.links }
         try applyProperties(shape, to: &node, replacing: current.node(id))
+        if let previous = current.node(id) {
+            if previous.colorTokenID != nil {
+                if shape.fill == nil { node.fill = previous.fill }
+                node.colorTokenID = node.fill == previous.fill ? previous.colorTokenID : nil
+            }
+            if previous.typeTokenID != nil {
+                if shape.fontSize == nil { node.fontSize = previous.fontSize }
+                if shape.fontWeight == nil { node.fontWeight = previous.fontWeight }
+                node.typeTokenID = node.fontSize == previous.fontSize && node.fontWeight == previous.fontWeight ? previous.typeTokenID : nil
+            }
+        }
         try validate(node, shape: shape)
         node.normalize()
         return node

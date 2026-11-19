@@ -10,7 +10,7 @@ struct ContainerLogsView: View {
     let workspace: ContainerWorkspace
     @Bindable var logs: ContainerLogsWorkspace
     @State private var connectionSheet = false
-    private var sources: [ContainerResource] { workspace.inventory.resources.filter { [.container, .pod, .deployment, .statefulSet, .daemonSet, .job, .cronJob].contains($0.kind) }.sorted { $0.name < $1.name } }
+    private var sources: [ContainerResource] { workspace.inventory.resources.filter { [.container, .pod, .deployment, .statefulSet, .daemonSet, .job, .cronJob, .service].contains($0.kind) }.sorted { $0.name < $1.name } }
     private var source: ContainerResource? { sources.first { $0.id == logs.sourceID } }
     private var containers: [String] {
         guard let source else { return [] }

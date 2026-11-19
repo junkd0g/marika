@@ -6,7 +6,7 @@ struct DesignImportView: View {
     @State private var model: DesignImportModel
     @Environment(\.dismiss) private var dismiss
 
-    init(projectID: UUID, app: AppModel) { _model = State(initialValue: DesignImportModel(projectID: projectID, app: app)) }
+    init(projectID: UUID, app: AppModel, selection: Set<UUID> = []) { _model = State(initialValue: DesignImportModel(projectID: projectID, app: app, selection: selection)) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -48,6 +48,17 @@ struct DesignImportView: View {
                     Text("Provider default").tag("")
                     ForEach(model.models) { Text($0.name).tag($0.id) }
                     if !model.modelID.isEmpty && !model.models.contains(where: { $0.id == model.modelID }) { Text(model.modelID).tag(model.modelID) }
+                }
+            }
+            if model.updateBatchID != nil {
+                Toggle("Update selected imported layers; preserve manual edits", isOn: $model.updatesSelection).font(.callout)
+            }
+            HStack {
+                Button("Capture local preview") { Task { await model.capturePreview() } }.disabled(model.working)
+                Button("Attach screenshot…") { model.chooseReference() }
+                if let reference = model.reference {
+                    Text(reference.source).font(.caption).lineLimit(1)
+                    Button { model.reference = nil; model.referenceImage = nil } label: { Image(systemName: "xmark.circle.fill") }
                 }
             }
             TextField("Focus (optional), e.g. checkout screens and shared controls", text: $model.focus, axis: .vertical)
@@ -112,6 +123,21 @@ struct DesignImportView: View {
     private func review(_ proposal: DesignImportProposal) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             DesignImportPreview(document: proposal.document)
+            if let reference = model.run?.reference {
+                let comparison = DesignReferenceComparison(reference: reference, document: proposal.document)
+                HStack(alignment: .top) {
+                    if let path = reference.imagePath, let image = NSImage(contentsOfFile: path) {
+                        Image(nsImage: image).resizable().scaledToFit().frame(width: 160, height: 95)
+                    }
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Reference: " + reference.source).font(.caption.weight(.medium))
+                        if comparison.measured > 0 {
+                            Text("Matched text: \(comparison.matched)/\(comparison.measured) measured elements").font(.caption)
+                            if let error = comparison.meanSizeError { Text("Mean size difference: " + error.formatted(.percent.precision(.fractionLength(0))) + " · compare visually before applying").font(.caption) }
+                        } else { Text("Screenshot supplied; geometry was not measured.").font(.caption) }
+                    }
+                }
+            }
             Text(proposal.summary).font(.callout).textSelection(.enabled)
             Text("\(proposal.document.nodes.count) editable layers · \(model.run?.files.count ?? 0) source files").font(.caption).foregroundStyle(.secondary)
             ScrollView {
@@ -119,12 +145,24 @@ struct DesignImportView: View {
                     ForEach(Array(proposal.notes.enumerated()), id: \.offset) { _, note in Text("• " + note).font(.caption).foregroundStyle(.secondary) }
                 }.frame(maxWidth: .infinity, alignment: .leading)
             }.frame(maxHeight: 95)
-            Text("Adds a new section beside the current artwork, with source links and one-step undo.").font(.caption).foregroundStyle(.secondary)
+            if let plan = model.mergePlan {
+                Text("\(plan.added) added · \(plan.changed) changed · \(plan.removed) removed · \(plan.conflicts.count) manual edits preserved").font(.caption)
+                ScrollView {
+                    VStack(alignment: .leading) {
+                        ForEach(plan.conflicts) { conflict in
+                            Toggle("Use generated: " + conflict.name + " — " + conflict.reason, isOn: Binding(get: { model.useGenerated.contains(conflict.id) }, set: { if $0 { model.useGenerated.insert(conflict.id) } else { model.useGenerated.remove(conflict.id) } })).font(.caption)
+                        }
+                    }
+                }.frame(maxHeight: 90)
+                Button("Refresh comparison") { model.refreshReview() }.font(.caption)
+            } else {
+                Text("Adds a new section beside the current artwork, with source links and one-step undo.").font(.caption).foregroundStyle(.secondary)
+            }
             HStack {
                 Button("Discard draft") { model.startOver() }.disabled(model.working)
                 Button("Open conversation") { model.openConversation(); dismiss() }
                 Spacer()
-                Button("Add to canvas") { Task { if await model.apply() { dismiss() } } }
+                Button(model.run?.updatingBatchID == nil ? "Add to canvas" : "Apply reviewed update") { Task { if await model.apply() { dismiss() } } }
                     .buttonStyle(WorkspaceButtonStyle(kind: .primary)).disabled(model.working)
                     #if DEBUG
                     .background(DebugViewMarker(name: "design-import-apply"))

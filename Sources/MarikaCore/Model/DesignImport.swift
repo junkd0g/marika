@@ -25,6 +25,11 @@ public struct DesignImportRun: Codable, Hashable, Sendable, Identifiable {
     public var files: [DesignImportFile] = []
     public var proposal: DesignImportProposal?
     public var error: String?
+    public var updatingBatchID: UUID?
+    public var targetIDs: Set<UUID>?
+    public var reviewRevision: String?
+    public var reference: DesignImportReference?
+    public var repairAttempts: Int?
     public var isActive: Bool { status == .preparing || status == .running }
     public init(id: UUID = UUID(), sessionID: UUID = UUID(), projectPath: String, agent: AgentKind) {
         self.id = id; self.sessionID = sessionID; self.projectPath = projectPath; self.agent = agent; date = Date()
@@ -56,6 +61,7 @@ public struct DesignImportProposal: Codable, Hashable, Sendable {
         let empty = DesignDocument()
         var document = try DesignTools.publish(["baseRevision": .string(DesignTools.revision(of: empty)),
             "design": .string(String(decoding: try design.serialized(), as: UTF8.self))], replacing: empty)
+        guard document.nodes.count <= 250, (document.connections?.count ?? 0) <= 400 else { throw DesignToolError("Import drafts are limited to 250 layers and 400 connections. Select fewer components.") }
         guard !document.nodes.isEmpty else { throw DesignToolError("The agent returned an empty design. Choose UI source files and try again.") }
         guard Set(files.map(\.path)).count == files.count else { throw DesignToolError("The source inventory contains duplicate files.") }
         let sources = Dictionary(uniqueKeysWithValues: files.map { ($0.path, $0) })
@@ -75,7 +81,7 @@ public struct DesignImportProposal: Codable, Hashable, Sendable {
     }
 
     /// Adds a separately movable section, preserving every existing layer and connection.
-    public func appending(to current: DesignDocument) throws -> (document: DesignDocument, selection: UUID) {
+    public func appending(to current: DesignDocument, batchID: UUID = UUID()) throws -> (document: DesignDocument, selection: UUID) {
         guard current.nodes.count + document.nodes.count + 1 <= 500,
               (current.connections?.count ?? 0) + (document.connections?.count ?? 0) <= 1_000,
               let bounds = document.bounds(of: Set(document.nodes.map(\.id))) else {
@@ -91,9 +97,13 @@ public struct DesignImportProposal: Codable, Hashable, Sendable {
         var result = current
         let wrapper = result.add(.frame, in: frame)
         result.update([wrapper]) { $0.name = document.title ?? "Imported design"; $0.text = ""; $0.description = summary }
+        result.update([wrapper]) { $0.importOrigin = DesignImportOrigin(batchID: batchID, key: "root") }
+        let keys = DesignImportMerge.keys(document.nodes)
         let ids = Dictionary(uniqueKeysWithValues: document.nodes.map { ($0.id, UUID()) })
         result.nodes += document.nodes.map { node in
             var copy = node; copy.id = ids[node.id]!; copy.x += dx; copy.y += dy
+            copy.importOrigin = DesignImportOrigin(batchID: batchID, key: keys[node.id]!)
+            copy.layoutParentID = node.layoutParentID.flatMap { ids[$0] } ?? wrapper
             copy.links = copy.links?.map { var link = $0; link.id = UUID(); return link }
             return copy
         }

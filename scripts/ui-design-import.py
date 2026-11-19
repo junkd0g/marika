@@ -67,7 +67,7 @@ run('stale', start() + [step('clickMarker', name='design-import-apply'), step('w
     step('assertMarker', name='design-import-error'), step('designImportCheck', phase='preview'), shot('stale-source'), step('quit')])
 (project / 'App.tsx').write_text(source['App.tsx'])
 run('apply', start() + [step('designImportCheck', phase='preview'), step('clickMarker', name='design-import-apply'), step('wait', seconds=.4),
-    step('designImportCheck', phase='applied'), shot('imported-canvas'), step('quit')])
+    step('designImportCheck', phase='applied'), shot('imported-canvas'), step('designImportSelective'), step('clickMarker', name='design-import-toggle'), step('wait', seconds=.4), shot('selective-review'), step('designImportApplySelective'), step('quit')])
 run('invalid', start('Not a design draft') + [step('clickMarker', name='design-import-generate'), step('designImportWait', status='failed'),
     step('designImportCheck', phase='failed'), shot('invalid-output'), step('quit')])
 run('cancel', start(delay=3) + [step('clickMarker', name='design-import-generate'), step('wait', seconds=.3), step('clickMarker', name='design-import-stop'),

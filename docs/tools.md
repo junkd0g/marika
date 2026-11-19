@@ -233,3 +233,11 @@ services, tools or the environment.
 
 Project views now open from the **+** menu in the tab row. Existing keyboard shortcuts, tab closing,
 reordering, and dragging tabs into splits continue to work.
+
+### Container metrics and correlated logs
+
+Choose **Containers → Metrics** to sample CPU cores, memory and Kubernetes restart counts. **Record metrics** samples every 15 seconds while the pane is visible; leaving it pauses recording. **Sample now** performs a single read. History is kept in memory for up to one hour, capped at 12,000 points, and cleared when the engine/context/namespace changes. Missing samples stay blank. Kubernetes CPU/memory requires an existing Metrics Server; Marika does not install one. Restart counts remain available from the resource inventory.
+
+Filter to a container, pod, workload or Service; Service selection follows its pod labels. Deployment events appear below the charts. Select a chart time or event and use **Open logs at this time** to load the retained runtime logs around ±2 minutes. Retention depends on Docker/Kubernetes. The log panel also connects to Loki for longer-term history.
+
+**Prometheus…** connects an existing Prometheus-compatible endpoint, including Grafana Cloud. Configure a latency query returning milliseconds and an error query returning percent. Each must return a single series and explicitly select the service/namespace you want. Resource selection does not rewrite PromQL. Credentials stay in Keychain, separately from Loki credentials; authenticated remote requests require HTTPS. Charts reflect the configured query's scope. No dashboard or monitoring server is provisioned.

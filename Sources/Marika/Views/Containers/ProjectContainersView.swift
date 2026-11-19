@@ -39,7 +39,7 @@ struct ProjectContainersView: View {
             }
             HStack(spacing: 0) {
                 content.frame(maxWidth: .infinity, maxHeight: .infinity)
-                if width >= 1000, workspace.selected != nil, ![ContainerViewMode.health, .logs].contains(workspace.display) { Divider(); details.frame(width: 310) }
+                if width >= 1000, workspace.selected != nil, ![ContainerViewMode.health, .logs, .metrics].contains(workspace.display) { Divider(); details.frame(width: 310) }
             }
             if !workspace.output.isEmpty {
                 HStack { Text(workspace.operationTitle).font(.caption); Spacer(); Button("Operation output") { workspace.showsOutput = true }.font(.caption) }.padding(10).background(Theme.panel)
@@ -54,12 +54,14 @@ struct ProjectContainersView: View {
                 do { try await Task.sleep(for: .seconds(workspace.display == .health ? 30 : 10)) } catch { break }
             }
         }
+        .onChange(of: isVisible) { _, visible in if !visible { workspace.metrics.pause() } }
         .onChange(of: workspace.scope) { _, _ in Task { await workspace.refresh() } }
         .onChange(of: workspace.display) { _, value in
             if value != .logs { workspace.logs.stop() }
+            if value != .metrics { workspace.metrics.pause() }
             if value == .health { workspace.selectedID = nil; Task { await workspace.refreshHealth() } }
         }
-        .onChange(of: workspace.selectedID) { _, next in if next != nil, width < 1000, ![ContainerViewMode.logs, .health].contains(workspace.display) { compactDetails = true } }
+        .onChange(of: workspace.selectedID) { _, next in if next != nil, width < 1000, ![ContainerViewMode.logs, .health, .metrics].contains(workspace.display) { compactDetails = true } }
         .sheet(item: $form) { ContainerCreationSheet(workspace: workspace, request: $0) }
         .sheet(item: $diagnostics) { ContainerDiagnosticsView(workspace: workspace, request: $0) }
         .sheet(item: $recovery) { ContainerRecoveryView(workspace: workspace, request: $0) }
@@ -162,6 +164,8 @@ struct ProjectContainersView: View {
     @ViewBuilder private var content: some View {
         if workspace.display == .logs {
             VStack(spacing: 0) { viewPicker.padding(12).frame(maxWidth: .infinity, alignment: .trailing); ContainerLogsView(project: project, workspace: workspace, logs: workspace.logs) }
+        } else if workspace.display == .metrics {
+            VStack(spacing: 0) { viewPicker.padding(12).frame(maxWidth: .infinity, alignment: .trailing); ContainerMetricsView(workspace: workspace, metrics: workspace.metrics) }
         } else if workspace.display == .health, workspace.settings.provider == .kubernetes {
             VStack(spacing: 0) { viewPicker.padding(12).frame(maxWidth: .infinity, alignment: .trailing); ContainerHealthView(workspace: workspace) }
         } else if workspace.target == nil {
@@ -299,9 +303,9 @@ struct ProjectContainersView: View {
     }
     private var viewPicker: some View {
         Picker("View", selection: $workspace.display) {
-            Text("Map").tag(ContainerViewMode.map); Text("List").tag(ContainerViewMode.list); Text("Logs").tag(ContainerViewMode.logs)
+            Text("Map").tag(ContainerViewMode.map); Text("List").tag(ContainerViewMode.list); Text("Logs").tag(ContainerViewMode.logs); Text("Metrics").tag(ContainerViewMode.metrics)
             if workspace.settings.provider == .kubernetes { Text("Health").tag(ContainerViewMode.health) }
-        }.pickerStyle(.segmented).labelsHidden().frame(width: workspace.settings.provider == .kubernetes ? 280 : 210)
+        }.pickerStyle(.segmented).labelsHidden().frame(width: workspace.settings.provider == .kubernetes ? 360 : 290)
             #if DEBUG
             .background(DebugViewMarker(name: "containers-view"))
             #endif

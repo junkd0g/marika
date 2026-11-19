@@ -9,6 +9,7 @@ public struct ContainerHubSettings: Codable, Hashable, Sendable {
     public var composeFile = ""
     public var clusters: [LocalCluster] = []
     public var logConnection: ContainerLogConnection?
+    public var metricsConnection: ContainerMetricsConnection?
     public init() {}
 }
 public struct LocalCluster: Codable, Hashable, Sendable, Identifiable {
@@ -103,6 +104,9 @@ public struct ContainerEvent: Identifiable, Sendable {
     public var message: String
     public var warning: Bool
     public var timestamp: Date? = nil
+    public init(id: String, resourceUID: String, reason: String, message: String, warning: Bool, timestamp: Date? = nil) {
+        self.id = id; self.resourceUID = resourceUID; self.reason = reason; self.message = message; self.warning = warning; self.timestamp = timestamp
+    }
 }
 public struct ContainerInventory: Sendable {
     public var resources: [ContainerResource] = []

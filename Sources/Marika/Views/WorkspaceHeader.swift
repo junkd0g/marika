@@ -20,6 +20,7 @@ struct WorkspaceHeader: View {
                         .help(model.showsProjectSidebar ? "Hide projects" : "Show projects")
                     navigation
                     newViewMenu
+                    WorkspacePresetMenu(project: project)
                     if geometry.size.width >= 620 {
                         Button { model.showsCommandPalette = true } label: { Image(systemName: "command") }
                             .buttonStyle(.plain).help("Command palette (⌘K)")

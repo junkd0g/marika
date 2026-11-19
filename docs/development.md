@@ -261,3 +261,11 @@ Historical live checks recorded during early development. These CLI versions are
 
 The agents have different safety controls, so read [approval modes](approval-modes.md) for
 what each mode really does.
+
+### Compatibility and visual regression gates
+
+CI tests Xcode 26.3 on macOS 15 and Xcode 26.6 on macOS 26. A separate job builds and verifies the signed app and update package; another runs the isolated native workflows, including Design, import, containers and layouts. **Release readiness** fails unless all three gates succeed. Failed UI runs retain logs and screenshots. `DEVELOPER_DIR` is carried through to commands launched by Marika so the selected toolchain applies consistently.
+
+Run `python3 scripts/ui-checks.py --artifacts /path/to/results` after a debug build. It retains the normal macOS temporary directory for WebKit/compiler subprocesses, then copies fixture screenshots and logs to the requested folder. No agent account is used by those fixture checks.
+
+`Tests/Fixtures/DesignImport` contains repeatable SwiftUI, Compose, HTML, React and Vue examples. `scripts/benchmark-design-import.py` is an opt-in live CLI benchmark with a local rendered reference. Its exported measurements count matching text and size differences only; use the captured reference and review screenshot to assess visual quality.

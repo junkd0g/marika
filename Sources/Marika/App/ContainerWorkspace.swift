@@ -41,6 +41,7 @@ struct ContainerOperationPrompt: Identifiable {
     var isRefreshingHealth = false
     @ObservationIgnored let cli: ContainerCLI
     let logs: ContainerLogsWorkspace
+    let metrics: ContainerMetricsWorkspace
     @ObservationIgnored let environment: [String: String]
     @ObservationIgnored var onSettings: ((ContainerHubSettings) -> Void)?
     @ObservationIgnored private var generation = 0
@@ -54,6 +55,7 @@ struct ContainerOperationPrompt: Identifiable {
         environment["PATH"] = [environment["PATH"] ?? "/usr/bin:/bin", home + "/.docker/bin", "/Applications/Docker.app/Contents/Resources/bin"].joined(separator: ":")
         self.environment = environment; self.clusterDirectory = clusterDirectory
         cli = ContainerCLI(root: root, environment: environment, runner: runner)
+        metrics = ContainerMetricsWorkspace(fetch: logFetch)
         logs = ContainerLogsWorkspace(root: root, environment: environment, cli: cli, loki: ContainerLoki(fetch: logFetch))
     }
     var targets: [ContainerTarget] { settings.provider == .docker ? dockerTargets : kubeTargets }
@@ -102,7 +104,7 @@ struct ContainerOperationPrompt: Identifiable {
         guard !isBusy else { return }; settings.namespace = namespace; changedTarget()
     }
     private func changedTarget() {
-        logs.reset()
+        logs.reset(); metrics.reset()
         generation += 1; inventory = ContainerInventory(); selectedID = nil; error = nil; namespaces = []
     }
     func refresh() async {
@@ -154,6 +156,10 @@ struct ContainerOperationPrompt: Identifiable {
     }
     func relatedPods(_ resource: ContainerResource) -> [ContainerResource] {
         if resource.kind == .pod { return [resource] }
+        if resource.kind == .service {
+            guard !resource.selector.isEmpty else { return [] }
+            return inventory.resources.filter { pod in pod.kind == .pod && pod.namespace == resource.namespace && resource.selector.allSatisfy { pod.labels[$0.key] == $0.value } }
+        }
         var owners: Set<String> = [resource.uid]
         for _ in 0..<4 {
             let next = inventory.resources.filter { $0.kind != .pod && owners.contains($0.ownerUID ?? "") }.map(\.uid)
@@ -249,7 +255,7 @@ struct ContainerOperationPrompt: Identifiable {
         try next.start(launch)
         forward = next
     }
-    func stop() { generation += 1; cancelOperation(); logs.stop(); forward?.stop(); forward = nil }
+    func stop() { generation += 1; cancelOperation(); logs.stop(); metrics.pause(); forward?.stop(); forward = nil }
 
     func queryLoki(_ connection: ContainerLogConnection) {
         let token = ContainerConnectionSettings().token(for: connection, projectID: projectID)

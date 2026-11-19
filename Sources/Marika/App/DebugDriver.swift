@@ -126,6 +126,10 @@
                 try DebugDesignImportChecks.prepare(model, response: step["response"]?.string ?? "", delay: step["delay"]?.double ?? 1)
             case "designImportWait":
                 try await DebugDesignImportChecks.wait(model, status: step["status"]?.string ?? "ready")
+            case "designImportSelective":
+                try await DebugDesignImportChecks.selective(model)
+            case "designImportApplySelective":
+                try await DebugDesignImportChecks.applySelective(model)
             case "designImportCheck":
                 try await DebugDesignImportChecks.check(model, phase: step["phase"]?.string ?? "preview")
                 log("Design import \(step["phase"]?.string ?? "") passed")
@@ -160,6 +164,16 @@
                       let picker = marker(in: root, named: "research-sections") else { throw DriverError("Research sections not found") }
                 try click(picker, in: window, fractionX: (CGFloat(step["index"]?.int ?? 0) + 0.5) / 3)
                 try await pause(0.2)
+            case "sixDesign":
+                try DebugWorkspaceSixChecks.design(model, showSystem: step["system"]?.bool ?? false)
+            case "sixLayout":
+                try await DebugWorkspaceSixChecks.layout(model, name: step["name"]?.string ?? "Design")
+            case "sixImportReference":
+                try await DebugWorkspaceSixChecks.importReference(model, source: step["source"]?.string ?? "index.html", agent: AgentKind(rawValue: step["agent"]?.string ?? "claude") ?? .claude)
+            case "sixImportExport":
+                try DebugWorkspaceSixChecks.exportImport(model, directory: step["directory"]?.string ?? "")
+            case "sixMetrics":
+                try await DebugWorkspaceSixChecks.metrics(model)
             case "containersPrepare":
                 try await DebugContainersChecks.prepare(model)
             case "containersLogsPreview":
@@ -323,7 +337,7 @@
                 let summary = TaskCompletionSummary(items: session.items)
                 guard summary?.changedFiles == ["index.html"] else { throw DriverError("Incorrect completion file summary") }
                 if let expected = step["verified"]?.bool {
-                    guard (session.meta.taskVerification?.succeeded == true) == expected else { throw DriverError("Unexpected verification result") }
+                    guard (session.meta.taskVerification?.succeeded == true) == expected else { throw DriverError("Unexpected verification result: " + (session.meta.taskVerification?.output ?? "No result recorded")) }
                 }
                 if step["sheet"]?.bool == true {
                     guard let sheet = window()?.attachedSheet, let root = sheet.contentView,

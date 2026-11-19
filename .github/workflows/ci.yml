@@ -13,11 +13,20 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test-and-build:
-    runs-on: macos-15
-    timeout-minutes: 20
+  compatibility:
+    name: Swift compatibility (${{ matrix.xcode }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            xcode: '26.3'
+          - runner: macos-26
+            xcode: '26.6'
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
     env:
-      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
+      DEVELOPER_DIR: /Applications/Xcode_${{ matrix.xcode }}.app/Contents/Developer
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -40,18 +49,49 @@ jobs:
             echo 'check.sh incorrectly accepted a failed build' >&2
             exit 1
           fi
+
+  package:
+    name: Signed package checks
+    needs: compatibility
+    runs-on: macos-15
+    timeout-minutes: 25
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
       - name: Build and verify app bundle
         run: |
           scripts/build-app.sh release
           codesign --verify --deep --strict build/Marika.app
       - name: Verify signed update packaging with temporary keys
         run: python3 scripts/test-update-package.py
+      - name: Archive verified app
+        run: ditto -c -k --sequesterRsrc --keepParent build/Marika.app build/Marika.app.zip
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: verified-macos-app
+          path: build/Marika.app.zip
+          retention-days: 7
+
+  native-ui:
+    name: Native workflow checks
+    needs: compatibility
+    runs-on: macos-15
+    timeout-minutes: 30
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Build debug app
+        run: swift build
       - name: Run native UI regressions with isolated fixtures
-        run: |
-          swift build
-          python3 scripts/ui-checks.py --artifacts "${{ runner.temp }}/marika-ui-checks"
-      - name: Retain native UI failure screenshots and logs
-        if: failure()
+        run: python3 scripts/ui-checks.py --artifacts "${{ runner.temp }}/marika-ui-checks"
+      - name: Retain UI screenshots and logs
+        if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: native-ui-diagnostics
@@ -61,3 +101,22 @@ jobs:
             ${{ runner.temp }}/marika-ui-checks/**/*.json
           if-no-files-found: ignore
           retention-days: 7
+
+  release-ready:
+    name: Release readiness
+    if: always()
+    needs: [compatibility, package, native-ui]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every check to pass
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          python3 - <<'PY'
+          import json, os
+          results = json.loads(os.environ['RESULTS'])
+          failed = [name for name, job in results.items() if job['result'] != 'success']
+          if failed:
+              raise SystemExit('Required checks did not pass: ' + ', '.join(failed))
+          print('Compatibility, signed packaging and native workflows passed.')
+          PY

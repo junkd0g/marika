@@ -1,3 +1,5 @@
+The [complete gallery in README](../README.md#complete-screenshot-gallery) includes Design, imports, containers, metrics, notes, tickets, debugging and recovery. The tour below provides additional workflow context.
+
 # Feature tour in screenshots
 
 [Documentation](README.md) · [Install Marika](../README.md#get-started)

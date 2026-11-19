@@ -25,7 +25,7 @@ import MarikaCore
     }
 
     static func wait(_ model: AppModel, status: String) async throws {
-        for _ in 0..<300 {
+        for _ in 0..<1800 {
             if model.selectedProject?.designImport?.status.rawValue == status { return }
             try await Task.sleep(for: .milliseconds(100))
         }
@@ -62,6 +62,28 @@ import MarikaCore
         guard await model.save() else { throw DesignToolError("Import fixture did not save") }
     }
 
+    static func selective(_ model: AppModel) async throws {
+        guard let project = model.selectedProject, let batch = project.designImportBatches?.last,
+              let run = project.designImport, let saved = model.controllers[run.sessionID] else { throw DesignToolError("Applied import fixture required") }
+        let editor = model.design(for: project)
+        guard let node = editor.document.nodes.first(where: { $0.importOrigin?.batchID == batch.id && $0.kind == .text }) else { throw DesignToolError("Imported text missing") }
+        editor.edit { $0.update([node.id]) { $0.text = "My manually refined title" } }
+        let targets = Set(editor.document.nodes.filter { $0.importOrigin?.batchID == batch.id }.map(\.id))
+        guard !saved.isBusy else { throw DesignToolError("Import still active") }
+        try await model.startDesignImport(projectID: project.id, paths: batch.files.map(\.path), focus: "Main screens", agent: .codex, model: nil, updating: batch.id, selection: targets)
+        try await wait(model, status: "ready")
+        guard let current = model.project(id: project.id)?.designImport, let proposal = current.proposal else { throw DesignToolError("Update not ready") }
+        let plan = try DesignImportMerge(batch: batch, current: editor.document, targets: targets, proposal: proposal.document)
+        guard plan.conflicts.contains(where: { $0.id == node.id }) else { throw DesignToolError("Manual edit not shown in diff") }
+        model.openDesign(for: project.id)
+    }
+
+    static func applySelective(_ model: AppModel) async throws {
+        guard let project = model.selectedProject else { throw DesignToolError("Project missing") }
+        try await model.applyDesignImport(projectID: project.id)
+        guard model.design(for: project).document.nodes.contains(where: { $0.text == "My manually refined title" }) else { throw DesignToolError("Re-import overwrote a manual edit") }
+    }
+
     private actor ImportAgent: AgentSession {
         nonisolated let events: AsyncStream<AgentEvent>
         private let sink: AsyncStream<AgentEvent>.Continuation
@@ -74,7 +96,7 @@ import MarikaCore
             events = stream.stream; sink = stream.continuation; self.response = response; self.delay = delay
         }
         func send(_ input: UserInput) async throws {
-            guard input.text.contains("BEGIN UNTRUSTED SOURCE EXCERPTS"), input.text.contains("Main screens") else {
+            guard input.text.contains("single validation repair attempt") || (input.text.contains("BEGIN UNTRUSTED SOURCE EXCERPTS") && input.text.contains("Main screens")) else {
                 throw DesignToolError("Missing source or import instructions")
             }
             active = true

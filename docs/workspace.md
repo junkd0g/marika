@@ -564,3 +564,17 @@ or Loki, start scaled-down deployments, read their secrets or copy browser crede
 Runtime live sessions follow the pods selected when the query starts; rerun after a rollout
 to include replacement pods. Loki queries use the configured endpoint and the labels in
 LogQL, so include cluster and namespace selectors when querying a shared multi-cluster store.
+
+### Reusable Design systems and import review
+
+Open **Diagram → Components & design tokens** to create shared colors, text styles and spacing values. Apply color/type tokens to selected layers from that sheet or the inspector. A manual style edit detaches that binding. Updating a token changes its bound, unlocked layers.
+
+Save a selection as a reusable component, add named variants, then insert instances. The inspector switches variants or detaches an instance. Replacing a variant does not silently overwrite existing instances: **Update instances** explicitly resets local overrides and supports Undo. A frame's **Frame layout** section supports horizontal or vertical flow, padding and spacing tokens. Locked or rotated children must be resolved before automatic layout can be enabled.
+
+**Import** accepts Swift/SwiftUI/UIKit, Kotlin/Compose, HTML/CSS, React and Vue source files. Attach a screenshot of the running native app, or open a local preview in Browser and choose **Capture local preview**. That sends the captured image and bounded rendered measurements alongside the selected source copies. The review shows matched text and size differences for measured elements; these are partial fidelity checks, not a pixel-perfect guarantee. Missing assets, responsive states and platform-specific rendering still require visual review. Invalid output gets one validation repair attempt.
+
+Select previously imported layers and reopen **Import** to update that selection. The comparison shows additions, changes, removals and conflicting manual edits. Manual edits, deletions and locked layers are preserved by default; choose individual generated versions to resolve conflicts. Review again if the canvas changes. Applying creates a saved Design version and one undo step; source code is never changed by import. Source paths/names identify matching layers, so substantial renames can appear as an addition and removal.
+
+### Saved workspace layouts
+
+The layout button in the tab row offers **Design**, **Debug**, **Services** and **Review** arrangements. Save the current split under a project-specific name, reapply it later, or remove it from the menu. The command palette lists the same layouts. Layouts restore visible tools and split direction/size while preserving current files, editor buffers, chats and browser history. A project can keep up to 20 named layouts.

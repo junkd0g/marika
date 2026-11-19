@@ -15,10 +15,14 @@ public struct ContainerCredentialAccess: Sendable {
 
 public struct ContainerConnectionSettings: Sendable {
     private let credentials: ContainerCredentialAccess
-    public init(credentials: ContainerCredentialAccess = .keychain) { self.credentials = credentials }
+    private let service: String
+    public init(credentials: ContainerCredentialAccess = .keychain, service: String = "loki") { self.credentials = credentials; self.service = service }
+    private func account(_ connection: ContainerLogConnection, _ projectID: UUID) -> String {
+        connection.credentialAccount(projectID: projectID).replacingOccurrences(of: "container-loki-", with: "container-" + service + "-")
+    }
 
     public func token(for connection: ContainerLogConnection, projectID: UUID, replacement: String = "", removing: Bool = false) -> String? {
-        removing ? nil : replacement.isEmpty ? credentials.read(connection.credentialAccount(projectID: projectID)) : replacement
+        removing ? nil : replacement.isEmpty ? credentials.read(account(connection, projectID)) : replacement
     }
 
     /// Validates everything before touching credentials. Callers publish settings only after this succeeds.
@@ -26,15 +30,15 @@ public struct ContainerConnectionSettings: Sendable {
         var connection = draft
         connection.endpoint = connection.endpoint.trimmingCharacters(in: .whitespacesAndNewlines)
         connection.grafanaURL = connection.grafanaURL.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !connection.endpoint.isEmpty || token.isEmpty else { throw ContainerHubError("Enter a Loki URL before saving a token.") }
-        guard connection.endpoint.isEmpty || ContainerLoki.url(connection.endpoint) != nil else { throw ContainerHubError("Enter a valid Loki base URL.") }
+        guard !connection.endpoint.isEmpty || token.isEmpty else { throw ContainerHubError("Enter a monitoring URL before saving a token.") }
+        guard connection.endpoint.isEmpty || ContainerLoki.url(connection.endpoint) != nil else { throw ContainerHubError("Enter a valid monitoring base URL.") }
         if !connection.grafanaURL.isEmpty {
             guard let url = URL(string: connection.grafanaURL), ["https", "http"].contains(url.scheme), url.host != nil, url.user == nil, url.password == nil else {
                 throw ContainerHubError("Enter a valid Grafana URL without embedded credentials.")
             }
         }
         if !token.isEmpty || removingToken {
-            guard credentials.write(removingToken ? nil : token, connection.credentialAccount(projectID: projectID)) else {
+            guard credentials.write(removingToken ? nil : token, account(connection, projectID)) else {
                 throw ContainerHubError("Keychain could not save this token. Connection settings were kept open.")
             }
         }

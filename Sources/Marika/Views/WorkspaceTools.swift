@@ -123,6 +123,12 @@ struct CommandPaletteView: View {
             Action(id: "space-" + space.id.uuidString, title: "Switch to space: " + space.name, symbol: space.symbol, shortcut: "", run: { model.selectSpace(space.id) })
         }
         if let project = model.selectedProject {
+            result += WorkspaceFocus.allCases.map { focus in
+                Action(id: "focus-" + focus.id, title: "Focus: " + focus.rawValue, symbol: focus.symbol, shortcut: "", run: { model.applyViewPreset(focus.preset, project: project) })
+            }
+            result += (project.viewPresets ?? []).map { preset in
+                Action(id: "layout-" + preset.id.uuidString, title: "Layout: " + preset.name, symbol: "rectangle.3.group", shortcut: "", run: { model.applyViewPreset(preset, project: project) })
+            }
             result += [
                 Action(id: "files", title: "Go to File…", symbol: "doc.text.magnifyingglass", shortcut: "⌘P", run: { model.showCode(quickOpen: true) }),
                 Action(id: "search", title: "Search Project…", symbol: "magnifyingglass", shortcut: "⇧⌘F", run: { model.showsProjectSearch = true }),

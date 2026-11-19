@@ -37,9 +37,10 @@ struct ProjectDesignView: View {
         .onChange(of: canvas.editor.externalRevision) { _, _ in canvas.externalChange() }
         .sheet(isPresented: Binding(get: { canvas.showsTemplates }, set: { canvas.showsTemplates = $0 })) { DesignTemplatePicker(canvas: canvas) }
         .sheet(isPresented: Binding(get: { canvas.showsHistory }, set: { canvas.showsHistory = $0 })) { DesignHistoryView(canvas: canvas) }
+        .sheet(isPresented: Binding(get: { canvas.showsSystem }, set: { canvas.showsSystem = $0 })) { DesignSystemView(canvas: canvas) }
         .sheet(isPresented: Binding(get: { canvas.showsHealth }, set: { canvas.showsHealth = $0 })) { DesignHealthView(canvas: canvas) }
         .sheet(isPresented: Binding(get: { canvas.showsImport }, set: { canvas.showsImport = $0 })) {
-            if let app = canvas.app { DesignImportView(projectID: project.id, app: app) }
+            if let app = canvas.app { DesignImportView(projectID: project.id, app: app, selection: canvas.selection) }
         }
         .sheet(item: Binding(get: { canvas.ticketDraft }, set: { canvas.ticketDraft = $0 })) { DesignTicketEditor(canvas: canvas, draft: $0) }
         .alert(canvas.errorTitle, isPresented: Binding(
@@ -75,6 +76,7 @@ struct ProjectDesignView: View {
                     .background(DebugViewMarker(name: "design-components-toggle"))
                     #endif
                 Menu {
+                    Button("Components & design tokens…") { canvas.showsSystem = true }
                     Button("Insert template…") { canvas.showsTemplates = true }
                     Menu("Tidy layout") {
                         Button("Left to right") { canvas.tidy(.horizontal) }

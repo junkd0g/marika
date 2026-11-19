@@ -163,7 +163,7 @@ final class AppModel {
 
     @discardableResult
     func launchAgent(in project: Project, agent: AgentKind, settings: AgentSettings, prompt: String,
-                     parentSessionID: UUID? = nil, isolated: Bool = true, name: String? = nil, queueID: UUID? = nil, sessionID: UUID = UUID(), ticketLaunch: TicketAgentLaunch? = nil, designImportID: UUID? = nil) async throws -> SessionController {
+                     parentSessionID: UUID? = nil, isolated: Bool = true, name: String? = nil, queueID: UUID? = nil, sessionID: UUID = UUID(), ticketLaunch: TicketAgentLaunch? = nil, designImportID: UUID? = nil, images: [ImageAttachment] = []) async throws -> SessionController {
         if let ticketLaunch {
             guard !launchingTickets.contains(ticketLaunch.ticketID), !acceptingTickets.contains(ticketLaunch.ticketID) else { throw TicketWorkError("This ticket is already starting or accepting work.") }
             try validateTicketLaunch(ticketLaunch, projectID: project.id)
@@ -230,7 +230,7 @@ final class AppModel {
                 guard self.project(id: project.id)?.designImport?.id == designImportID,
                       self.project(id: project.id)?.designImport?.status == .running else { throw CancellationError() }
             }
-            controller.send(UserInput(text: task))
+            controller.send(UserInput(text: task, images: images))
             return controller
         } catch {
             if let ticketLaunch {

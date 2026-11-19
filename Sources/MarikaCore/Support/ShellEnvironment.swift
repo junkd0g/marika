@@ -12,6 +12,7 @@ public enum ShellEnvironment {
     private static let inherited = [
         "HOME", "USER", "LOGNAME", "SHELL", "TMPDIR", "LANG", "LC_ALL", "LC_CTYPE",
         "SSH_AUTH_SOCK", "__CF_USER_TEXT_ENCODING", "COMMAND_MODE",
+        "DEVELOPER_DIR", "SDKROOT", "TOOLCHAINS",
     ]
     private static let systemPath = "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
     private static let marker = "__MARIKA_ENV_BEGIN__"

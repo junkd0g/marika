@@ -173,6 +173,12 @@ public struct DesignNode: Codable, Equatable, Hashable, Sendable, Identifiable {
     /// Optional engineering role; older, generic shapes have no component badge.
     public var component: DesignComponent?
     public var links: [DesignSourceLink]?
+    public var colorTokenID: UUID?
+    public var typeTokenID: UUID?
+    public var layoutParentID: UUID?
+    public var autoLayout: DesignAutoLayout?
+    public var reusableInstance: DesignReusableInstance?
+    public var importOrigin: DesignImportOrigin?
 
     public init(id: UUID = UUID(), kind: Kind, name: String? = nil, x: Double, y: Double, width: Double, height: Double) {
         self.id = id; self.kind = kind; self.name = name ?? kind.rawValue
@@ -217,6 +223,8 @@ public struct DesignNode: Codable, Equatable, Hashable, Sendable, Identifiable {
         if strokeStyle == .solid { strokeStyle = nil }
         if isLinear || kind == .frame || kind == .text { component = nil }
         if let links { self.links = Array(links.filter(\.isValid).prefix(20)); if self.links?.isEmpty == true { self.links = nil } }
+        if kind != .frame { autoLayout = nil; reusableInstance = nil }
+        if layoutParentID == id { layoutParentID = nil }
         if let value = shadow {
             shadow = DesignShadow(color: value.color.clamped, x: bounded(value.x, -1_000...1_000, 0),
                                   y: bounded(value.y, -1_000...1_000, 4), blur: bounded(value.blur, 0...1_000, 12))
@@ -362,6 +370,7 @@ public struct DesignDocument: Codable, Equatable, Hashable, Sendable {
     public var title: String?
     /// Optional so canvases saved before chat integration still decode.
     public var connections: [DesignConnection]?
+    public var designSystem: DesignSystem?
     public init() {}
 
     public func node(_ id: UUID) -> DesignNode? { nodes.first { $0.id == id } }
@@ -388,6 +397,7 @@ public struct DesignDocument: Codable, Equatable, Hashable, Sendable {
     public mutating func normalize() {
         for index in nodes.indices { nodes[index].normalize() }
         if connections?.isEmpty == true { connections = nil }
+        normalizeDesignSystem()
     }
 
     // MARK: Frames
@@ -400,6 +410,16 @@ public struct DesignDocument: Codable, Equatable, Hashable, Sendable {
             let box = node.bounds
             if let parent = frames.last(where: { $0.box.contains(box) }) { result[node.id] = parent.id }
             if node.kind == .frame, !node.isHidden { frames.append((node.id, box)) }
+        }
+        for node in nodes {
+            guard let parent = node.layoutParentID, self.node(parent)?.kind == .frame else { continue }
+            var current: UUID? = parent, visited: Set<UUID> = [node.id]
+            var valid = true
+            while let id = current {
+                if !visited.insert(id).inserted { valid = false; break }
+                current = result[id]
+            }
+            if valid { result[node.id] = parent }
         }
         return result
     }
@@ -528,20 +548,21 @@ public struct DesignDocument: Codable, Equatable, Hashable, Sendable {
     }
 
     private mutating func insertCopies(of clip: DesignClip, delta: CGSize, suffix: String) -> [UUID] {
-        var copies: [UUID: UUID] = [:]
+        let copies = Dictionary(uniqueKeysWithValues: clip.nodes.map { ($0.id, UUID()) })
         var created: [UUID] = []
         for node in clip.nodes {
             var copy = node
-            copy.id = UUID(); copy.x += delta.width; copy.y += delta.height; copy.name = node.name + suffix
-            copy.isLocked = false
+            copy.id = copies[node.id]!; copy.x += delta.width; copy.y += delta.height; copy.name = node.name + suffix
+            copy.isLocked = false; copy.importOrigin = nil
+            copy.layoutParentID = node.layoutParentID.flatMap { copies[$0] }
             copy.normalize()
-            copies[node.id] = copy.id
             created.append(copy.id)
             nodes.append(copy)
         }
         let edges = clip.connections.compactMap { edge -> DesignConnection? in
             guard let from = copies[edge.from], let to = copies[edge.to] else { return nil }
-            return DesignConnection(from: from, to: to, label: edge.label)
+            var copy = edge; copy.id = UUID(); copy.from = from; copy.to = to
+            return copy
         }
         if !edges.isEmpty { connections = (connections ?? []) + edges }
         return created
@@ -594,6 +615,9 @@ public struct DesignDocument: Codable, Equatable, Hashable, Sendable {
         for index in nodes.indices where ids.contains(nodes[index].id) && !nodes[index].isLocked {
             let previous = nodes[index]
             change(&nodes[index]); nodes[index].normalize(fallback: previous)
+            if nodes[index].fill != previous.fill, nodes[index].colorTokenID == previous.colorTokenID { nodes[index].colorTokenID = nil }
+            if nodes[index].fontSize != previous.fontSize || nodes[index].fontWeight != previous.fontWeight,
+               nodes[index].typeTokenID == previous.typeTokenID { nodes[index].typeTokenID = nil }
         }
     }
 

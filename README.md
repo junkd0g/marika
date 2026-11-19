@@ -9,7 +9,7 @@ into spaces, open the tools you need as tabs, and return to your work with draft
 ![macOS 15+](https://img.shields.io/badge/macOS-15%2B-24292f)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-[Get started](#get-started) · [Screenshot tour](docs/screenshots.md) · [Documentation](docs/README.md) · [Development](#development)
+[Get started](#get-started) · [Screenshot tour](#complete-screenshot-gallery) · [Documentation](docs/README.md) · [Development](#development)
 
 ![Marika in dark mode: a project conversation, named view shortcuts, open tabs and spaces in the sidebar](docs/images/workspace.png)
 
@@ -113,10 +113,14 @@ through Marika's MCP bridge; access to external sites is controlled in the brows
 | **Agents** | Launch or queue tasks, follow progress and activity, and review isolated changes. |
 | **Research** | Inspect sources, compare Claude and Codex, search project knowledge, and turn findings into tasks. |
 | **Stats** | Request a code-health review with findings linked to source locations. |
+| **Design** | Edit diagrams and screens, manage reusable components and style tokens, and import UI from code with screenshot references. |
+| **Containers** | Explore Docker and Kubernetes resources, health, logs, metrics and reviewed recovery actions. |
 | **Changes** | Review diffs, stage hunks, commit, push, and open pull requests. |
 | **Terminal** | Run interactive shells in projects and agent worktrees. |
 | **Pipelines** | Run supported GitHub Actions jobs locally or native Swift checks. |
 | **API** | Work with generated HTTP, GraphQL and gRPC collections and project environments. |
+
+Save named workspace layouts from the layout button beside **+**, or select Design, Debug, Services and Review in the command palette.
 
 Every tool remains available from the **+** menu at any window size.
 

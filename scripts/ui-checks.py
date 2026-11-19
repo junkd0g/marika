@@ -7,6 +7,8 @@ import argparse
 import os
 from pathlib import Path
 import signal
+import shutil
+import tempfile
 import subprocess
 import sys
 import uuid
@@ -19,10 +21,12 @@ artifacts = args.artifacts.resolve()
 artifacts.mkdir(parents=True, exist_ok=True)
 failed = []
 
-for suite in ['welcome', 'followups', 'workflow', 'codex-style', 'smoke', 'recovery', 'project-tabs', 'spaces', 'space-content', 'note-tickets', 'ticket-work', 'attention', 'navigation-qa', 'deep-workflows', 'projects', 'workbench', 'history-updates', 'browser']:
+for suite in ['welcome', 'followups', 'workflow', 'codex-style', 'smoke', 'recovery', 'project-tabs', 'spaces', 'space-content', 'note-tickets', 'ticket-work', 'attention', 'navigation-qa', 'deep-workflows', 'projects', 'workbench', 'history-updates', 'browser', 'design', 'design-intelligence', 'design-import', 'containers', 'tool-routing', 'workspace-six']:
     directory = artifacts / suite
     directory.mkdir(exist_ok=True)
-    environment = dict(os.environ, TMPDIR=str(directory), MARIKA_DEMO='1',
+    temporary = Path(tempfile.gettempdir())
+    previous = set(temporary.glob('marika-*'))
+    environment = dict(os.environ, MARIKA_DEMO='1',
                        MARIKA_EDITOR_DEFAULTS_SUITE='app.marika.ui-checks.' + uuid.uuid4().hex)
     log_path = directory / 'suite.log'
     print(f'Running {suite}; diagnostics: {directory}', flush=True)
@@ -35,6 +39,15 @@ for suite in ['welcome', 'followups', 'workflow', 'codex-style', 'smoke', 'recov
             os.killpg(process.pid, signal.SIGKILL)
             process.wait()
             status = -1
+    # Keep the OS temporary directory intact: WebKit and compiler subprocesses use it.
+    for fixture in set(temporary.glob('marika-*')) - previous:
+        if not fixture.is_dir():
+            continue
+        for source in fixture.rglob('*'):
+            if source.is_file() and source.suffix in {'.png', '.jpg', '.json', '.log'} and not any(part in {'.build', '.git', 'node_modules'} for part in source.relative_to(fixture).parts):
+                target = directory / fixture.name / source.relative_to(fixture)
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(source, target)
     if status:
         failed.append(suite)
         print(log_path.read_text()[-6000:], file=sys.stderr, flush=True)

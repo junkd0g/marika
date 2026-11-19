@@ -112,6 +112,7 @@ final class DesignCanvasModel {
     var showsTemplates = false
     var showsHistory = false
     var showsHealth = false
+    var showsSystem = false
     var showsImport = false
     let health = DesignHealthModel()
     var ticketDraft: DesignTicketDraft?
