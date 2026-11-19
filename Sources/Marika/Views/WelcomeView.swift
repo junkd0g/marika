@@ -3,6 +3,7 @@ import SwiftUI
 
 struct WelcomeView: View {
     @Environment(AppModel.self) private var model
+    @State private var selectedAgent: AgentKind = .claude
 
     private var agent: AgentKind { model.welcomeAgent }
     private var status: AgentStatus { model.statuses[agent] ?? AgentStatus() }
@@ -34,10 +35,11 @@ struct WelcomeView: View {
                     }
 
                     VStack(alignment: .leading, spacing: 9) {
-                        Picker("Coding agent", selection: Binding(get: { agent }, set: model.selectWelcomeAgent)) {
+                        Picker("Coding agent", selection: $selectedAgent) {
                             ForEach(AgentKind.allCases) { Text($0.displayName).tag($0) }
                         }
                         .pickerStyle(.segmented)
+                        .onChange(of: selectedAgent) { _, agent in model.selectWelcomeAgent(agent) }
                         .accessibilityLabel("Coding agent")
                         #if DEBUG
                             .background(DebugViewMarker(name: "welcome-provider"))
@@ -149,6 +151,8 @@ struct WelcomeView: View {
             }
         }
         .background(Theme.canvas)
+        .onAppear { selectedAgent = agent }
+        .onChange(of: agent) { _, value in selectedAgent = value }
         #if DEBUG
             .background(DebugViewMarker(name: "welcome-checklist"))
         #endif

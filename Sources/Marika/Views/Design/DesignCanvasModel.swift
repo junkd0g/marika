@@ -559,10 +559,11 @@ final class DesignCanvasModel {
         if target == nil { automaticallyFits = true }
         guard let box = target ?? doc.visibleBounds, box.width > 0, box.height > 0,
               canvasSize.width > 0, canvasSize.height > 0 else { return }
-        let availableHeight = max(1, canvasSize.height - 132)
-        zoom = min(2, max(0.0001, min(max(1, canvasSize.width - 64) / box.width, availableHeight / box.height)))
-        offset = CGSize(width: (canvasSize.width - box.width * zoom) / 2 - box.minX * zoom,
-                        height: 52 + (availableHeight - box.height * zoom) / 2 - box.minY * zoom)
+        let availableHeight: CGFloat = max(1, canvasSize.height - 132)
+        let scale: CGFloat = min(2, max(0.0001, min(max(1, canvasSize.width - 64) / box.width, availableHeight / box.height)))
+        zoom = Double(scale)
+        offset = CGSize(width: (canvasSize.width - box.width * scale) / 2 - box.minX * scale,
+                        height: 52 + (availableHeight - box.height * scale) / 2 - box.minY * scale)
     }
 
     func fitSelection() {
