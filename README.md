@@ -12,11 +12,28 @@ appearances and compact controls for smaller windows.
 ![macOS 15+](https://img.shields.io/badge/macOS-15%2B-24292f)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-[Get started](#get-started) · [Screenshot tour](#complete-screenshot-gallery) · [Documentation](docs/README.md) · [Development](#development)
+[Get started](#get-started) · [Design & Kubernetes](#design-and-infrastructure-in-action) · [Screenshot tour](#complete-screenshot-gallery) · [Documentation](docs/README.md) · [Development](#development)
 
 ![Marika in dark mode: a project conversation, named view shortcuts, open tabs and spaces in the sidebar](docs/images/workspace.png)
 
 *Screenshots show the real app using a local demo project and sample conversations.*
+
+## Design and infrastructure in action
+
+Draw editable systems, turn designs into implementation work, and inspect the services that run them.
+These are native app captures with isolated demo projects and sample monitoring data. Click an image to view it full size.
+
+| Design an editable architecture | Explore Kubernetes resources |
+| --- | --- |
+| [![Editable service architecture with clients, a gateway, workers and data stores](docs/images/design-architecture.png)](docs/images/design-architecture.png) | [![Kubernetes services, workloads and pods connected in a topology map](docs/images/kubernetes-map.png)](docs/images/kubernetes-map.png) |
+| **Manage components and design tokens** | **Compare metrics with deployment events** |
+| [![Shared colors, typography, spacing and reusable component variants](docs/images/design-system.png)](docs/images/design-system.png) | [![CPU, memory, restarts, latency and errors with a selected deployment time](docs/images/metrics-events.png)](docs/images/metrics-events.png) |
+| **Turn a design into implementation work** | **Inspect workload state and controls** |
+| [![Requirements and acceptance criteria linked to selected design elements](docs/images/design-to-ticket.png)](docs/images/design-to-ticket.png) | [![Kubernetes workload list with deployment details and replica controls](docs/images/kubernetes-workload.png)](docs/images/kubernetes-workload.png) |
+| **Import a design from project source** | **Review a rollback before applying it** |
+| [![Source file selection and screenshot references for design import](docs/images/design-source-picker.png)](docs/images/design-source-picker.png) | [![Current and selected Deployment revisions in a rollback review](docs/images/kubernetes-rollback.png)](docs/images/kubernetes-rollback.png) |
+
+[See every workflow in the complete gallery](#complete-screenshot-gallery).
 
 ## Get started
 
@@ -273,9 +290,25 @@ Every major workspace area is shown below. Expand a workflow to see its screensh
 <details>
 <summary>Design and source import</summary>
 
+**Editable service architecture from a built-in template**
+
+![Editable service architecture from a built-in template](docs/images/design-architecture.png)
+
+**Templates for system context, service architecture, request flow and deployment**
+
+![Templates for system context, service architecture, request flow and deployment](docs/images/design-templates.png)
+
+**Review requirements and acceptance criteria linked to selected design elements**
+
+![Review requirements and acceptance criteria linked to selected design elements](docs/images/design-to-ticket.png)
+
+**Choose source files and screenshot references before generating a design draft**
+
+![Choose source files and screenshot references before generating a design draft](docs/images/design-source-picker.png)
+
 **Editable design layers, reusable components and inspector controls**
 
-![Editable architecture, layers, styles and source-linked descriptions](docs/images/design-editor.png)
+![Editable design layers, reusable components and inspector controls](docs/images/design-editor.png)
 
 **Engineering component library and connected diagrams**
 
@@ -305,6 +338,22 @@ Every major workspace area is shown below. Expand a workflow to see its screensh
 
 <details>
 <summary>Containers and observability</summary>
+
+**Inspect Kubernetes workload status, images, replicas and available actions**
+
+![Inspect Kubernetes workload status, images, replicas and available actions](docs/images/kubernetes-workload.png)
+
+**Read pod logs and related events while investigating a failure**
+
+![Read pod logs and related events while investigating a failure](docs/images/kubernetes-diagnostics.png)
+
+**Compare the current Deployment with a selected revision before confirming rollback**
+
+![Compare the current Deployment with a selected revision before confirming rollback](docs/images/kubernetes-rollback.png)
+
+**Compare resource metrics with deployment events; sample monitoring history**
+
+![Compare resource metrics with deployment events; sample monitoring history](docs/images/metrics-events.png)
 
 **Runtime log controls and entries in a 900 by 600 window**
 

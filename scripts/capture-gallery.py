@@ -81,7 +81,15 @@ for group,name,file,caption in [
 
 for group, name, caption in [
  ('Projects, chats and agent work', 'chat-start', 'A centered new conversation and project-aware draft composer'),
- ('Containers and observability', 'logs-compact', 'Runtime log controls and entries in a 900 by 600 window')]:
+ ('Containers and observability', 'logs-compact', 'Runtime log controls and entries in a 900 by 600 window'),
+ ('Design and source import', 'design-architecture', 'Editable service architecture from a built-in template'),
+ ('Design and source import', 'design-templates', 'Templates for system context, service architecture, request flow and deployment'),
+ ('Design and source import', 'design-to-ticket', 'Review requirements and acceptance criteria linked to selected design elements'),
+ ('Design and source import', 'design-source-picker', 'Choose source files and screenshot references before generating a design draft'),
+ ('Containers and observability', 'kubernetes-workload', 'Inspect Kubernetes workload status, images, replicas and available actions'),
+ ('Containers and observability', 'kubernetes-diagnostics', 'Read pod logs and related events while investigating a failure'),
+ ('Containers and observability', 'kubernetes-rollback', 'Compare the current Deployment with a selected revision before confirming rollback'),
+ ('Containers and observability', 'metrics-events', 'Compare resource metrics with deployment events; sample monitoring history')]:
     if (images/(name+'.png')).is_file():
         records.append(dict(group=group,feature=name,caption=caption,image='docs/images/'+name+'.png',capture='native visual review with isolated sample data'))
 

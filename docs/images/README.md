@@ -63,3 +63,16 @@ for other features remain from their documented captures.
 For compact first-layout reviews, debug test bundles can set `MARIKA_INITIAL_WIDTH` and
 `MARIKA_INITIAL_HEIGHT` in their `MarikaTesting` dictionary. Both dimensions retain the
 app's minimum size of 900 by 600. Release builds always use the normal window defaults.
+
+## Design and infrastructure showcase
+
+The additional 19 November captures show an inserted **Service architecture** template,
+the template picker, the Design-to-ticket draft, source selection for import, Kubernetes
+workload details, pod logs and events, a rollback review, and metrics correlated with a
+deployment event. All use disposable Copper data. The architecture is a built-in example,
+not an assertion about the Marika codebase. No design-generation request was sent and no
+rollback was applied during capture. Monitoring series and container responses are fixtures.
+
+The visible showcase near the top of README links to full-size images; each image is also
+listed in the complete gallery. `scripts/capture-gallery.py` preserves these supplemental
+captures when rebuilding the gallery.

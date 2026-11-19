@@ -164,7 +164,8 @@
       "feature": "design-system",
       "caption": "Shared color, type and spacing tokens; reusable components and variants",
       "image": "docs/images/design-system.png",
-      "capture": "workspace-six/**/design-system.png"
+      "capture": "Native UI capture from the isolated Copper fixture",
+      "reviewedAt": "2026-11-19"
     },
     {
       "group": "Design and source import",
@@ -324,6 +325,70 @@
       "caption": "Runtime log controls and entries in a 900 by 600 window",
       "image": "docs/images/logs-compact.png",
       "capture": "Native visual review, isolated Copper fixture",
+      "reviewedAt": "2026-11-19"
+    },
+    {
+      "group": "Design and source import",
+      "feature": "design-architecture",
+      "caption": "Editable service architecture from a built-in template",
+      "image": "docs/images/design-architecture.png",
+      "capture": "Native UI capture from the isolated Copper fixture",
+      "reviewedAt": "2026-11-19"
+    },
+    {
+      "group": "Design and source import",
+      "feature": "design-templates",
+      "caption": "Templates for system context, service architecture, request flow and deployment",
+      "image": "docs/images/design-templates.png",
+      "capture": "Native UI capture from the isolated Copper fixture",
+      "reviewedAt": "2026-11-19"
+    },
+    {
+      "group": "Design and source import",
+      "feature": "design-to-ticket",
+      "caption": "Review requirements and acceptance criteria linked to selected design elements",
+      "image": "docs/images/design-to-ticket.png",
+      "capture": "Native UI capture from the isolated Copper fixture",
+      "reviewedAt": "2026-11-19"
+    },
+    {
+      "group": "Design and source import",
+      "feature": "design-source-picker",
+      "caption": "Choose source files and screenshot references before generating a design draft",
+      "image": "docs/images/design-source-picker.png",
+      "capture": "Native UI capture from the isolated Copper fixture",
+      "reviewedAt": "2026-11-19"
+    },
+    {
+      "group": "Containers and observability",
+      "feature": "kubernetes-workload",
+      "caption": "Inspect Kubernetes workload status, images, replicas and available actions",
+      "image": "docs/images/kubernetes-workload.png",
+      "capture": "Native UI capture from the isolated Copper fixture",
+      "reviewedAt": "2026-11-19"
+    },
+    {
+      "group": "Containers and observability",
+      "feature": "kubernetes-diagnostics",
+      "caption": "Read pod logs and related events while investigating a failure",
+      "image": "docs/images/kubernetes-diagnostics.png",
+      "capture": "Native UI capture from the isolated Copper fixture",
+      "reviewedAt": "2026-11-19"
+    },
+    {
+      "group": "Containers and observability",
+      "feature": "kubernetes-rollback",
+      "caption": "Compare the current Deployment with a selected revision before confirming rollback",
+      "image": "docs/images/kubernetes-rollback.png",
+      "capture": "Native UI capture from the isolated Copper fixture",
+      "reviewedAt": "2026-11-19"
+    },
+    {
+      "group": "Containers and observability",
+      "feature": "metrics-events",
+      "caption": "Compare resource metrics with deployment events; sample monitoring history",
+      "image": "docs/images/metrics-events.png",
+      "capture": "Native UI capture from the isolated Copper fixture",
       "reviewedAt": "2026-11-19"
     }
   ]
