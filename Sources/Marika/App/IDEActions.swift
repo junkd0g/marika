@@ -14,13 +14,14 @@ extension AppModel {
         return env
     }
     func ide(for project: Project, editor: CodeWorkspace) -> IDEWorkspace {
-        let key = project.id.uuidString + editor.root.path
-        if let existing = ideWorkspaces[key] { return existing }
+        let tools = runtimeTools(for: project.id)
+        let key = editor.root
+        if let existing = tools.ide[key] { return existing }
         let ide = IDEWorkspace(editor: editor, context: ToolContext(root: editor.root, environment: toolEnvironment, runtime: project.runtime), preferences: project.tools?.ide ?? IDEPreferences())
         editor.beforeSave = { [weak ide] document in
             if let ide, ide.preferences.formatOnSave { try await ide.format(document) }
         }
-        ideWorkspaces[key] = ide
+        tools.ide[key] = ide
         return ide
     }
     func openRemoteWorkspace(_ runtime: WorkspaceRuntime, from project: Project) async throws {
@@ -40,7 +41,11 @@ extension AppModel {
         let result = try await Command.run(docker, ["run", "-d", "--init", "--name", name, "--label", "app.marika.workspace=true", "-v", project.path + ":/workspace", "-w", "/workspace", image, "sh", "-c", "while sleep 3600; do :; done"], environment: toolEnvironment, timeout: 180)
         guard result.succeeded else { throw AgentError.launchFailed(result.errorOutput) }
         updateProject(project.id) { $0.runtime = WorkspaceRuntime(kind: .container, target: name, directory: "/workspace") }
-        for (key, ide) in ideWorkspaces where key.hasPrefix(project.id.uuidString) { await ide.shutdown(); ideWorkspaces[key] = nil }
+        if let tools = projectRuntimeTools[project.id] {
+            let previous = tools.ide
+            tools.ide.removeAll()
+            for ide in previous.values { await ide.shutdown() }
+        }
         if let refreshed = self.project(id: project.id), let editor = editors[project.id] { _ = ide(for: refreshed, editor: editor) }
     }
 }

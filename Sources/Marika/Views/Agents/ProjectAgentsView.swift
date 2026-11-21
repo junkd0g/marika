@@ -210,7 +210,7 @@ struct LaunchAgentView: View {
                     .font(.system(size: 12)).foregroundStyle(.secondary)
             }
             Picker("Agent", selection: $agent) {
-                ForEach(AgentKind.allCases) { Text($0.shortName).tag($0) }
+                ForEach(AgentKind.availableProviders) { Text($0.shortName).tag($0) }
             }
             .pickerStyle(.segmented)
             HStack(spacing: 18) {

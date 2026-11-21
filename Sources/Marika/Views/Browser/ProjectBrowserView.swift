@@ -15,19 +15,38 @@ struct ProjectBrowserView: View {
     @State private var showsSiteInfo = false
     @State private var showsFind = false
     @State private var showsPreviewLogs = false
-    @State private var allowsCurrentSite = false
     @FocusState private var addressFocused: Bool
     @FocusState private var findFocused: Bool
+
+    private func chooseAgentAccess() {
+        if browser.agentAccessEnabled { browser.agentAccessEnabled = false; return }
+        let alert = NSAlert()
+        alert.messageText = "Share this project’s browser with AI agents?"
+        alert.informativeText = "When you use Codex (OpenAI) or Claude (Anthropic), their browser tools can read page text, URLs and screenshots from any tab in this project, including signed-in pages, and can interact with those pages. Your choice is saved for this project. Turn Agent access off at any time."
+        alert.addButton(withTitle: "Cancel")
+        alert.addButton(withTitle: "Allow sharing")
+        if alert.runModal() == .alertSecondButtonReturn { browser.agentAccessEnabled = true }
+    }
+
+    private func attachScreenshot() {
+        if browser.agentAccessEnabled { Task { await browser.attachFeedback() }; return }
+        let alert = NSAlert()
+        alert.messageText = "Add this page to your chat draft?"
+        alert.informativeText = "The screenshot, page address and selected text will be shared with the provider you choose (OpenAI or Anthropic) when you send the message."
+        alert.addButton(withTitle: "Cancel")
+        alert.addButton(withTitle: "Add to draft")
+        if alert.runModal() == .alertSecondButtonReturn { Task { await browser.attachFeedback() } }
+    }
 
     private var suggestions: [BrowserLocation] { browser.library.suggestions(for: address, limit: 5) }
     private var canRecoverPreview: Bool {
         PreviewRecovery.matches(browser.selectedPage?.url, configuration: project.previewConfiguration ?? detectedPreview,
-            runningAddress: model.previews[project.id]?.address)
+            runningAddress: model.projectRuntimeTools[project.id]?.preview?.address)
     }
 
     var body: some View {
         VStack(spacing: 0) {
-            if project.previewConfiguration != nil || detectedPreview != nil || model.previews[project.id] != nil {
+            if project.previewConfiguration != nil || detectedPreview != nil || model.projectRuntimeTools[project.id]?.preview != nil {
                 previewBar
             }
             tabs
@@ -48,6 +67,10 @@ struct ProjectBrowserView: View {
                 }
                 .padding(12).background(Theme.attention.opacity(0.08))
             }
+            if let page = browser.selectedPage, page.isRecording {
+                Label("Recording QA journey", systemImage: "record.circle.fill")
+                    .foregroundStyle(Theme.attention).padding(6)
+            }
             if showsFind { findBar }
             if browser.annotation != nil { annotationForm }
             if browser.selectedPage?.isAnnotating == true {
@@ -60,7 +83,7 @@ struct ProjectBrowserView: View {
             }
             HStack(spacing: 0) {
                 pageContent
-                if showsPreviewLogs, let preview = model.previews[project.id] {
+                if showsPreviewLogs, let preview = model.projectRuntimeTools[project.id]?.preview {
                     Divider()
                     PreviewLogView(preview: preview).frame(width: 270)
                 }
@@ -70,7 +93,7 @@ struct ProjectBrowserView: View {
         }
         .background(Theme.canvas)
         .sheet(isPresented: $browser.showsHistory) { BrowserLibraryView(browser: browser) }
-        .onAppear { syncAddress(); syncSiteAccess() }
+        .onAppear { syncAddress() }
         .task(id: browser.selectedPage?.navigationError) {
             let root = project.url
             let detected = await Task.detached { ProjectPreview.detect(at: root) }.value
@@ -83,9 +106,7 @@ struct ProjectBrowserView: View {
         }
         .onChange(of: browser.selectedPage?.url) { _, _ in
             if !addressFocused { syncAddress() }
-            syncSiteAccess()
         }
-        .onChange(of: browser.allowedOrigins) { _, _ in syncSiteAccess() }
         .onChange(of: address) { _, _ in suggestionIndex = nil }
         .onChange(of: browser.addressFocusRequest) { _, _ in focusAddress() }
         .onChange(of: browser.findRequest) { _, _ in focusFind() }
@@ -100,7 +121,7 @@ struct ProjectBrowserView: View {
     }
 
     private var previewBar: some View {
-        let preview = model.previews[project.id]
+        let preview = model.projectRuntimeTools[project.id]?.preview
         return HStack(spacing: 10) {
             PreviewStatusLabel(preview: preview)
             if let port = preview?.address?.port {
@@ -306,14 +327,11 @@ struct ProjectBrowserView: View {
             Divider()
             Button("Website Data…") { browser.showLibrary("Website Data") }
             Button("Comment on an Element") { Task { await browser.annotate() } }.disabled(browser.selectedPage?.url == nil)
-            Button("Attach Screenshot to Chat") { Task { await browser.attachFeedback() } }
+            Button("Attach Screenshot to Chat") { attachScreenshot() }
                 .disabled(browser.selectedPage?.url == nil || browser.isCapturing)
             Menu("Agent Access") {
-                Toggle("Allow agents on local previews", isOn: $browser.allowsLocalAgentAccess)
-                if let url = browser.selectedPage?.url, !url.isFileURL, !BrowserAddress.isLocal(url) {
-                    Toggle("Allow agents on \(url.host ?? "this site")", isOn: $allowsCurrentSite)
-                        .onChange(of: allowsCurrentSite) { _, allowed in browser.allowCurrentSite(allowed) }
-                }
+                Button(browser.agentAccessEnabled ? "Turn off sharing" : "Allow browser sharing…") { chooseAgentAccess() }
+                Text("Applies to every tab in this project and is saved between app restarts.")
                 Text("Page content is shared when you use browser tools or attach feedback.")
             }
         } label: { Image(systemName: "ellipsis").frame(width: 27, height: 28) }
@@ -356,7 +374,7 @@ struct ProjectBrowserView: View {
     }
 
     private var previewRecovery: some View {
-        let preview = model.previews[project.id]
+        let preview = model.projectRuntimeTools[project.id]?.preview
         return VStack(spacing: 10) {
             if preview?.state == .starting {
                 HStack { ProgressView().controlSize(.small); Text("Starting project preview…") }
@@ -501,7 +519,7 @@ struct ProjectBrowserView: View {
             }
             HStack {
                 TextField("What should change here?", text: $browser.comment).textFieldStyle(.workspace)
-                Button(browser.isCapturing ? "Capturing…" : "Add to Message") { Task { await browser.attachFeedback() } }
+                Button(browser.isCapturing ? "Capturing…" : "Add to Message") { attachScreenshot() }
                     .disabled(browser.isCapturing || browser.comment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
             Text("Includes the page URL, element, viewport, and a screenshot. Review your draft before sending.")
@@ -523,17 +541,21 @@ struct ProjectBrowserView: View {
             WorkspaceSelect(title: "Viewport", selection: $browser.viewport, options: ["Desktop", "Tablet", "Mobile"],
                             label: { ["Tablet": "Tablet · 768", "Mobile": "Mobile · 390"][$0] ?? $0 }, symbol: "macwindow", height: 28)
                 .frame(width: 150)
-            if !compact {
-                Label(browser.canUseAgent ? "Agent access on" : "Agent access off", systemImage: "person.crop.circle")
-                    .fixedSize()
+            Button { chooseAgentAccess() } label: {
+                if compact { Image(systemName: browser.agentAccessEnabled ? "person.crop.circle.badge.checkmark" : "person.crop.circle.badge.xmark").frame(width: 24, height: 28) }
+                else { Label(browser.agentAccessEnabled ? "Agent access on" : "Agent access off", systemImage: "person.crop.circle").fixedSize() }
             }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Agent access")
+            .accessibilityValue(browser.agentAccessEnabled ? "On" : "Off")
+            .help(browser.agentAccessEnabled ? "Agent access is on for all tabs in this project. Click to turn it off." : "Agent access is off for all tabs in this project. Click to turn it on.")
             Spacer(minLength: 0)
             if let page = browser.selectedPage, page.zoom != 1 {
                 Button("\(Int(page.zoom * 100))%") { page.zoom = 1 }.buttonStyle(.plain).help("Reset page zoom")
             }
             Button { Task { await browser.annotate() } } label: { Image(systemName: "bubble.left") }
                 .buttonStyle(.plain).disabled(browser.selectedPage?.url == nil).help("Comment on an element")
-            Button { Task { await browser.attachFeedback() } } label: { Image(systemName: "camera") }
+            Button { attachScreenshot() } label: { Image(systemName: "camera") }
                 .buttonStyle(.plain).disabled(browser.selectedPage?.url == nil || browser.isCapturing).help("Attach screenshot to chat")
             Button {
                 guard let url = browser.selectedPage?.url else { return }
@@ -589,9 +611,6 @@ struct ProjectBrowserView: View {
         return url.scheme == "https" ? "The connection to this site is encrypted with HTTPS." : "This page uses HTTP. The connection is not encrypted."
     }
 
-    private func syncSiteAccess() {
-        allowsCurrentSite = browser.selectedPage?.url.map { browser.allowedOrigins.contains(BrowserAddress.origin($0)) } ?? false
-    }
     private func syncAddress() { address = browser.selectedPage?.url?.absoluteString ?? "" }
     private func focusFind() {
         addressFocused = false

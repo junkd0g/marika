@@ -242,6 +242,24 @@ enum DesignConnectionPath {
 
 @MainActor
 enum DesignRenderer {
+    static func referencePNG(document: DesignDocument, viewport: DesignImportReference, pixels: CGSize) throws -> Data {
+        let bounds = CGRect(x: 0, y: 0, width: viewport.width, height: viewport.height)
+        let nodes = document.nodes.filter { !$0.isHidden && $0.frame.intersects(bounds) }
+        let ids = Set(nodes.map(\.id))
+        let connections = (document.connections ?? []).filter { ids.contains($0.from) && ids.contains($0.to) }
+        let content = DesignScene(nodes: nodes, connections: connections, offset: .zero, exporting: true)
+            .frame(width: bounds.width, height: bounds.height, alignment: .topLeading).clipped()
+            .background(Color.white).environment(\.colorScheme, .light)
+            .scaleEffect(x: pixels.width / bounds.width, y: pixels.height / bounds.height, anchor: .topLeading)
+            .frame(width: pixels.width, height: pixels.height, alignment: .topLeading).clipped()
+        let renderer = ImageRenderer(content: content)
+        renderer.scale = 1
+        guard let image = renderer.cgImage, let png = NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:]) else {
+            throw DesignToolError("The imported viewport couldn't be rendered.")
+        }
+        return png
+    }
+
     static func png(document: DesignDocument, selection: Set<UUID> = []) throws -> Data {
         let plan = try DesignExportPlan(document: document, selection: selection)
         let scene = DesignScene(nodes: plan.nodes, connections: plan.connections,

@@ -121,7 +121,7 @@ struct RootView: View {
             get: { model.previewProjectID.flatMap(model.project(id:)) },
             set: { if $0 == nil { model.previewProjectID = nil } }
         )) { project in
-            if let preview = model.previews[project.id] {
+            if let preview = model.projectRuntimeTools[project.id]?.preview {
                 PreviewConsoleView(project: project, preview: preview).environment(model)
             }
         }
@@ -166,22 +166,25 @@ private struct ProjectWorkspaceView: View {
                             ide: model.ide(for: project, editor: editor)),
                             panel: .code, size: geometry.size)
                     }
-                    if let browser = model.browsers[project.id] {
+                    if let browser = model.projectRuntimeTools[project.id]?.browser {
                         place(ProjectBrowserView(browser: browser, project: project, isVisible: visible(.browser)), panel: .browser, size: geometry.size)
                     }
                     if visible(.changes) { place(ProjectChangesView(project: project), panel: .changes, size: geometry.size) }
-                    if let _ = model.terminals[project.id] { place(ProjectTerminalView(project: project, isVisible: visible(.terminal)), panel: .terminal, size: geometry.size) }
+                    if let _ = model.projectRuntimeTools[project.id]?.terminal { place(ProjectTerminalView(project: project, isVisible: visible(.terminal)), panel: .terminal, size: geometry.size) }
                     if visible(.api) {
                         place(ProjectAPIView(project: project), panel: .api, size: geometry.size)
                     }
                     if visible(.research) { place(ProjectResearchHub(project: project), panel: .research, size: geometry.size) }
+                    if visible(.qa), let qa = model.projectRuntimeTools[project.id]?.qa {
+                        place(ProjectQAView(project: project, qa: qa), panel: .qa, size: geometry.size)
+                    }
                     if visible(.pipelines) {
                         place(ProjectPipelinesView(project: project), panel: .pipelines, size: geometry.size)
                     }
                     if visible(.design), let canvas = model.designCanvases[project.id] {
                         place(ProjectDesignView(project: project, canvas: canvas), panel: .design, size: geometry.size)
                     }
-                    if visible(.containers), let workspace = model.containerWorkspaces[project.id] {
+                    if visible(.containers), let workspace = model.projectRuntimeTools[project.id]?.containers {
                         place(ProjectContainersView(project: project, workspace: workspace, isVisible: visible(.containers)), panel: .containers, size: geometry.size)
                     }
                     if visible(.stats) {

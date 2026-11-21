@@ -21,7 +21,7 @@ artifacts = args.artifacts.resolve()
 artifacts.mkdir(parents=True, exist_ok=True)
 failed = []
 
-for suite in ['welcome', 'followups', 'workflow', 'codex-style', 'smoke', 'recovery', 'project-tabs', 'spaces', 'space-content', 'note-tickets', 'ticket-work', 'attention', 'navigation-qa', 'deep-workflows', 'projects', 'workbench', 'history-updates', 'browser', 'design', 'design-intelligence', 'design-import', 'containers', 'tool-routing', 'workspace-six']:
+for suite in ['welcome', 'followups', 'workflow', 'codex-style', 'smoke', 'recovery', 'project-tabs', 'spaces', 'space-content', 'note-tickets', 'ticket-work', 'attention', 'navigation-qa', 'deep-workflows', 'projects', 'workbench', 'history-updates', 'browser', 'browser-access', 'design', 'design-intelligence', 'design-import', 'containers', 'tool-routing', 'workspace-six', 'qa']:
     directory = artifacts / suite
     directory.mkdir(exist_ok=True)
     temporary = Path(tempfile.gettempdir())

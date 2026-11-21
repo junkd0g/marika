@@ -10,18 +10,19 @@ final class AppModel {
     let updates = AppUpdates()
     let signIns: [AgentKind: AgentSignIn] = [.claude: AgentSignIn(), .codex: AgentSignIn()]
 
+    @ObservationIgnored let folderAccess = ProjectFolderAccess()
     private(set) var workspace = Workspace()
     private(set) var controllers: [UUID: SessionController] = [:]
     private(set) var statuses: [AgentKind: AgentStatus] = [:]
     private(set) var capabilities: [AgentKind: AgentCapabilities] = [:]
     private(set) var rateLimits: [AgentKind: RateLimitSnapshot] = [:]
-    private(set) var isReady = false
+    var isReady = false
     private(set) var isRefreshingAgents = false
     var showsWelcome = false
     var welcomeAgent: AgentKind = .claude
     private(set) var hasAnthropicAPIKey = false
     private(set) var workspaceLoadFailed = false
-    private(set) var storageError: String?
+    var storageError: String?
     var storageRecoveryNotice: String?
 
     var selectedSessionID: UUID? {
@@ -59,23 +60,19 @@ final class AppModel {
             scheduleSave()
         }
     }
+    var projectRuntimeTools: [UUID: ProjectRuntimeTools] = [:]
     var editors: [UUID: CodeWorkspace] = [:]
     @ObservationIgnored var editorRestorations: [UUID: [String: Task<Void, Never>]] = [:]
     var designs: [UUID: DesignWorkspace] = [:]
     var designCanvases: [UUID: DesignCanvasModel] = [:]
-    var containerWorkspaces: [UUID: ContainerWorkspace] = [:]
     var repositoryEditors: [UUID: [String: CodeWorkspace]] = [:]
-    var ideWorkspaces: [String: IDEWorkspace] = [:]
     var experienceProjectID: UUID?
     var experienceSection = "Recovery"
     var checkpointRecords: [UUID: [CodeCheckpoint]] = [:]
     var activeCheckpoints: [UUID: UUID] = [:]
-    var debugTasks: [UUID: Task<Void, Never>] = [:]
     var debugCommands: [UUID: String] = [:]
     var debugErrors: [UUID: String] = [:]
     @ObservationIgnored lazy var checkpointService = Checkpoints(directory: store.root.appendingPathComponent("checkpoints"))
-    private(set) var browsers: [UUID: BrowserWorkspace] = [:]
-    var terminals: [UUID: ProjectTerminal] = [:]
     var projectSettingsID: UUID?
     var mcpAccounts = MCPAccounts()
     var projectSettingsSection = "Setup"
@@ -106,9 +103,6 @@ final class AppModel {
     var taskActivityProjectID: UUID?
     var isShuttingDown = false
     @ObservationIgnored var runningTaskQueues = false
-    var apiWorkspaces: [UUID: APIWorkspace] = [:]
-    var pipelineRunners: [UUID: ProjectPipelineRunner] = [:]
-    var previews: [UUID: ProjectPreview] = [:]
     @ObservationIgnored var previewRecoveryTargets: [UUID: (pageID: UUID, address: URL)] = [:]
     var previewProjectID: UUID?
     var reviewAgentID: UUID?
@@ -132,7 +126,7 @@ final class AppModel {
     #endif
 
     func browser(for project: Project) -> BrowserWorkspace {
-        if let existing = browsers[project.id] { return existing }
+        if let existing = projectRuntimeTools[project.id]?.browser { return existing }
         let browser = BrowserWorkspace(root: project.url, address: project.previewAddress, identifier: project.id)
         if let saved = project.layout { browser.restore(saved) }
         browser.onStateChange = { [weak self] in self?.scheduleSave() }
@@ -157,7 +151,7 @@ final class AppModel {
         browser.onAgentEvidence = { [weak self] sessionID, action, url, image in
             await self?.recordBrowserEvidence(projectID: project.id, sessionID: sessionID, action: action, url: url, image: image)
         }
-        browsers[project.id] = browser
+        runtimeTools(for: project.id).browser = browser
         return browser
     }
 
@@ -269,10 +263,10 @@ final class AppModel {
         return Store()
     }()
     @ObservationIgnored private var shellEnvironment: [String: String] = [:]
-    @ObservationIgnored private var saveTask: Task<Void, Never>?
-    @ObservationIgnored private var dirtyTranscripts: Set<UUID> = []
-    @ObservationIgnored private var unreadableTranscripts: Set<UUID> = []
-    @ObservationIgnored private var activeSave: (id: UUID, task: Task<Bool, Never>)?
+    @ObservationIgnored var saveTask: Task<Void, Never>?
+    @ObservationIgnored var dirtyTranscripts: Set<UUID> = []
+    @ObservationIgnored var unreadableTranscripts: Set<UUID> = []
+    @ObservationIgnored var activeSave: (id: UUID, task: Task<Bool, Never>)?
     @ObservationIgnored private var lastAgentRefresh: Date?
 
     // MARK: Startup
@@ -290,6 +284,13 @@ final class AppModel {
             isReady = true
             return
         }
+        #if MARIKA_APP_STORE
+        if workspace.projects.isEmpty { workspace.preferences.defaultAgent = .codex }
+        let missing = workspace.projects.indices.flatMap { folderAccess.restore(&workspace.projects[$0]) }
+        if !missing.isEmpty {
+            storageRecoveryNotice = "Choose Open Project or Attach Folder to restore access to these folders:\n" + missing.joined(separator: "\n")
+        }
+        #endif
         for project in workspace.projects { projectTabs[project.id] = project.layout?.panel ?? .conversation }
         if let project = workspace.preferredProject(in: workspace.selectedSpace.id) { openProject(project, showProject: false) }
         if workspace.preferences.welcomeCompleted == nil {
@@ -297,7 +298,7 @@ final class AppModel {
         }
         showsWelcome = workspace.preferences.welcomeCompleted == false
         welcomeAgent = workspace.preferences.defaultAgent
-        shellEnvironment = await ShellEnvironment.capture()
+        shellEnvironment = await captureEnvironment()
         recoverTaskQueues()
         isReady = true
         await refreshAgents()
@@ -310,7 +311,7 @@ final class AppModel {
         #if DEBUG
             if let agentStatusOverride {
                 statuses = agentStatusOverride
-                for agent in AgentKind.allCases { signIns[agent]?.update(status: statuses[agent] ?? AgentStatus()) }
+                for agent in AgentKind.availableProviders { signIns[agent]?.update(status: statuses[agent] ?? AgentStatus()) }
                 return
             }
             // Documentation captures use fixture conversations, not the local CLI account.
@@ -319,15 +320,15 @@ final class AppModel {
         guard isReady, !isRefreshingAgents else { return }
         // Switching windows shouldn't start processes every time, but a sign-in in progress should
         // be noticed quickly when the user comes back.
-        let allReady = AgentKind.allCases.allSatisfy { statuses[$0]?.readiness == .ready }
+        let allReady = AgentKind.availableProviders.allSatisfy { statuses[$0]?.readiness == .ready }
         if !force, let last = lastAgentRefresh, Date().timeIntervalSince(last) < (allReady ? 60 : 8) { return }
         lastAgentRefresh = Date()
         isRefreshingAgents = true
         defer { isRefreshingAgents = false }
         // Installing a CLI can change the login shell's PATH after Marika was opened.
-        if force { shellEnvironment = await ShellEnvironment.capture() }
+        if force { shellEnvironment = await captureEnvironment() }
         await withTaskGroup(of: Void.self) { group in
-            for agent in AgentKind.allCases {
+            for agent in AgentKind.availableProviders {
                 group.addTask { await self.refresh(agent) }
             }
         }
@@ -371,9 +372,26 @@ final class AppModel {
     }
 
     private func locate(_ agent: AgentKind, in environment: [String: String]) -> URL? {
+        #if MARIKA_APP_STORE
+        guard agent == .codex else { return nil }
+        return Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/Codex.app/Contents/MacOS/codex")
+        #else
         // Launch Services knows where the desktop app is, wherever the user put it.
         let bundles = agent == .codex ? NSWorkspace.shared.urlsForApplications(withBundleIdentifier: "com.openai.codex") : []
         return AgentLocator.locate(agent, in: environment, appBundles: bundles)
+        #endif
+    }
+
+    private func captureEnvironment() async -> [String: String] {
+        #if MARIKA_APP_STORE
+        let directory = store.root.appendingPathComponent("codex", isDirectory: true)
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+        let helpers = Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/Codex.app/Contents/MacOS").path
+        return ["HOME": NSHomeDirectory(), "CODEX_HOME": directory.path, "PATH": helpers + ":/usr/bin:/bin:/usr/sbin:/sbin",
+                "TMPDIR": FileManager.default.temporaryDirectory.path, "LANG": "en_US.UTF-8"]
+        #else
+        return await ShellEnvironment.capture()
+        #endif
     }
 
     private func environment(for agent: AgentKind) -> [String: String] {
@@ -486,27 +504,11 @@ final class AppModel {
         selectedSessionID.flatMap { id in workspace.sessions.first { $0.id == id } }
     }
 
-    func openProject(_ project: Project, tab: ProjectTab? = nil, showProject: Bool = true) {
-        guard let current = self.project(id: project.id) else { return }
-        if showProject { showsWelcome = false }
-        if showProject, let index = workspace.spaces.firstIndex(where: { $0.id == current.spaceID }) { workspace.spaces[index].section = .projects }
-        let conversation = workspace.chat(for: current.id) ?? newSession(in: current)
-        selectedSessionID = conversation.id
-        showsInspector = current.layout?.showsInspector ?? true
-        rememberProjectConversation(conversation)
-        rememberChat(conversation)
-        if let tab { projectTabs[current.id] = tab }
-        let saved = layout(for: current.id)
-        let primary = projectTabs[current.id] ?? .conversation
-        if primary == .code || saved.secondary == .code { _ = editor(for: current) }
-        if primary == .browser || saved.secondary == .browser { _ = browser(for: current) }
-        if primary == .terminal || saved.secondary == .terminal { ensureTerminal(for: current) }
-        if primary == .design || saved.secondary == .design { _ = design(for: current) }
-        if primary == .containers || saved.secondary == .containers { _ = containers(for: current) }
-        if (projectTabs[current.id] ?? .conversation) == .conversation { composerFocusRequest = UUID() }
+    func presentProjectSpace(_ id: UUID?) {
+        if let index = workspace.spaces.firstIndex(where: { $0.id == id }) { workspace.spaces[index].section = .projects }
     }
 
-    private func rememberProjectConversation(_ conversation: SessionMeta) {
+    func rememberProjectConversation(_ conversation: SessionMeta) {
         guard conversation.agentTask == nil,
             let index = workspace.projects.firstIndex(where: { $0.id == conversation.projectID }),
             workspace.projects[index].conversationSessionID != conversation.id else { return }
@@ -514,7 +516,7 @@ final class AppModel {
         scheduleSave()
     }
 
-    private func rememberChat(_ session: SessionMeta) {
+    func rememberChat(_ session: SessionMeta) {
         guard let index = workspace.projects.firstIndex(where: { $0.id == session.projectID }),
             workspace.projects[index].chatSessionID != session.id else { return }
         workspace.projects[index].chatSessionID = session.id
@@ -539,11 +541,17 @@ final class AppModel {
     func addProject(at url: URL) {
         if workspace.projects.isEmpty && workspace.spaces.count == 1 { showsWelcome = true }
         let path = FilePath.resolved(url.path)
-        if let existing = workspace.projects.first(where: { FilePath.resolved($0.path) == path }) {
+        let bookmark: Data?
+        do { bookmark = try folderAccess.authorize(url) }
+        catch { NSAlert(error: error).runModal(); return }
+        if let index = workspace.projects.firstIndex(where: { FilePath.resolved($0.path) == path }) {
+            if let bookmark { workspace.projects[index].rememberFolderBookmark(bookmark, path: path); scheduleSave() }
+            let existing = workspace.projects[index]
             openProject(existing)
             return
         }
         var project = Project(path: path)
+        if let bookmark { project.rememberFolderBookmark(bookmark, path: path) }
         project.spaceID = selectedSpace.id
         workspace.projects.append(project)
         workspace.projects.sort { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
@@ -590,27 +598,24 @@ final class AppModel {
     func removeProject(_ project: Project) {
         Task {
             if !(await confirmClosingEditors(Array(repositoryEditors[project.id]?.values ?? [:].values))) { return }
-            apiWorkspaces.removeValue(forKey: project.id)?.cancelAll()
-            terminals.removeValue(forKey: project.id)?.shutdown()
-            debugTasks.removeValue(forKey: project.id)?.cancel()
-            pipelineRunners.removeValue(forKey: project.id)?.stop()
-            previews.removeValue(forKey: project.id)?.stop()
-            previewRecoveryTargets[project.id] = nil
-            for key in ideWorkspaces.keys.filter({ $0.hasPrefix(project.id.uuidString) }) {
-                if let ide = ideWorkspaces.removeValue(forKey: key) { await ide.shutdown() }
-            }
+            guard self.project(id: project.id) != nil else { return }
             for session in sessions(in: project) { deleteSession(session.id) }
             workspace.projects.removeAll { $0.id == project.id }
             workspace.normalizeSpaces()
+            let tools = projectRuntimeTools.removeValue(forKey: project.id)
+            editorRestorations.removeValue(forKey: project.id)?.values.forEach { $0.cancel() }
+            previewRecoveryTargets[project.id] = nil
+            debugCommands[project.id] = nil
+            debugErrors[project.id] = nil
             editors[project.id] = nil
             designs[project.id] = nil
             designCanvases[project.id] = nil
-            containerWorkspaces.removeValue(forKey: project.id)?.stop()
             repositoryEditors[project.id] = nil
-            browsers.removeValue(forKey: project.id)?.stop()
             projectTabs[project.id] = nil
             if selectedSession == nil { selectSpace(selectedSpace.id) }
             scheduleSave()
+            await tools?.shutdown()
+            folderAccess.releaseUnused(in: workspace.projects)
         }
     }
 
@@ -770,7 +775,7 @@ final class AppModel {
 
     func deleteSession(_ id: UUID) {
         unreadableTranscripts.remove(id)
-        if let meta = workspace.sessions.first(where: { $0.id == id }) { browsers[meta.projectID]?.closeAgentConnection(id) }
+        if let meta = workspace.sessions.first(where: { $0.id == id }) { projectRuntimeTools[meta.projectID]?.browser?.closeAgentConnection(id) }
         if let controller = controllers.removeValue(forKey: id) { controller.disconnect() }
         workspace.sessions.removeAll { $0.id == id }
         if selectedSessionID == id {
@@ -853,6 +858,13 @@ final class AppModel {
     /// Marika never sees a password or token.
     func signIn(_ agent: AgentKind) {
         lastAgentRefresh = nil
+        #if MARIKA_APP_STORE
+        if agent == .codex, let executable = locate(agent, in: shellEnvironment) {
+            signIns[agent]?.startBundledCodex(executable: executable, environment: shellEnvironment,
+                open: { NSWorkspace.shared.open($0) }, refresh: { [weak self] in await self?.refreshAgents(force: true) })
+        }
+        return
+        #else
         signIns[agent]?.start(agent: agent, executable: statuses[agent]?.executable, previousStatus: statuses[agent], open: { command in
             #if DEBUG
                 if let signInOpenOverride { return signInOpenOverride(command) }
@@ -872,10 +884,11 @@ final class AppModel {
             #endif
             isRefreshingAgents = true
             defer { isRefreshingAgents = false }
-            shellEnvironment = await ShellEnvironment.capture()
+            shellEnvironment = await captureEnvironment()
             await refresh(agent)
             return statuses[agent]?.readiness ?? .checking
         })
+        #endif
     }
 
     func setClaudeBilling(_ billing: ClaudeBilling) {
@@ -903,116 +916,7 @@ final class AppModel {
         scheduleSave()
     }
 
-    // MARK: Persistence
 
-    func scheduleSave() {
-        // Coalesce changes without resetting the deadline: continuous edits or several
-        // streaming agents must still reach disk while work is in progress.
-        guard saveTask == nil else { return }
-        saveTask = Task { [weak self] in
-            try? await Task.sleep(for: .milliseconds(400))
-            guard !Task.isCancelled, let self else { return }
-            self.saveTask = nil
-            await self.save()
-        }
-    }
-
-    @discardableResult
-    func save() async -> Bool {
-        guard isReady, !workspaceLoadFailed else { return false }
-        // Serialize snapshots so an older write cannot finish after a newer one.
-        while let active = activeSave {
-            _ = await active.task.value
-            if activeSave?.id == active.id { activeSave = nil }
-        }
-        let id = UUID()
-        let task = Task { await persistSnapshot() }
-        activeSave = (id, task)
-        let succeeded = await task.value
-        if activeSave?.id == id { activeSave = nil }
-        return succeeded
-    }
-
-    private func persistSnapshot() async -> Bool {
-        // Capture one snapshot before yielding, so edits made during a write remain dirty.
-        let workspace = workspaceSnapshot()
-        let dirty = dirtyTranscripts
-        dirtyTranscripts.removeAll()
-        let transcripts = dirty.compactMap { id in
-            controllers[id].map { (id, $0.items) }
-        }
-        var errors: [String] = []
-        do { try await store.save(workspace) }
-        catch { errors.append(error.localizedDescription) }
-        for (id, items) in transcripts {
-            do { try await store.saveTranscript(items, for: id) }
-            catch {
-                dirtyTranscripts.insert(id)
-                errors.append(error.localizedDescription)
-            }
-        }
-        if !errors.isEmpty { storageError = errors.joined(separator: "\n\n") }
-        else if unreadableTranscripts.isEmpty { storageError = nil }
-        return errors.isEmpty
-    }
-
-    private func collectRecoveryNotices() async {
-        let notices = await store.takeRecoveryNotices()
-        if !notices.isEmpty { storageRecoveryNotice = notices.joined(separator: "\n") }
-    }
-
-    func showSavedData() { NSWorkspace.shared.activateFileViewerSelecting([store.root]) }
-
-    func retryStorage() async {
-        if workspaceLoadFailed {
-            isReady = false
-            await bootstrap()
-        } else {
-            for id in unreadableTranscripts { await open(id) }
-            guard unreadableTranscripts.isEmpty else { return }
-            do {
-                try await store.retryFailedSaves()
-                await collectRecoveryNotices()
-            } catch {
-                storageError = error.localizedDescription
-                return
-            }
-            await save()
-        }
-    }
-
-    @discardableResult
-    func shutdown(saveChanges: Bool = true) async -> Bool {
-        isShuttingDown = true
-        for flow in signIns.values { flow.stopWaiting() }
-        if workspaceLoadFailed { return true }
-        for controller in controllers.values { dirtyTranscripts.insert(controller.id) }
-        if saveChanges, !(await save()) { isShuttingDown = false; return false }
-        scheduler?.cancel()
-        saveTask?.cancel()
-        saveTask = nil
-        for runner in pipelineRunners.values { runner.stop() }
-        for workspace in containerWorkspaces.values { workspace.stop() }
-        for preview in previews.values { preview.stop() }
-        for ide in ideWorkspaces.values { await ide.shutdown() }
-        for task in debugTasks.values { task.cancel() }
-        for task in debugTasks.values { await task.value }
-        await withTaskGroup(of: Void.self) { group in
-            for controller in controllers.values {
-                group.addTask { await controller.shutdown() }
-            }
-        }
-        for controller in controllers.values where activeCheckpoints[controller.id] != nil { await completeTurn(controller) }
-        for controller in controllers.values { dirtyTranscripts.insert(controller.id) }
-        let saved = saveChanges ? await save() : true
-        // Keep the browser usable if a failed final save returns the user to the app.
-        if saved {
-            for api in apiWorkspaces.values { api.cancelAll() }
-            for browser in browsers.values { browser.stop() }
-            for terminal in terminals.values { terminal.shutdown() }
-        } else { isShuttingDown = false; startScheduler() }
-        return saved
-    }
 }
 
 extension AppModel {

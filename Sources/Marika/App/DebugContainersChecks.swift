@@ -91,7 +91,7 @@ private actor DebugContainerEngine {
         let workspace = ContainerWorkspace(project: project, environment: ["PATH": bin.path + ":/usr/bin:/bin"], clusterDirectory: project.url.appendingPathComponent("clusters"), runner: { try await engine.run($0) }, logFetch: { await engine.logQuery($0) })
         workspace.onSettings = { [weak model] settings in model?.updateProject(project.id) { $0.containerHub = settings } }
         self.engine = engine; self.workspace = workspace
-        model.containerWorkspaces[project.id] = workspace
+        model.runtimeTools(for: project.id).containers = workspace
         await workspace.refresh()
         guard workspace.resources.count == 7, workspace.target?.name == "desktop-linux" else { throw ContainerHubError("Fixture inventory failed") }
     }

@@ -2,6 +2,7 @@ import AppKit
 import MarikaCore
 import SwiftUI
 import UniformTypeIdentifiers
+import ImageIO
 
 struct ComposerView: View {
     @Environment(AppModel.self) private var model
@@ -14,6 +15,9 @@ struct ComposerView: View {
     @State private var isRoutingMessage = false
     @State private var routingError: String?
 
+    @State private var pendingImages = 0
+    @State private var imageError: String?
+
     private var capabilities: AgentCapabilities? { model.capabilities[session.meta.agent] }
     private var selectedModel: ModelOption? {
         let models = capabilities?.models ?? []
@@ -22,7 +26,7 @@ struct ComposerView: View {
     }
     private var trimmedDraft: String { session.draft.trimmingCharacters(in: .whitespacesAndNewlines) }
     private var canSend: Bool {
-        (!trimmedDraft.isEmpty || !session.draftImages.isEmpty) && (isAgentAvailable || trimmedDraft.hasPrefix("@")) && !isRoutingMessage
+        (!trimmedDraft.isEmpty || !session.draftImages.isEmpty) && (isAgentAvailable || trimmedDraft.hasPrefix("@")) && !isRoutingMessage && pendingImages == 0
             && (session.pendingApproval == nil || !trimmedDraft.isEmpty)
     }
 
@@ -101,6 +105,8 @@ struct ComposerView: View {
             if let routingError {
                 Text(routingError).font(.system(size: 11)).foregroundStyle(Theme.attention).textSelection(.enabled)
             }
+            if pendingImages > 0 { ProgressView("Adding image…").controlSize(.small) }
+            if let imageError { Text(imageError).font(.caption).foregroundStyle(Theme.attention) }
             if !session.draftImages.isEmpty {
                 attachments
                 if session.pendingApproval != nil {
@@ -111,7 +117,7 @@ struct ComposerView: View {
             }
             ComposerTextView(
                 text: $session.draft, placeholder: placeholder,
-                isActive: conversationIsVisible && !isRoutingMessage,
+                isActive: conversationIsVisible && !isRoutingMessage && pendingImages == 0,
                 minimumHeight: session.hasStarted ? 44 : 68,
                 focusToken: [session.id, model.composerFocusRequest],
                 onSubmit: { submit() }, onPasteImage: { data in addImage(data: data) }, onKey: { key in handleKey(key) }
@@ -230,7 +236,7 @@ struct ComposerView: View {
         Group {
             Menu {
                 Section(session.isBusy ? "Switch after this turn" : "Provider") {
-                    ForEach(AgentKind.allCases) { agent in
+                    ForEach(AgentKind.availableProviders) { agent in
                         Button {
                             model.setAgent(agent, for: session.id)
                         } label: {
@@ -607,36 +613,40 @@ struct ComposerView: View {
     }
 
     private func handleDrop(_ providers: [NSItemProvider]) -> Bool {
-        for provider in providers {
-            _ = provider.loadObject(ofClass: URL.self) { url, _ in
-                guard let url else { return }
-                Task { @MainActor in addImage(url: url) }
+        let files = providers.filter { $0.canLoadObject(ofClass: URL.self) }
+        for provider in files {
+            pendingImages += 1
+            _ = provider.loadObject(ofClass: URL.self) { url, error in
+                let reason = error?.localizedDescription
+                Task { @MainActor in
+                    defer { pendingImages -= 1 }
+                    if let url { addImage(url: url) }
+                    else { imageError = reason ?? "Couldn’t read the dropped file." }
+                }
             }
         }
-        return true
+        return !files.isEmpty
     }
 
     private func addImage(url: URL) {
-        guard let type = UTType(filenameExtension: url.pathExtension), type.conforms(to: .image),
-            let data = try? Data(contentsOf: url)
-        else { return }
-        store(data, extension: url.pathExtension.lowercased(), mediaType: type.preferredMIMEType ?? "image/png")
+        let storage = model.store.images
+        addAttachment { try await storage.copy(from: url) }
     }
 
     private func addImage(data: Data) {
-        store(data, extension: "png", mediaType: "image/png")
+        let storage = model.store.images
+        addAttachment { try await storage.savePNG(data) }
     }
 
-    /// Copies images into app storage so the conversation keeps working if the original moves.
-    private func store(_ data: Data, extension fileExtension: String, mediaType: String) {
-        let directory = model.store.attachmentsDirectory
-        let url = directory.appendingPathComponent(UUID().uuidString).appendingPathExtension(fileExtension)
-        do {
-            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-            try data.write(to: url)
-            session.draftImages.append(ImageAttachment(path: url.path, mediaType: mediaType))
-        } catch {
-            NSLog("Marika could not store an attachment: %@", error.localizedDescription)
+    private func addAttachment(_ copy: @escaping () async throws -> ImageAttachment) {
+        pendingImages += 1
+        imageError = nil
+        Task {
+            defer { pendingImages -= 1 }
+            do {
+                let attachment = try await copy()
+                session.draftImages.append(attachment)
+            } catch { imageError = "Couldn’t attach the image. " + error.localizedDescription }
         }
     }
 }
@@ -644,16 +654,26 @@ struct ComposerView: View {
 struct AttachmentThumbnail: View {
     let attachment: ImageAttachment
     let size: CGFloat
+    @State private var thumbnail: CGImage?
 
     var body: some View {
         Group {
-            if let image = NSImage(contentsOfFile: attachment.path) {
-                Image(nsImage: image)
+            if let thumbnail {
+                Image(decorative: thumbnail, scale: 1)
                     .resizable()
                     .scaledToFill()
             } else {
                 Image(systemName: "photo").foregroundStyle(.secondary)
             }
+        }
+        .task(id: attachment.path) {
+            let url = URL(fileURLWithPath: attachment.path), pixels = Int(ceil(size * 3))
+            let image = await Task.detached(priority: .utility) {
+                guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil as CGImage? }
+                return CGImageSourceCreateThumbnailAtIndex(source, 0, [kCGImageSourceCreateThumbnailFromImageAlways: true,
+                    kCGImageSourceCreateThumbnailWithTransform: true, kCGImageSourceThumbnailMaxPixelSize: pixels] as CFDictionary)
+            }.value
+            if !Task.isCancelled { thumbnail = image }
         }
         .frame(width: size, height: size)
         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))

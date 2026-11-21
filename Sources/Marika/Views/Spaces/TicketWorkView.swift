@@ -19,11 +19,16 @@ struct TicketWorkView: View {
     let ticketID: UUID
     var navigate: (@escaping () -> Void) -> Void
     @State private var error: String?
+    @State private var showsIncident = true
     private var ticket: SpaceTicket? { model.ticketLocation(ticketID)?.ticket }
     private var work: TicketWork? { ticket.flatMap(model.displayedTicketWork) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
+        if let source = ticket?.qaSource {
+            Button("Open QA evidence and retest", systemImage: "checklist") { navigate { model.openQA(source) } }
+                .buttonStyle(WorkspaceButtonStyle(compact: true))
+        }
         if let source = ticket?.designSource {
             Button("Open linked Design", systemImage: "square.stack.3d.up") {
                 navigate {
@@ -35,6 +40,11 @@ struct TicketWorkView: View {
         }
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
+                if let incident = ticket?.containerIncident {
+                    DisclosureGroup("Incident evidence", isExpanded: $showsIncident) {
+                        ContainerIncidentEvidenceView(incident: incident)
+                    }
+                }
                 if let ticket, let work {
                     let controller = model.controllers[work.sessionID]
                     let status = model.ticketWorkStatus(work)

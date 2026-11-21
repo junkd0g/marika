@@ -135,6 +135,11 @@ struct MarikaCommands: Commands {
             Button("Release Notes…") { openWindow(id: "updates") }
         }
         CommandGroup(replacing: .help) {
+            Button("Privacy Policy") {
+                if let policy = Bundle.main.url(forResource: "Privacy", withExtension: "html") {
+                    NSWorkspace.shared.open(policy)
+                } else { NSWorkspace.shared.open(URL(string: "https://marika.app/privacy.html")!) }
+            }
             Button("Getting Started…") {
                 openWindow(id: "main")
                 model.showWelcome()

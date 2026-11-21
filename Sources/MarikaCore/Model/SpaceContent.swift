@@ -74,6 +74,8 @@ public struct SpaceTicket: Codable, Equatable, Sendable, Identifiable {
     public var linkedNoteIDs: [UUID]?
     public var work: [TicketWork]?
     public var designSource: DesignTicketSource?
+    public var qaSource: QATicketSource?
+    public var containerIncident: ContainerIncident?
     public var displayTitle: String { title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Untitled ticket" : title }
     public init(id: UUID = UUID(), key: String, title: String = "", status: Status = .todo, date: Date = Date()) {
         self.id = id; self.key = key; self.title = title; self.status = status

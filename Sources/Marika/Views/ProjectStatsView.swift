@@ -127,7 +127,7 @@ struct ProjectStatsView: View {
             Text("Review model").font(.headline)
             Picker("Agent", selection: Binding(get: { provider }, set: { value in
                 model.updateProject(project.id) { $0.scanProvider = value; $0.scanModel = nil }
-            })) { ForEach(AgentKind.allCases) { Text($0.shortName).tag($0) } }
+            })) { ForEach(AgentKind.availableProviders) { Text($0.shortName).tag($0) } }
             Picker("Model", selection: Binding(get: { modelID ?? "" }, set: { value in
                 let selected = provider
                 model.updateProject(project.id) { $0.scanProvider = selected; $0.scanModel = value.isEmpty ? nil : value }

@@ -64,8 +64,10 @@ struct UpdatesView: View {
             HStack {
                 Text("Updates are checked when you ask.").font(.system(size: 11)).foregroundStyle(.secondary)
                 Spacer()
+                #if !MARIKA_APP_STORE
                 Link("All releases", destination: ReleaseChecker.repositoryURL.appendingPathComponent("releases"))
                     .font(.system(size: 11))
+                #endif
             }.padding(16)
         }
         .background(Theme.canvas)

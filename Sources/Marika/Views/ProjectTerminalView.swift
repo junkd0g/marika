@@ -77,7 +77,7 @@ struct ProjectTerminalView: View {
     @Environment(AppModel.self) private var model
     let project: Project
     var isVisible = true
-    private var terminal: ProjectTerminal? { model.terminals[project.id] }
+    private var terminal: ProjectTerminal? { model.projectRuntimeTools[project.id]?.terminal }
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 8) {

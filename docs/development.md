@@ -73,6 +73,10 @@ It uses temporary data and mock agents, and captures light and dark layouts.
 opening, reusing and closing project tool tabs, split cleanup, per-project tab restoration,
 and preservation of active agents and unsaved files.
 
+`python3 scripts/ui-browser-access.py` verifies default access to external origins, explicit opt-out,
+bridge gating, project-file boundaries and persistence through an app restart, using isolated data
+without contacting an external website. Add `--prepare` for a native review fixture.
+
 `python3 scripts/ui-browser.py` uses a local HTTP fixture and isolated project data to check browser
 menu actions and shortcut bindings, navigation, popups, tab closing/reopening, reordering, find,
 zoom, bookmarks, history, downloaded file contents, failed and cancelled download retries, favicons,
@@ -240,9 +244,29 @@ after building the app.
 
 ## Distribution
 
-The current app launches local CLI processes and is built for direct macOS distribution.
-For distribution to other Macs, sign with a Developer ID Application identity and notarize
-the bundle. Choose your bundle identifier in `Resources/Info.plist`.
+The website edition uses the developer’s local tools. For a public website release, set
+`MARIKA_SIGNING_IDENTITY` to a Developer ID Application identity and `MARIKA_NOTARY_PROFILE`
+to a configured notarytool keychain profile. Run `python3 scripts/package-mac.py --release`
+in the marketing repository. Packaging waits for notarization, staples and validates the
+ticket, checks Gatekeeper, and then writes the download manifest.
+
+For local Store testing run `MARIKA_CHANNEL=store-prototype scripts/build-app.sh debug` and
+`python3 scripts/ui-store-agent.py`. The prototype uses its own bundle identifier.
+The Store edition includes a pinned Codex CLI, keeps its settings in the app container,
+uses the browser for OpenAI sign-in, retains security-scoped grants for selected project
+folders and uses the Mac App Store for updates. The test uses a loopback model fixture.
+
+For a submission package set `MARIKA_CHANNEL=app-store`, `MARIKA_SIGNING_IDENTITY`
+and `MARIKA_INSTALLER_IDENTITY` to the Mac distribution identities. If your team uses
+a provisioning profile, set `MARIKA_PROVISIONING_PROFILE` to its path.
+Run `scripts/build-app.sh release` to produce `build/app-store/Marika.pkg`. App Store
+Connect needs the published privacy policy URL and a working review account for live
+Codex sign-in. Validate provider login and project-folder reopening on a clean Mac.
+
+Set `MARIKA_APP_OUTPUT=/absolute/path/Marika.app` when running `scripts/build-app.sh release`
+to build a separate bundle without replacing `build/Marika.app`. The destination must end in
+`.app`. This is useful for packaging or reviewing a downloadable build while the development
+app remains open. The default output and signing behavior are unchanged.
 
 Build optional bundled Go tools with `scripts/install-editor-tools.sh` before packaging.
 The script pins the tested gopls and Delve versions and installs them in `.tools/bin`.
@@ -268,8 +292,26 @@ CI tests Xcode 26.3 on macOS 15 and Xcode 26.6 on macOS 26. A separate job build
 
 Run `python3 scripts/ui-checks.py --artifacts /path/to/results` after a debug build. It retains the normal macOS temporary directory for WebKit/compiler subprocesses, then copies fixture screenshots and logs to the requested folder. No agent account is used by those fixture checks.
 
-`Tests/Fixtures/DesignImport` contains repeatable SwiftUI, Compose, HTML, React and Vue examples. `scripts/benchmark-design-import.py` is an opt-in live CLI benchmark with a local rendered reference. Its exported measurements count matching text and size differences only; use the captured reference and review screenshot to assess visual quality.
+`Tests/Fixtures/DesignImport` contains runnable SwiftUI, Compose Desktop, HTML, React and Vue examples. Build Marika in debug mode, then run `python3 scripts/benchmark-design-import.py --source all --agent claude` for the opt-in live CLI benchmark. Add `--references-only` to render the fixtures without calling an agent. React and Vue use Node/npm, SwiftUI uses the macOS toolchain, and Compose Desktop uses a compatible JDK and Gradle (override Gradle with `MARIKA_BENCHMARK_GRADLE`). The benchmark generates a framework-specific reference, reports editable label coverage and file links, and exports the imported viewport and pixel difference image.
 
 To rebuild the README gallery, run `scripts/capture-readme.py`, `scripts/capture-readme-extras.py`, then `scripts/capture-gallery.py --artifacts build/ui-checks --extras <printed-extras-directory>`. The gallery script requires every listed capture and writes `docs/screenshot-coverage.json`; it does not substitute generated mockups for missing screenshots.
 
-The [2026-11-19 live HTML benchmark](design-import-benchmark.json) matched 3 of 3 measured text elements with a 9.7% mean size difference. This is one small case, not a cross-framework fidelity guarantee.
+The [2026-11-21 live benchmark](design-import-benchmark.json) covers five rendered frameworks. It found 15 editable fixture labels and 12 links to the expected source lines, with 0.41%–3.28% of viewport pixels differing. Each result covers one screen and viewport.
+
+### QA workspace verification
+
+After a debug build, run `python3 scripts/ui-workspace-evidence.py /path/to/node_modules/.bin/playwright` with Playwright Test and Chromium installed. The check runs a Marika-exported test with an intentional failure, imports the actual JSON report, saves and reloads its trace link, and verifies the linked ticket. It also captures a Kubernetes incident from a fixture and verifies that removing one project cancels only its debug task.
+
+`swift test --filter 'QualityAssuranceTests|QABrowserActionTests|QAPlaywrightImportTests|ContainerIncidentTests'` checks draft ownership, case approval prerequisites,
+historical run snapshots, Playwright export escaping, bug evidence, workspace persistence,
+pixel comparisons, interrupted replays, release coverage freshness and browser actions against
+real WebKit controls. `python3 scripts/ui-qa.py` checks the native app's case/run/ticket integration,
+failed comparison invalidation, evidence limits and interrupted-replay restoration with disposable
+data. It uses no agent calls.
+`python3 scripts/ui-qa.py --prepare` prints paths for a disposable checkout fixture and driver,
+for interactive review of recording, checkpoints, replay, screenshots and report export.
+
+The README QA captures were taken through the real native UI in that fixture. The recorded
+checkout journey passed its text checkpoint and unchanged-baseline comparison. A manual expired
+discount failure was linked to a bug and exported with its screenshot. These are test-store
+observations, not results from a production application.

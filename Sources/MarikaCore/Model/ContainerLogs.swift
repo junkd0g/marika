@@ -14,7 +14,7 @@ public struct ContainerLogConnection: Codable, Hashable, Sendable {
     }
 }
 
-public enum ContainerLogLevel: String, CaseIterable, Sendable {
+public enum ContainerLogLevel: String, Codable, CaseIterable, Sendable {
     case trace, debug, info, warning, error, unknown
     public static func detect(_ text: String) -> Self {
         if let data = text.data(using: .utf8), let json = try? JSONValue(parsing: data),
@@ -36,7 +36,7 @@ public enum ContainerLogLevel: String, CaseIterable, Sendable {
     }
 }
 
-public struct ContainerLogEntry: Identifiable, Sendable, Hashable {
+public struct ContainerLogEntry: Identifiable, Codable, Sendable, Hashable {
     public var id: String
     public var timestamp: Date
     public var source: String

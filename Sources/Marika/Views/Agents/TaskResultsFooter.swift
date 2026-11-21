@@ -19,7 +19,7 @@ struct TaskResultsFooter: View {
     private var hasResults: Bool {
         workspace?.status != .discarded && (!summary.changedFiles.isEmpty || workspace?.status == .ready || linkedTicket != nil)
     }
-    private var preview: ProjectPreview? { project.flatMap { model.previews[$0.id] } }
+    private var preview: ProjectPreview? { project.flatMap { model.projectRuntimeTools[$0.id]?.preview } }
     private var canPreview: Bool { detectedPreview || project?.previewConfiguration != nil || preview != nil }
     private var checksTint: Color {
         if checks?.passed == true { return .green }

@@ -7,12 +7,12 @@ struct ProjectAPIView: View {
 
     var body: some View {
         Group {
-            if let workspace = model.apiWorkspaces[project.id] {
+            if let workspace = model.projectRuntimeTools[project.id]?.api {
                 APIPlaygroundView(project: project, workspace: workspace)
             } else { ProgressView().controlSize(.small) }
         }
         .task {
-            if model.apiWorkspaces[project.id] == nil { model.apiWorkspaces[project.id] = APIWorkspace() }
+            if model.projectRuntimeTools[project.id]?.api == nil { model.runtimeTools(for: project.id).api = APIWorkspace() }
             if let id = project.apiAgentID { await model.open(id) }
         }
     }

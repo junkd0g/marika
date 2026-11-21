@@ -28,7 +28,7 @@ struct PreviewStatusLabel: View {
 struct PreviewStatusButton: View {
     @Environment(AppModel.self) private var model
     let project: Project
-    private var preview: ProjectPreview? { model.previews[project.id] }
+    private var preview: ProjectPreview? { model.projectRuntimeTools[project.id]?.preview }
     var body: some View {
         Menu {
             Button(preview?.isActive == true ? "Stop Preview" : "Start Preview") {
@@ -63,7 +63,7 @@ struct PreviewLogView: View {
 
 extension AppModel {
     func openRunningPreview(for project: Project) {
-        guard let preview = previews[project.id], preview.state == .running, let address = preview.address else { return }
+        guard let preview = projectRuntimeTools[project.id]?.preview, preview.state == .running, let address = preview.address else { return }
         if selectedProject?.id != project.id { openProject(project) }
         browser(for: project).navigate(address.absoluteString)
         switchPanel(.browser)

@@ -73,6 +73,14 @@ jobs:
         run: |
           scripts/build-app.sh release
           codesign --verify --deep --strict build/Marika.app
+      - name: Verify the self-contained Store prototype
+        run: |
+          MARIKA_CHANNEL=store-prototype scripts/build-app.sh debug
+          bundle=build/store-prototype/Marika.app
+          codesign --verify --deep --strict "$bundle"
+          test -x "$bundle/Contents/Helpers/Codex.app/Contents/MacOS/codex"
+          test ! -e "$bundle/Contents/Frameworks/Sparkle.framework"
+          codesign -d --entitlements - --xml "$bundle" | python3 -c 'import plistlib, sys; assert plistlib.loads(sys.stdin.buffer.read())["com.apple.security.app-sandbox"]'
       - name: Verify signed update packaging with temporary keys
         run: python3 scripts/test-update-package.py
       - name: Archive verified app

@@ -76,3 +76,11 @@ rollback was applied during capture. Monitoring series and container responses a
 The visible showcase near the top of README links to full-size images; each image is also
 listed in the complete gallery. `scripts/capture-gallery.py` preserves these supplemental
 captures when rebuilding the gallery.
+
+## QA workspace
+
+`qa-replay.jpg`, `qa-manual-run.jpg`, `qa-release.jpg` and `qa-visual.jpg` show the native QA workspace using
+the disposable checkout fixture from `scripts/ui-qa.py --prepare`. Browser actions, checkpoints,
+manual observations and screenshots were exercised through the UI. The sample store deliberately
+accepts an expired discount so the manual run can demonstrate a failure and linked bug.
+The visual comparison shows a deliberate layout change against the approved baseline.

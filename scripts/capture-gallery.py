@@ -89,13 +89,18 @@ for group, name, caption in [
  ('Containers and observability', 'kubernetes-workload', 'Inspect Kubernetes workload status, images, replicas and available actions'),
  ('Containers and observability', 'kubernetes-diagnostics', 'Read pod logs and related events while investigating a failure'),
  ('Containers and observability', 'kubernetes-rollback', 'Compare the current Deployment with a selected revision before confirming rollback'),
- ('Containers and observability', 'metrics-events', 'Compare resource metrics with deployment events; sample monitoring history')]:
-    if (images/(name+'.png')).is_file():
-        records.append(dict(group=group,feature=name,caption=caption,image='docs/images/'+name+'.png',capture='native visual review with isolated sample data'))
+ ('Containers and observability', 'metrics-events', 'Compare resource metrics with deployment events; sample monitoring history'),
+ ('Quality assurance', 'qa-replay', 'Recorded browser journey with verified checkpoints and visual comparison'),
+ ('Quality assurance', 'qa-manual-run', 'Manual test results with screenshot evidence and linked bugs'),
+ ('Quality assurance', 'qa-release', 'Release coverage includes draft, untested and outdated cases'),
+ ('Quality assurance', 'qa-visual', 'Inspect highlighted visual changes against an approved baseline')]:
+    file = next((name+suffix for suffix in ['.png', '.jpg'] if (images/(name+suffix)).is_file()), None)
+    if file:
+        records.append(dict(group=group,feature=name,caption=caption,image='docs/images/'+file,capture='native visual review with isolated sample data'))
 
 (repo/'docs/screenshot-coverage.json').write_text(json.dumps(dict(note='Real native UI; isolated local projects, sample agent output, fixture monitoring data. No production credentials or clusters.',screenshots=records),indent=2)+'\n')
 section=['<!-- gallery:start -->','## Complete screenshot gallery','','Every major workspace area is shown below. Expand a workflow to see its screenshots. Captures use disposable demo projects; agent answers, monitoring history and update feeds are sample data.','']
-for group in dict.fromkeys(item[0] for item in items):
+for group in dict.fromkeys(record['group'] for record in records):
     section.extend(['<details>','<summary>'+group+'</summary>',''])
     for record in records:
         if record['group']==group:

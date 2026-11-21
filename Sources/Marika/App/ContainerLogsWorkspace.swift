@@ -77,28 +77,45 @@ import Observation
                 }
                 if generation == token { isLoading = false; isRunning = streams.contains { $0.isRunning } }
             } else {
-                await withTaskGroup(of: (String, String, Bool).self) { group in
-                    let cli = cli
-                    for resource in sources {
-                        group.addTask {
-                            let name = resource.namespace.isEmpty ? resource.name : resource.namespace + "/" + resource.name
-                            do {
-                                if resource.kind == .pod { try await cli.verify(resource, target: target) }
-                                let result = try await cli.execute(ContainerPlans.logs(resource, target: target, container: container, since: since, follow: false))
-                                return (name, result.output + result.error, false)
-                            } catch { return (name, error.localizedDescription, true) }
-                        }
-                    }
-                    for await (name, text, failed) in group {
-                        guard generation == token, !Task.isCancelled else { group.cancelAll(); return }
-                        if failed { error = "\(name): \(text)" }
-                        else { buffer.append(Data(text.utf8), source: name, flush: true) }
-                    }
+                let results = await Self.runtimeSnapshot(sources, cli: cli, target: target, container: container, since: since, includesStderr: true)
+                guard generation == token, !Task.isCancelled else { return }
+                for result in results {
+                    if let failure = result.failure { error = failure }
+                    else { buffer.append(Data(result.output.utf8), source: result.name, flush: true) }
                 }
                 if generation == token { isLoading = false; isRunning = false }
             }
         }
     }
+    struct RuntimeResult: Sendable {
+        let name: String
+        let output: String
+        let failure: String?
+    }
+
+    nonisolated static func runtimeSnapshot(_ resources: [ContainerResource], cli: ContainerCLI, target: ContainerTarget,
+                                            container: String?, since: Int, includesStderr: Bool = false) async -> [RuntimeResult] {
+        await withTaskGroup(of: RuntimeResult.self) { group in
+            for resource in resources {
+                group.addTask {
+                    let name = resource.namespace.isEmpty ? resource.name : resource.namespace + "/" + resource.name
+                    do {
+                        try Task.checkCancellation()
+                        if resource.kind == .pod { try await cli.verify(resource, target: target) }
+                        let command = try ContainerPlans.logs(resource, target: target, container: container, since: since, follow: false)
+                        let result = try await cli.execute(command)
+                        return RuntimeResult(name: name, output: result.output + (includesStderr ? result.error : ""), failure: nil)
+                    } catch {
+                        return RuntimeResult(name: name, output: "", failure: name + ": " + error.localizedDescription)
+                    }
+                }
+            }
+            var results: [RuntimeResult] = []
+            for await result in group { results.append(result) }
+            return results
+        }
+    }
+
     func runLoki(_ connection: ContainerLogConnection, token credential: String?) {
         stop(); buffer.clear(); error = nil; note = "Latest 1,000 entries per query. The chart counts the loaded lines."; selectedID = nil
         let token = generation, query = query, duration = since, live = live

@@ -14,6 +14,33 @@ import Testing
         try #require(flow.phase == phase, "Expected \(phase), got \(flow.phase): \(flow.message ?? "")")
     }
 
+    @Test func bundledLoginWaitsForTheMatchingProviderCallback() async throws {
+        let root = try folder()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let cli = root.appendingPathComponent("codex")
+        let script = """
+        #!/usr/bin/python3
+        import sys, json
+        def emit(value): print(json.dumps(value), flush=True)
+        for line in sys.stdin:
+            request = json.loads(line)
+            if request["method"] == "initialize": emit(dict(id=request["id"], result={}))
+            if request["method"] == "account/login/start":
+                emit(dict(id=request["id"], result=dict(loginId="fixture", authUrl="https://auth.openai.com/fixture")))
+                emit(dict(method="account/login/completed", params=dict(loginId="another", success=False)))
+                emit(dict(method="account/login/completed", params=dict(loginId="fixture", success=True)))
+        """
+        try script.write(to: cli, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: cli.path)
+        let flow = AgentSignIn(root: root)
+        var opened: URL?, refreshed = false
+        flow.startBundledCodex(executable: cli, environment: [:], open: { opened = $0; return true }, refresh: { refreshed = true })
+        flow.update(status: AgentStatus(readiness: .ready))
+        #expect(flow.phase == .waiting)
+        try await wait(.succeeded, in: flow)
+        #expect(opened?.host == "auth.openai.com" && refreshed)
+    }
+
     @Test func duplicateClicksAreIgnoredAndExitZeroRequiresVerifiedSignIn() async throws {
         let root = try folder(); defer { try? FileManager.default.removeItem(at: root) }
         let flow = AgentSignIn(root: root, pollInterval: .milliseconds(10))

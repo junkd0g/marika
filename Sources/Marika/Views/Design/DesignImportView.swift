@@ -42,7 +42,7 @@ struct DesignImportView: View {
         return VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Picker("Agent", selection: $model.agent) {
-                    ForEach(AgentKind.allCases) { Text($0.shortName).tag($0) }
+                    ForEach(AgentKind.availableProviders) { Text($0.shortName).tag($0) }
                 }.frame(width: 220).onChange(of: model.agent) { _, _ in model.modelID = "" }
                 Picker("Model", selection: $model.modelID) {
                     Text("Provider default").tag("")
@@ -55,7 +55,7 @@ struct DesignImportView: View {
             }
             HStack {
                 Button("Capture local preview") { Task { await model.capturePreview() } }.disabled(model.working)
-                Button("Attach screenshot…") { model.chooseReference() }
+                Button("Attach screenshot…") { model.chooseReference() }.disabled(model.working)
                 if let reference = model.reference {
                     Text(reference.source).font(.caption).lineLimit(1)
                     Button { model.reference = nil; model.referenceImage = nil } label: { Image(systemName: "xmark.circle.fill") }
@@ -124,19 +124,9 @@ struct DesignImportView: View {
         VStack(alignment: .leading, spacing: 12) {
             DesignImportPreview(document: proposal.document)
             if let reference = model.run?.reference {
-                let comparison = DesignReferenceComparison(reference: reference, document: proposal.document)
-                HStack(alignment: .top) {
-                    if let path = reference.imagePath, let image = NSImage(contentsOfFile: path) {
-                        Image(nsImage: image).resizable().scaledToFit().frame(width: 160, height: 95)
-                    }
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Reference: " + reference.source).font(.caption.weight(.medium))
-                        if comparison.measured > 0 {
-                            Text("Matched text: \(comparison.matched)/\(comparison.measured) measured elements").font(.caption)
-                            if let error = comparison.meanSizeError { Text("Mean size difference: " + error.formatted(.percent.precision(.fractionLength(0))) + " · compare visually before applying").font(.caption) }
-                        } else { Text("Screenshot supplied; geometry was not measured.").font(.caption) }
-                    }
-                }
+                DesignImportComparisonView(reference: reference, document: proposal.document,
+                                           sources: Set(model.run?.files.map(\.path) ?? []))
+                    .id(model.run?.id)
             }
             Text(proposal.summary).font(.callout).textSelection(.enabled)
             Text("\(proposal.document.nodes.count) editable layers · \(model.run?.files.count ?? 0) source files").font(.caption).foregroundStyle(.secondary)
@@ -185,5 +175,82 @@ private struct DesignImportPreview: View {
         }.frame(maxWidth: .infinity, maxHeight: .infinity).frame(minHeight: 220)
             .background(.white, in: RoundedRectangle(cornerRadius: 10))
             .task { image = (try? DesignRenderer.png(document: document)).flatMap(NSImage.init(data:)) }
+    }
+}
+
+private struct DesignImportComparisonView: View {
+    let reference: DesignImportReference
+    let document: DesignDocument
+    let sources: Set<String>
+    @State private var fidelity: DesignImportFidelity?
+    @State private var error: String?
+    @State private var showingDetail = false
+
+    var body: some View {
+        let comparison = DesignReferenceComparison(reference: reference, document: document, sources: sources)
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text(reference.source).font(.caption.weight(.medium)).lineLimit(1)
+                Spacer()
+                Button("Compare with reference…") { showingDetail = true }
+                    .disabled(fidelity == nil)
+            }
+            if comparison.measured > 0 {
+                Text("\(comparison.matched)/\(comparison.measured) labels matched · \(comparison.sourceLinked) linked to source")
+                    .font(.caption)
+            } else {
+                Text("\(comparison.linkedViewportLayers)/\(comparison.viewportLayers) viewport layers linked to source")
+                    .font(.caption)
+            }
+            if let fidelity {
+                Text(fidelity.difference.changedFraction.formatted(.percent.precision(.fractionLength(1))) + " of viewport pixels differ")
+                    .font(.caption)
+            } else if let error {
+                Text(error).font(.caption).foregroundStyle(.secondary)
+            } else {
+                ProgressView("Comparing viewport…").controlSize(.small)
+            }
+        }
+        .task(id: reference) {
+            do { fidelity = try await DesignImportFidelity.compare(reference, with: document) }
+            catch { if !Task.isCancelled { self.error = error.localizedDescription } }
+        }
+        .sheet(isPresented: $showingDetail) {
+            if let fidelity { detail(fidelity, comparison: comparison) }
+        }
+    }
+
+    private func detail(_ fidelity: DesignImportFidelity, comparison: DesignReferenceComparison) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Compare import with reference").font(.title2.bold())
+            HStack(alignment: .top, spacing: 12) {
+                capture("Reference", fidelity.reference)
+                capture("Editable import", fidelity.render)
+                capture("Pixel differences", fidelity.difference.png)
+            }
+            Text("Highlighted pixels differ beyond 12/255 per channel. This compares one viewport. Fonts and anti-aliasing can affect the result.")
+                .font(.caption).foregroundStyle(.secondary)
+            if let position = comparison.meanPositionError, let size = comparison.meanSizeError {
+                Text("Mean label position difference \(position.formatted(.number.precision(.fractionLength(1)))) pt · mean size difference \(size.formatted(.percent.precision(.fractionLength(1))))")
+                    .font(.caption)
+            }
+            if !comparison.missingText.isEmpty {
+                Text("Missing labels · " + comparison.missingText.joined(separator: ", ")).font(.caption).lineLimit(3)
+            }
+            if !comparison.unlinkedText.isEmpty {
+                Text("Labels missing source links · " + comparison.unlinkedText.joined(separator: ", ")).font(.caption).lineLimit(3)
+            }
+            Button("Done") { showingDetail = false }.keyboardShortcut(.defaultAction)
+        }.padding(20).frame(width: 820)
+    }
+
+    private func capture(_ title: String, _ data: Data) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title).font(.caption.weight(.semibold))
+            if let image = NSImage(data: data) {
+                Image(nsImage: image).resizable().scaledToFit().frame(maxWidth: .infinity, maxHeight: 240)
+                    .border(Theme.hairline)
+            }
+        }.frame(maxWidth: .infinity)
     }
 }

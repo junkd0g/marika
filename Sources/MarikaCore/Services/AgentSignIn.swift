@@ -9,6 +9,7 @@ import Observation
     public private(set) var message: String?
     public var isPending: Bool { phase == .waiting || phase == .checking }
     @ObservationIgnored private var monitor: Task<Void, Never>?
+    @ObservationIgnored private var awaitingBundledLogin = false
     @ObservationIgnored private var generation = UUID()
     @ObservationIgnored private var directory: URL?
     @ObservationIgnored private var previousStatus: AgentStatus?
@@ -94,8 +95,65 @@ import Observation
         }
     }
 
+    /// Keeps authentication inside the bundled CLI's sandbox. Only the authorization URL opens in the browser.
+    public func startBundledCodex(executable: URL, environment: [String: String], open: @escaping @MainActor (URL) -> Bool,
+                                 refresh: @escaping @MainActor () async -> Void) {
+        guard !isPending else { return }
+        generation = UUID()
+        let attempt = generation
+        previousStatus = nil
+        completedCode = nil
+        phase = .waiting
+        awaitingBundledLogin = true
+        message = "Finish signing in to OpenAI in your browser."
+        monitor = Task {
+            let (events, sink) = AsyncStream<JSONValue>.makeStream()
+            let connection = CodexConnection(executable: executable, environment: environment,
+                workingDirectory: root) { inbound in
+                    if case .notification("account/login/completed", let payload) = inbound { sink.yield(payload) }
+                    if case .exited = inbound { sink.finish() }
+                }
+            do {
+                try await connection.start()
+                _ = try await connection.initialize()
+                let login = try await connection.request("account/login/start", ["type": "chatgpt"])
+                try Task.checkCancellation()
+                guard let id = login["loginId"]?.string, let url = login["authUrl"]?.string.flatMap(URL.init(string:)),
+                      url.scheme == "https", url.host == "auth.openai.com", open(url) else {
+                    throw AgentError.launchFailed("Couldn’t open the OpenAI sign-in page.")
+                }
+                try await withThrowingTaskGroup(of: Void.self) { group in
+                    group.addTask { [timeout] in
+                        try await Task.sleep(for: timeout)
+                        throw AgentError.launchFailed("Sign-in timed out. Try again.")
+                    }
+                    group.addTask {
+                        for await event in events where event["loginId"]?.string == id {
+                            guard event["success"]?.bool == true else { throw AgentError.launchFailed("OpenAI sign-in did not complete.") }
+                            return
+                        }
+                        throw AgentError.launchFailed("The sign-in connection closed.")
+                    }
+                    defer { group.cancelAll() }
+                    try await group.next()
+                }
+                await connection.close()
+                guard generation == attempt else { return }
+                await refresh()
+                guard generation == attempt else { return }
+                completedCode = 0
+                awaitingBundledLogin = false
+                confirm()
+            } catch {
+                await connection.close()
+                if generation == attempt { awaitingBundledLogin = false; fail(error.localizedDescription) }
+            }
+        }
+    }
+
     public func update(status: AgentStatus) {
         latestStatus = status
+        guard !awaitingBundledLogin else { return }
         if completedCode == nil, let directory, let text = try? String(contentsOf: directory.appendingPathComponent("result"), encoding: .utf8) {
             completedCode = Int(text.trimmingCharacters(in: .whitespacesAndNewlines))
         }
@@ -122,6 +180,7 @@ import Observation
 
     /// The user owns Terminal; stopping observation must not terminate their login process.
     public func stopWaiting() {
+        awaitingBundledLogin = false
         generation = UUID(); monitor?.cancel(); monitor = nil
         phase = .idle; message = nil
         cleanFinishedCommand()

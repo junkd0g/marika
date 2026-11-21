@@ -5,7 +5,7 @@ import MarikaCore
 @MainActor enum DebugAPIChecks {
     static func requests(_ model: AppModel) async throws {
         guard let project = model.selectedProject, let endpoint = project.apiCollection?.endpoints.first,
-              let api = model.apiWorkspaces[project.id], let draft = api.drafts[endpoint.id],
+              let api = model.projectRuntimeTools[project.id]?.api, let draft = api.drafts[endpoint.id],
               let first = api.result(for: endpoint.id), first.primary.status.hasPrefix("HTTP 200 ·"),
               first.primary.body.contains("sent-by-marika") else {
             throw AgentError.launchFailed("Native Send did not reach the local server with its headers")
@@ -52,15 +52,15 @@ import MarikaCore
             throw AgentError.launchFailed("API fixture missing")
         }
         let api = APIWorkspace()
-        model.apiWorkspaces[project.id] = api
+        model.runtimeTools(for: project.id).api = api
         api.select(endpoint, project: project)
         api.send(endpoint, project: project, environment: model.gitEnvironment)
         try await Task.sleep(for: .milliseconds(300))
         guard api.runningRequests.contains(endpoint.id) else { throw AgentError.launchFailed("Slow request did not start") }
         if action == "remove" {
             model.removeProject(project)
-            for _ in 0..<100 where model.project(id: project.id) != nil { try await Task.sleep(for: .milliseconds(50)) }
-            guard model.project(id: project.id) == nil, model.apiWorkspaces[project.id] == nil else {
+            for _ in 0..<100 where model.project(id: project.id) != nil || !api.runningRequests.isEmpty { try await Task.sleep(for: .milliseconds(50)) }
+            guard model.project(id: project.id) == nil, model.projectRuntimeTools[project.id]?.api == nil else {
                 throw AgentError.launchFailed("Removed project retained its API workspace")
             }
         } else {

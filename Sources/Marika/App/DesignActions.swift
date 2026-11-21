@@ -31,8 +31,8 @@ extension AppModel {
             guard let endpoint = project.apiCollection?.endpoints.first(where: { $0.id == link.target }) else {
                 throw DesignToolError("This API endpoint is no longer in the project's collection.")
             }
-            let workspace = apiWorkspaces[projectID] ?? APIWorkspace()
-            apiWorkspaces[projectID] = workspace; workspace.select(endpoint, project: project)
+            let workspace = projectRuntimeTools[projectID]?.api ?? APIWorkspace()
+            runtimeTools(for: projectID).api = workspace; workspace.select(endpoint, project: project)
             switchPanel(.api)
         case .documentation:
             browser(for: project).navigate(link.target); switchPanel(.browser)

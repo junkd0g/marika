@@ -115,7 +115,7 @@ struct TaskCompletionView: View {
     }
 
     private func preview(_ project: Project, isolated: Bool) -> some View {
-        let preview = model.previews[project.id]
+        let preview = model.projectRuntimeTools[project.id]?.preview
         return section("Project preview") {
             PreviewStatusLabel(preview: preview)
             if let error = preview?.error { Text(error).foregroundStyle(Theme.attention) }

@@ -102,7 +102,7 @@ struct ProjectResearchView: View {
             Text("Scope").font(.caption).foregroundStyle(.secondary)
             WorkspaceSelect(title: "Scope", selection: $focus, options: Array(ResearchFocus.allCases), label: { $0.rawValue }, height: 32).frame(width: 170)
             Text("Provider").font(.caption).foregroundStyle(.secondary)
-            WorkspaceSelect(title: "Provider", selection: $agent, options: Array(AgentKind.allCases), label: { $0.shortName }, height: 32).frame(width: 130)
+            WorkspaceSelect(title: "Provider", selection: $agent, options: Array(AgentKind.availableProviders), label: { $0.shortName }, height: 32).frame(width: 130)
         }.controlSize(.small)
     }
     private var startButton: some View {

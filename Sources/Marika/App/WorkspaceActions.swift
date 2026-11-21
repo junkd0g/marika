@@ -9,7 +9,7 @@ extension AppModel {
 
     var activeBrowser: BrowserWorkspace? {
         guard let id = selectedSession?.projectID, commandPanel == .browser else { return nil }
-        return browsers[id]
+        return projectRuntimeTools[id]?.browser
     }
 
     var commandPanel: ProjectPanel? {
@@ -20,20 +20,41 @@ extension AppModel {
         return primary
     }
 
-    func selectProjectTab(_ tab: ProjectTab) {
-        guard let meta = selectedSession, let project = project(for: meta) else { return }
-        focusedPanels[project.id] = tab
-        switch tab {
-        case .conversation:
-            openProject(project, tab: .conversation)
-            return
-        case .code: editor(for: project).focusEditor()
+    func openProject(_ project: Project, tab: ProjectTab? = nil, showProject: Bool = true) {
+        guard let current = self.project(id: project.id) else { return }
+        if showProject { showsWelcome = false }
+        if showProject { presentProjectSpace(current.spaceID) }
+        let conversation = workspace.chat(for: current.id) ?? newSession(in: current)
+        selectedSessionID = conversation.id
+        showsInspector = current.layout?.showsInspector ?? true
+        rememberProjectConversation(conversation)
+        rememberChat(conversation)
+        if let tab { projectTabs[current.id] = tab }
+        let saved = layout(for: current.id)
+        let primary = projectTabs[current.id] ?? .conversation
+        preparePanel(primary, for: current)
+        if let secondary = saved.secondary { preparePanel(secondary, for: current) }
+        if (projectTabs[current.id] ?? .conversation) == .conversation { composerFocusRequest = UUID() }
+    }
+
+    func preparePanel(_ panel: ProjectPanel, for project: Project) {
+        switch panel {
+        case .code: _ = editor(for: project)
         case .browser: _ = browser(for: project)
         case .terminal: ensureTerminal(for: project)
         case .design: _ = design(for: project)
         case .containers: _ = containers(for: project)
-        case .changes, .agents, .stats, .pipelines, .api, .research: break
+        case .qa: _ = qa(for: project)
+        case .conversation, .changes, .agents, .stats, .pipelines, .api, .research: break
         }
+    }
+
+    func selectProjectTab(_ tab: ProjectTab) {
+        guard let meta = selectedSession, let project = project(for: meta) else { return }
+        focusedPanels[project.id] = tab
+        if tab == .conversation { openProject(project, tab: tab); return }
+        preparePanel(tab, for: project)
+        if tab == .code { editors[project.id]?.focusEditor() }
         projectTabs[project.id] = tab
     }
 
@@ -101,9 +122,7 @@ extension AppModel {
         saved.panel = projectTabs[project.id] ?? .conversation
         saved.secondary = secondary == saved.panel ? nil : secondary
         if let stacked { saved.stacked = stacked }
-        if secondary == .code { _ = editor(for: project) }
-        if secondary == .browser { _ = browser(for: project) }
-        if secondary == .design { _ = design(for: project) }
+        if let secondary = saved.secondary { preparePanel(secondary, for: project) }
         updateLayout(saved, for: project.id)
     }
     func switchPanel(_ tab: ProjectPanel) {
@@ -146,26 +165,17 @@ extension AppModel {
         guard let project = selectedProject, project.id == drag.projectID else { return }
         var saved = layout(for: project.id)
         guard saved.splitTab(drag.panel, at: edge) else { return }
-        for panel in [saved.panel, saved.secondary].compactMap({ $0 }) {
-            switch panel {
-            case .code: _ = editor(for: project)
-            case .browser: _ = browser(for: project)
-            case .terminal: ensureTerminal(for: project)
-            case .design: _ = design(for: project)
-            case .containers: _ = containers(for: project)
-            default: break
-            }
-        }
+        if let secondary = saved.secondary { preparePanel(secondary, for: project) }
         updateLayout(saved, for: project.id)
         selectProjectTab(saved.panel)
     }
     func preview(for project: Project) -> ProjectPreview {
-        if let preview = previews[project.id] { return preview }
+        if let preview = projectRuntimeTools[project.id]?.preview { return preview }
         let preview = ProjectPreview()
         preview.onReady = { [weak self] url in
             guard let self, let current = self.project(id: project.id) else { return }
             if let target = self.previewRecoveryTargets.removeValue(forKey: project.id) {
-                guard let page = self.browsers[project.id]?.pages.first(where: { $0.id == target.pageID }),
+                guard let page = self.projectRuntimeTools[project.id]?.browser?.pages.first(where: { $0.id == target.pageID }),
                       page.url == target.address, let reload = PreviewRecovery.reloadURL(target.address, server: url) else { return }
                 page.load(reload)
                 return
@@ -173,7 +183,7 @@ extension AppModel {
             self.browser(for: current).navigate(url.absoluteString)
             if self.selectedProject?.id == project.id { self.switchPanel(.browser) }
         }
-        previews[project.id] = preview
+        runtimeTools(for: project.id).preview = preview
         return preview
     }
     func openPreviewSettings(for project: Project) {
@@ -181,8 +191,8 @@ extension AppModel {
         previewProjectID = project.id
     }
     func runPipeline(_ job: PipelineJob, project: Project, image: String) {
-        let runner = pipelineRunners[project.id] ?? ProjectPipelineRunner()
-        pipelineRunners[project.id] = runner
+        let runner = projectRuntimeTools[project.id]?.pipeline ?? ProjectPipelineRunner()
+        runtimeTools(for: project.id).pipeline = runner
         runner.onFinish = { [weak self] result in
             self?.updateProject(project.id) { current in
                 current.pipelineRuns = Array(((current.pipelineRuns ?? []) + [result]).suffix(12))
@@ -199,7 +209,7 @@ extension AppModel {
         guard !preview.isActive else { return }
         if let page {
             guard let url = page.url,
-                  browsers[project.id]?.pages.contains(where: { $0 === page }) == true,
+                  projectRuntimeTools[project.id]?.browser?.pages.contains(where: { $0 === page }) == true,
                   PreviewRecovery.matches(url, configuration: configuration, runningAddress: preview.address) else { return }
             previewRecoveryTargets[project.id] = (page.id, url)
         } else { previewRecoveryTargets[project.id] = nil }

@@ -36,7 +36,7 @@ struct WelcomeView: View {
 
                     VStack(alignment: .leading, spacing: 9) {
                         Picker("Coding agent", selection: $selectedAgent) {
-                            ForEach(AgentKind.allCases) { Text($0.displayName).tag($0) }
+                            ForEach(AgentKind.availableProviders) { Text($0.displayName).tag($0) }
                         }
                         .pickerStyle(.segmented)
                         .onChange(of: selectedAgent) { _, agent in model.selectWelcomeAgent(agent) }
@@ -92,7 +92,7 @@ struct WelcomeView: View {
                                 VStack(spacing: 8) {
                                     checkAgain
                                     Button("Stop Waiting") { signIn?.stopWaiting() }.buttonStyle(.plain)
-                                        .help("Stops checking in Marika. The Terminal sign-in stays open.")
+                                        .help("Stop waiting for sign-in.")
                                 }
                             } else if checklist.account == .pending || checklist.account == .needsAttention || signIn?.phase == .failed {
                                 if usesAPIKey {
@@ -164,7 +164,10 @@ struct WelcomeView: View {
     }
 
     private var installationDetail: String {
-        switch checklist.installation {
+        #if MARIKA_APP_STORE
+        if checklist.installation == .complete { return "Codex is included in Marika." }
+        #endif
+        return switch checklist.installation {
         case .complete: "\(agent.shortName) CLI found on your Mac."
         case .checking: "Looking for \(agent.shortName) on this Mac…"
         case .needsAttention: "Couldn't check the installation. Try again."

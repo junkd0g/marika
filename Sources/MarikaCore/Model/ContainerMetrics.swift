@@ -7,7 +7,7 @@ public enum ContainerMetric: String, Codable, CaseIterable, Sendable {
     case .latency: "Latency (ms)"; case .errorRate: "Error rate (%)"
     } }
 }
-public struct ContainerMetricPoint: Identifiable, Hashable, Sendable {
+public struct ContainerMetricPoint: Identifiable, Codable, Hashable, Sendable {
     public var id: String { resourceID + metric.rawValue + String(date.timeIntervalSince1970) }
     public var resourceID: String
     public var metric: ContainerMetric

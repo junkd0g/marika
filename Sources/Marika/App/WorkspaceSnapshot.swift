@@ -24,11 +24,12 @@ extension AppModel {
                 saved.showsNavigator = editor.showsNavigator
                 saved.navigatorWidth = editor.navigatorWidth
             }
-            if let browser = browsers[id] {
+            if let browser = projectRuntimeTools[id]?.browser {
                 saved.browserURLs = browser.pages.map { $0.url?.absoluteString ?? "" }
                 saved.browserIndex = browser.pages.firstIndex { $0.id == browser.selectedPageID } ?? 0
                 saved.browserViewport = browser.viewport
                 saved.browserLibrary = browser.library
+                saved.browserAgentAccessEnabled = browser.agentAccessEnabled
             }
             if selectedSession?.projectID == id { saved.showsInspector = showsInspector }
             workspace.projects[index].layout = saved

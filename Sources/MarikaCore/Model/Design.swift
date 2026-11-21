@@ -548,7 +548,10 @@ public struct DesignDocument: Codable, Equatable, Hashable, Sendable {
     }
 
     private mutating func insertCopies(of clip: DesignClip, delta: CGSize, suffix: String) -> [UUID] {
-        let copies = Dictionary(uniqueKeysWithValues: clip.nodes.map { ($0.id, UUID()) })
+        var copies: [UUID: UUID] = [:]
+        for node in clip.nodes {
+            guard copies.updateValue(UUID(), forKey: node.id) == nil else { return [] }
+        }
         var created: [UUID] = []
         for node in clip.nodes {
             var copy = node

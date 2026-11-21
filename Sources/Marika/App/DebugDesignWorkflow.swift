@@ -66,7 +66,7 @@ enum DebugDesignWorkflow {
         }
         try await model.openDesignLink(symbol, projectID: canvas.projectID)
         try await model.openDesignLink(request, projectID: canvas.projectID)
-        guard model.projectTabs[canvas.projectID] == .api, model.apiWorkspaces[canvas.projectID]?.selectedRequestID == endpoint.id else {
+        guard model.projectTabs[canvas.projectID] == .api, model.projectRuntimeTools[canvas.projectID]?.api?.selectedRequestID == endpoint.id else {
             throw DesignToolError("Endpoint link did not select the API request")
         }
         let documentation = DesignSourceLink(kind: .documentation, target: "http://127.0.0.1:9/guide")

@@ -13,6 +13,8 @@ extension AppModel {
             let name = request["name"]?.string ?? ""
             let args = request["arguments"] ?? [:]
             switch name {
+            case "project_get_qa": return BrowserTools.text(String(decoding: try JSONEncoder().encode(qa(for: project).data), as: UTF8.self))
+            case "project_publish_qa_cases": return try publishQACases(args, project: project, callerID: callerID)
             case "project_get_design": return try toolResult(DesignTools.snapshot(design(for: project).document))
             case "project_publish_design": return try publishDesign(args, project: project)
             case "project_publish_comparison": return try publishComparison(args, caller: caller, project: project)

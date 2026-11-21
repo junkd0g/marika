@@ -24,13 +24,10 @@ extension AppModel {
             if var reference, let referenceImage {
                 guard referenceImage.count <= 8_000_000 else { throw DesignToolError("Reference screenshot exceeds 8 MB.") }
                 prompt += "\n" + (try reference.prompt())
-                let directory = store.attachmentsDirectory
-                try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-                let url = directory.appendingPathComponent(run.id.uuidString + "-reference.png")
-                try referenceImage.write(to: url, options: .atomic)
-                try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
-                reference.imagePath = url.path; run.reference = reference
-                images = [ImageAttachment(path: url.path, mediaType: "image/png")]
+                let attachment = try await store.images.savePNG(referenceImage)
+                reference.imagePath = attachment.path
+                run.reference = reference
+                images = [attachment]
             }
             try await DesignImportSources.stage(snapshot, id: run.id)
             guard self.project(id: projectID)?.designImport?.id == run.id,

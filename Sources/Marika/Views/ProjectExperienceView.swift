@@ -7,28 +7,32 @@ struct ProjectExperienceView: View {
     let project: Project
     @State private var section = "Recovery"
     @State private var command = ""
+    @State private var selectedDebugRun: UUID?
     @State private var error: String?
     @State private var restoring = false
     @State private var pendingRestore: CodeCheckpoint?
     private var current: Project { model.project(id: project.id) ?? project }
+    private var history: [DebugRun] { current.debugRuns ?? [] }
+    private var debugRun: DebugRun? { history.first { $0.id == selectedDebugRun } ?? history.last }
+    private var debugTask: Task<Void, Never>? { model.projectRuntimeTools[project.id]?.debugTask }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(section == "Recovery" ? "A way back" : section == "Debug" ? "Understand the failure" : "Review the work").font(.title2.bold())
-                    Text(project.name).foregroundStyle(.secondary)
-                }
+                WorkspaceHeading(title: "Workspace tools", subtitle: project.name)
                 Spacer()
-                Button("Done") { dismiss() }.keyboardShortcut(.cancelAction)
+                Button("Done") { dismiss() }
+                    .buttonStyle(WorkspaceButtonStyle(compact: true))
+                    .keyboardShortcut(.cancelAction)
             }
             Picker("Workspace tools", selection: $section) {
                 Text("Checkpoints").tag("Recovery")
                 Text("Runtime debugging").tag("Debug")
                 Text("Artifacts").tag("Artifacts")
-            }.pickerStyle(.segmented)
+            }.pickerStyle(.segmented).labelsHidden().controlSize(.regular)
             if let error { Text(error).font(.caption).foregroundStyle(.red).textSelection(.enabled) }
             if section == "Recovery" { recovery } else if section == "Debug" { debugging } else { ProjectArtifactsView(project: project).environment(model) }
-        }.font(.system(size: 12)).controlSize(.small).padding(20).frame(width: 880, height: 620)
+        }.font(.system(size: 12)).controlSize(.small).padding(24).frame(width: 880, height: 620).background(Theme.canvas)
             .task {
                 section = model.experienceSection
                 command = model.debugCommands[project.id] ?? ""
@@ -87,43 +91,112 @@ struct ProjectExperienceView: View {
         }
     }
     private var debugging: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Run a reproduction, inspect the evidence, and ask an agent to fix and verify it.").font(.callout).foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 14) {
+            commandField
+            if let error = model.debugErrors[project.id] {
+                Label(error, systemImage: "exclamationmark.triangle")
+                    .foregroundStyle(Theme.deletion).font(.caption).textSelection(.enabled)
+            }
+            if let debugRun {
+                HStack(alignment: .top, spacing: 14) {
+                    debugHistory.frame(width: 230)
+                    debugDetails(debugRun)
+                }
+            } else {
+                ContentUnavailableView("No debug runs", systemImage: "terminal",
+                    description: Text("Run a reproduction command to review its output."))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }.frame(maxHeight: .infinity, alignment: .top)
+    }
+
+    private var commandField: some View {
+        VStack(alignment: .leading, spacing: 9) {
             HStack {
-                TextField("Reproduction command, e.g. go test ./...", text: $command).textFieldStyle(.workspace)
-                if model.debugTasks[project.id] != nil {
-                    ProgressView().controlSize(.small)
-                    Button("Stop") { model.debugTasks[project.id]?.cancel() }
-                } else {
-                    Button("Run") { model.debugCommands[project.id] = command; model.runDebug(command, project: current) }
-                        .buttonStyle(WorkspaceButtonStyle(kind: .primary, compact: true)).disabled(command.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                Text("Reproduction command").font(.system(size: 13, weight: .semibold))
+                Spacer()
+                if debugTask != nil {
+                    Label("Running", systemImage: "clock").font(.caption).foregroundStyle(Theme.action)
                 }
             }
-            Text("\(current.editorURL.path) · Stops after 2 minutes").font(.caption).foregroundStyle(.secondary)
-            if let error = model.debugErrors[project.id] { Text(error).foregroundStyle(.red).font(.caption) }
+            HStack(spacing: 10) {
+                TextField("e.g. go test ./…", text: $command).textFieldStyle(.workspace)
+                    .accessibilityLabel("Reproduction command").font(Theme.code)
+                if let debugTask {
+                    Button("Stop", systemImage: "stop.fill") { debugTask.cancel() }
+                        .buttonStyle(WorkspaceButtonStyle(kind: .destructive, compact: true))
+                } else {
+                    Button("Run", systemImage: "play.fill") {
+                        model.debugCommands[project.id] = command
+                        runDebug(command)
+                    }.buttonStyle(WorkspaceButtonStyle(kind: .primary, compact: true))
+                        .disabled(command.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
+            HStack {
+                Label(current.editorURL.path, systemImage: "folder")
+                    .lineLimit(1).truncationMode(.middle).textSelection(.enabled).help(current.editorURL.path)
+                Spacer()
+                Text("2 minute timeout").fixedSize()
+            }.font(.caption).foregroundStyle(.secondary)
+        }.workspaceCard(padding: 13)
+    }
+
+    private var debugHistory: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Recent runs").font(.system(size: 13, weight: .semibold)).padding(.horizontal, 4)
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 12) {
-                    ForEach((current.debugRuns ?? []).reversed()) { run in
-                        VStack(alignment: .leading, spacing: 10) {
-                            HStack {
-                                Image(systemName: run.exitCode == 0 && !run.timedOut ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
-                                    .foregroundStyle(run.exitCode == 0 && !run.timedOut ? .green : .orange)
-                                Text(run.command).font(.headline.monospaced()).lineLimit(2)
-                                Spacer()
-                                Text(run.timedOut ? "Timed out" : "Exit \(run.exitCode)").font(.caption)
-                            }
-                            Text(run.output.isEmpty ? "No output" : run.output).font(.caption.monospaced()).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
-                            HStack {
-                                Button("Debug with agent") { model.debugWithAgent(run, project: current) }
-                                    .disabled(model.workspace.conversation(for: project.id).map { model.controllers[$0.id]?.isBusy == true } ?? true)
-                                Button("Run again") { model.runDebug(run.command, project: current) }.disabled(model.debugTasks[project.id] != nil)
-                                Spacer()
-                                Text(run.date, style: .time).font(.caption).foregroundStyle(.secondary)
-                            }
-                        }.padding(16).surface()
+                LazyVStack(spacing: 2) {
+                    ForEach(history.reversed()) { run in
+                        let status = debugStatus(run)
+                        WorkspaceRunRow(title: run.command,
+                                        subtitle: status.title + " · " + run.date.formatted(date: .omitted, time: .shortened),
+                                        symbol: status.symbol, tint: status.tint, selected: run.id == debugRun?.id) {
+                            selectedDebugRun = run.id
+                        }
+                        #if DEBUG
+                        .background(DebugViewMarker(name: "debug-saved-run-" + run.id.uuidString))
+                        #endif
                     }
                 }
             }
-        }
+        }.frame(maxHeight: .infinity, alignment: .top).workspaceCard(padding: 10)
+    }
+
+    private func debugDetails(_ run: DebugRun) -> some View {
+        let status = debugStatus(run)
+        return VStack(alignment: .leading, spacing: 11) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(run.command).font(.system(size: 14, weight: .semibold, design: .monospaced))
+                        .lineLimit(2).textSelection(.enabled)
+                    Text(run.date.formatted(date: .abbreviated, time: .shortened))
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 6)
+                WorkspaceStatusBadge(title: status.title, symbol: status.symbol, tint: status.tint)
+            }
+            HStack(spacing: 8) {
+                Button("Run again", systemImage: "arrow.clockwise") { runDebug(run.command) }
+                    .disabled(debugTask != nil)
+                Button("Debug with agent", systemImage: "sparkles") { model.debugWithAgent(run, project: current) }
+                    .disabled(model.workspace.conversation(for: project.id).map { model.controllers[$0.id]?.isBusy == true } ?? true)
+            }.buttonStyle(WorkspaceButtonStyle(compact: true))
+            WorkspaceRunOutput(output: run.output).id(run.id)
+                #if DEBUG
+                .background(DebugViewMarker(name: "debug-output-" + run.id.uuidString))
+                #endif
+        }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading).workspaceCard(padding: 13)
+    }
+
+    private func runDebug(_ value: String) {
+        selectedDebugRun = nil
+        model.runDebug(value, project: current)
+    }
+
+    private func debugStatus(_ run: DebugRun) -> (title: String, symbol: String, tint: Color) {
+        if run.timedOut { return ("Timed out", "clock.badge.exclamationmark", Theme.attention) }
+        if run.exitCode == 0 { return ("Exit 0", "checkmark.circle.fill", Theme.addition) }
+        return ("Exit \(run.exitCode)", "xmark.circle.fill", Theme.deletion)
     }
 }

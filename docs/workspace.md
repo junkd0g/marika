@@ -464,6 +464,72 @@ are not bridged to remote agent sessions. Generic remote debug adapters use stdi
 Delve TCP launching currently runs locally. Live SSH connectivity requires your own host and was
 not exercised by the automated fixtures.
 
+## QA cases, runs and release coverage
+
+Open **QA** from the **+** menu or press **⌘J**. Create a case with a requirement, preconditions,
+steps and observable expected results. **Draft cases** can use a written requirement, a project
+ticket, or the current Design selection (including its descriptions). The selected agent proposes
+cases in **Drafts**; adding them to the library does not approve them or claim they ran. Review and
+approve each case before execution. Editing a case or replacing its visual baseline requires
+approval again.
+
+Set an environment, build label and optional test URL. **Run manually** starts the selected case;
+**Run suite** includes all approved, non-archived cases. Each step starts **Not tested** and can be
+marked Passed, Failed or Blocked, with actual behaviour and image attachments. **Browser** opens
+a split for testing and screenshots; native app screenshots can be attached from a file. A run
+stores its original case definitions, platform and source fingerprint. It can be paused by leaving
+the view and resumed after restarting. **Finish run** preserves incomplete steps as Not tested.
+Finished results cannot be edited. **Retest cases** creates a new run using the current approved
+definitions, linked to the old run, and preserves manual versus WebKit execution.
+
+**Record journey** records clicks, text edits, selections and form submission in the selected
+browser tab. Stop to create a draft case, then **Pick a checkpoint in Browser** and select the
+element whose text or visibility proves the expected result. Review the recorded selectors and
+values in **Edit case**, then approve. Protected inputs such as passwords are recorded as manual
+steps without their values; those cases require manual testing. Recordings are limited to the
+main frame and 100 actions. Popups, file uploads, dragging and native application actions need
+manual cases or a separate runner.
+
+**Replay web journey** runs the approved actions and checkpoints in the visible WebKit browser.
+It requires at least one checkpoint and stops at the first failure, retaining unexecuted steps.
+Browser Agent access begins off for each project and can be toggled in the bottom bar.
+The project's choice persists across app restarts. Navigation and element waits have bounded timeouts;
+changing or hiding the replay tab stops the run. **Export Playwright test** creates editable
+TypeScript using the same actions and assertions, for use with a separately installed Playwright
+project. To bring CI results back, run the exported test with the Playwright JSON reporter and
+retain traces on failure. Set the environment and CI build identifier in QA, then choose
+**Import CI report…**. Marika matches the exported case ID and revision against approved cases
+and shows each Playwright project and its outcome. Retries that pass after a failure are shown
+as flaky and block a pass. Imported runs keep CI source freshness unverified.
+
+Use **Attach trace…** on a result to save a copy of a downloaded trace ZIP. **Open trace** opens
+Playwright Trace Viewer and selects the copied ZIP in Finder for drag and drop. **Create bug**
+links the failed result and its evidence to the ticket. Marika's own visual baseline requires a
+separate comparison.
+
+Replays interrupted by a quit or crash are marked Blocked when reopened; start a new replay to
+run them again. Manual runs remain resumable.
+
+**Capture visual baseline** stores the visible page for explicit approval. Compare a run with
+that baseline using the same page, viewport and zoom. The difference image highlights changed
+pixels; the comparison allows a 12/255 channel difference and at most 0.5% changed pixels.
+Replay automatically checks a configured baseline after its browser checkpoints pass. A failed
+comparison attempt blocks the case even if an earlier comparison passed. Mismatched sizes or an
+incomplete comparison are not passed. A baseline is never updated by a
+replay. Baselines and evidence are local files under Marika's saved-data `qa` folder.
+
+A failed or blocked step with an actual result offers **Create bug**. The ticket includes the
+reproduction steps, expected/actual behaviour, environment, build, platform and available browser
+diagnostics. The ticket's Work tab opens the original QA evidence and retest workflow. Repeated
+creation opens the existing linked bug. Browser diagnostics include navigation and page errors,
+not a full network trace or request bodies. Screenshots and diagnostic text may contain test data.
+
+**Export report** writes a Markdown report and its images into a chosen folder. **Release** shows
+coverage for the current environment, build and configured test URL across all non-archived cases, including drafts,
+untested cases, and outdated or unverifiable results. Source edits invalidate freshness; external
+service, tool and test-data changes still need an explicit retest. Coverage describes the configured
+cases, not every possible product requirement. Export a release summary from that view.
+
 ## Containers, Docker and Kubernetes
 
 Open **Containers** below Design in the sidebar, or press **⌘E**. Each project remembers
@@ -571,7 +637,7 @@ Open **Diagram → Components & design tokens** to create shared colors, text st
 
 Save a selection as a reusable component, add named variants, then insert instances. The inspector switches variants or detaches an instance. Replacing a variant does not silently overwrite existing instances: **Update instances** explicitly resets local overrides and supports Undo. A frame's **Frame layout** section supports horizontal or vertical flow, padding and spacing tokens. Locked or rotated children must be resolved before automatic layout can be enabled.
 
-**Import** accepts Swift/SwiftUI/UIKit, Kotlin/Compose, HTML/CSS, React and Vue source files. Attach a screenshot of the running native app, or open a local preview in Browser and choose **Capture local preview**. That sends the captured image and bounded rendered measurements alongside the selected source copies. The review shows matched text and size differences for measured elements; these are partial fidelity checks, not a pixel-perfect guarantee. Missing assets, responsive states and platform-specific rendering still require visual review. Invalid output gets one validation repair attempt.
+**Import** accepts Swift/SwiftUI/UIKit, Kotlin/Compose, HTML/CSS, React and Vue source files. Attach a screenshot of the running native app, or open a local preview in Browser and choose **Capture local preview**. That sends the captured image and bounded rendered measurements alongside the selected source copies. The review shows how many sampled labels match editable elements and have source links. **Compare with reference** shows the reference, the import rendered at the same viewport, and a pixel difference image. Local web previews also provide element position and size measurements. Attached screenshots show the pixel comparison and source-link coverage for the rendered layers. Review missing assets, responsive states and platform-specific rendering separately. Invalid output gets one validation repair attempt.
 
 Select previously imported layers and reopen **Import** to update that selection. The comparison shows additions, changes, removals and conflicting manual edits. Manual edits, deletions and locked layers are preserved by default; choose individual generated versions to resolve conflicts. Review again if the canvas changes. Applying creates a saved Design version and one undo step; source code is never changed by import. Source paths/names identify matching layers, so substantial renames can appear as an addition and removal.
 

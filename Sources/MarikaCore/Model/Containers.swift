@@ -97,7 +97,7 @@ public struct ContainerResource: Identifiable, Hashable, Sendable {
     public var revision: Int?
     public init(id: String, name: String, kind: ContainerResourceKind) { self.id = id; self.name = name; self.kind = kind }
 }
-public struct ContainerEvent: Identifiable, Sendable {
+public struct ContainerEvent: Identifiable, Codable, Equatable, Sendable {
     public var id: String
     public var resourceUID: String
     public var reason: String

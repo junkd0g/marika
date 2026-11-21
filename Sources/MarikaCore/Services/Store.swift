@@ -7,6 +7,7 @@ public struct StoreError: LocalizedError, Sendable {
 
 /// Atomic local storage with a last known good backup. Corrupt data is never replaced silently.
 public actor Store {
+    public nonisolated let images: ImageAttachments
     public nonisolated let root: URL
     private let encoder: JSONEncoder
     private let decoder: JSONDecoder
@@ -15,6 +16,7 @@ public actor Store {
 
     public init(root: URL = Store.defaultRoot) {
         self.root = root
+        images = ImageAttachments(directory: root.appendingPathComponent("attachments", isDirectory: true))
         encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
         encoder.outputFormatting = [.sortedKeys]

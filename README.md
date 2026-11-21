@@ -121,7 +121,8 @@ Task agents can work in isolated Git worktrees, with changes reviewed and accept
 
 Open a local server or project HTML file in **Browser**, check desktop or mobile layouts,
 and attach element feedback or screenshots to a chat draft. Agents can use the same browser
-through Marika's MCP bridge; access to external sites is controlled in the browser toolbar.
+through Marika's MCP bridge. Agent access requires explicit sharing permission for each project; the clickable
+**Agent access** control turns it off or on for the project and remembers your choice.
 
 ![Marika's built-in browser previewing the Copper demo task board, with Chat, Code and Browser tabs open](docs/images/browser-preview.png)
 
@@ -135,6 +136,7 @@ through Marika's MCP bridge; access to external sites is controlled in the brows
 | **Stats** | Request a code-health review with findings linked to source locations. |
 | **Design** | Edit diagrams and screens, manage reusable components and style tokens, and import UI from code with screenshot references. |
 | **Containers** | Explore Docker and Kubernetes resources, health, logs, metrics and reviewed recovery actions. |
+| **QA** | Review test cases, record browser journeys, run manual or WebKit checks, compare screenshots, file evidence-backed bugs and retest releases. |
 | **Changes** | Review diffs, stage hunks, commit, push, and open pull requests. |
 | **Terminal** | Run interactive shells in projects and agent worktrees. |
 | **Pipelines** | Run supported GitHub Actions jobs locally or native Swift checks. |
@@ -333,6 +335,27 @@ Every major workspace area is shown below. Expand a workflow to see its screensh
 **Source-link health checks and actionable design findings**
 
 ![Source-link health checks and actionable design findings](docs/images/design-health.png)
+
+</details>
+
+<details>
+<summary>Quality assurance</summary>
+
+**Recorded browser journey with verified checkpoints and visual comparison**
+
+![Recorded browser journey with verified checkpoints and visual comparison](docs/images/qa-replay.jpg)
+
+**Manual test results with screenshot evidence and linked bugs**
+
+![Manual test results with screenshot evidence and linked bugs](docs/images/qa-manual-run.jpg)
+
+**Release coverage includes draft, untested and outdated cases**
+
+![Release coverage includes draft, untested and outdated cases](docs/images/qa-release.jpg)
+
+**Inspect highlighted visual changes against an approved baseline**
+
+![Inspect highlighted visual changes against an approved baseline](docs/images/qa-visual.jpg)
 
 </details>
 

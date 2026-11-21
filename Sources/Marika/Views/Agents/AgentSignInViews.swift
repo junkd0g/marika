@@ -33,7 +33,7 @@ struct AgentSignInFeedback: View {
                         .disabled(model.isRefreshingAgents)
                     if flow.isPending {
                         Button("Stop Waiting") { flow.stopWaiting() }
-                            .help("Stops checking in Marika. The sign-in window in Terminal stays open.")
+                            .help("Stop waiting for sign-in.")
                     }
                 }
                 .buttonStyle(.link).controlSize(.small)

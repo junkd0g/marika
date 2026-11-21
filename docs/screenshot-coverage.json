@@ -390,6 +390,38 @@
       "image": "docs/images/metrics-events.png",
       "capture": "Native UI capture from the isolated Copper fixture",
       "reviewedAt": "2026-11-19"
+    },
+    {
+      "group": "Quality assurance",
+      "feature": "qa-replay",
+      "caption": "Recorded browser journey with verified checkpoints and visual comparison",
+      "image": "docs/images/qa-replay.jpg",
+      "capture": "Native UI capture from the isolated QA checkout fixture",
+      "reviewedAt": "2026-11-19"
+    },
+    {
+      "group": "Quality assurance",
+      "feature": "qa-manual-run",
+      "caption": "Manual test results with screenshot evidence and linked bugs",
+      "image": "docs/images/qa-manual-run.jpg",
+      "capture": "Native UI capture from the isolated QA checkout fixture",
+      "reviewedAt": "2026-11-19"
+    },
+    {
+      "group": "Quality assurance",
+      "feature": "qa-release",
+      "caption": "Release coverage includes draft, untested and outdated cases",
+      "image": "docs/images/qa-release.jpg",
+      "capture": "Native UI capture from the isolated QA checkout fixture",
+      "reviewedAt": "2026-11-19"
+    },
+    {
+      "group": "Quality assurance",
+      "feature": "qa-visual",
+      "caption": "Inspect highlighted visual changes against an approved baseline",
+      "image": "docs/images/qa-visual.jpg",
+      "capture": "Native UI capture from the isolated QA checkout fixture",
+      "reviewedAt": "2026-11-19"
     }
   ]
 }

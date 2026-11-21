@@ -24,9 +24,11 @@ import MarikaCore
         }
     }
 
-    static func wait(_ model: AppModel, status: String) async throws {
+    static func wait(_ model: AppModel, status: String, stopOnFailure: Bool = false) async throws {
         for _ in 0..<1800 {
-            if model.selectedProject?.designImport?.status.rawValue == status { return }
+            let current = model.selectedProject?.designImport?.status.rawValue
+            if current == status { return }
+            if stopOnFailure, current == "failed" { break }
             try await Task.sleep(for: .milliseconds(100))
         }
         throw DesignToolError("Import did not reach \(status): \(model.selectedProject?.designImport?.error ?? "no error")")

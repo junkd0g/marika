@@ -1,13 +1,67 @@
 {
-  "matched": 3,
-  "measured": 3,
-  "meanSizeError": 0.09722222222222222,
-  "date": "2026-11-19",
-  "agent": "Claude Code",
-  "fixture": "Tests/Fixtures/DesignImport/index.html",
-  "method": "Live installed CLI, local WebKit reference capture, source-linked editable proposal",
-  "limitations": [
-    "One HTML fixture only; native runtime fidelity has not been measured.",
-    "Text matching and box sizes are partial checks, not pixel similarity."
+  "date": "2026-11-21",
+  "agent": "Claude Code (Sonnet)",
+  "method": "One live import per rendered fixture. Compare the reconstructed viewport against the runtime screenshot with a 12/255 channel tolerance. Verify known labels as editable layers and check whether each citation points to the source line declaring that label.",
+  "results": [
+    {
+      "framework": "HTML",
+      "source": "index.html",
+      "referenceRenderer": "WebKit",
+      "changedPixelFraction": 0.004127,
+      "fixtureLabels": 3,
+      "linkedToExpectedLine": 3,
+      "missingFixtureLabels": [],
+      "labelsWithMissingOrIncorrectLine": [],
+      "meanSizeError": 0.083333,
+      "meanPositionError": 0
+    },
+    {
+      "framework": "React",
+      "source": "App.tsx",
+      "referenceRenderer": "Vite + React in WebKit",
+      "changedPixelFraction": 0.005688,
+      "fixtureLabels": 3,
+      "linkedToExpectedLine": 3,
+      "missingFixtureLabels": [],
+      "labelsWithMissingOrIncorrectLine": [],
+      "meanSizeError": 0,
+      "meanPositionError": 0
+    },
+    {
+      "framework": "Vue",
+      "source": "Screen.vue",
+      "referenceRenderer": "Vite + Vue in WebKit",
+      "changedPixelFraction": 0.004328,
+      "fixtureLabels": 3,
+      "linkedToExpectedLine": 0,
+      "missingFixtureLabels": [],
+      "labelsWithMissingOrIncorrectLine": [
+        "Service status",
+        "API and worker are healthy.",
+        "View services"
+      ],
+      "meanSizeError": 0.083333,
+      "meanPositionError": 0
+    },
+    {
+      "framework": "SwiftUI",
+      "source": "Screen.swift",
+      "referenceRenderer": "SwiftUI ImageRenderer",
+      "changedPixelFraction": 0.009131,
+      "fixtureLabels": 3,
+      "linkedToExpectedLine": 3,
+      "missingFixtureLabels": [],
+      "labelsWithMissingOrIncorrectLine": []
+    },
+    {
+      "framework": "Compose Desktop",
+      "source": "Screen.kt",
+      "referenceRenderer": "Compose Desktop ImageComposeScene",
+      "changedPixelFraction": 0.032763,
+      "fixtureLabels": 3,
+      "linkedToExpectedLine": 3,
+      "missingFixtureLabels": [],
+      "labelsWithMissingOrIncorrectLine": []
+    }
   ]
 }

@@ -4,6 +4,20 @@ import Testing
 @testable import MarikaCore
 
 struct JSONValueTests {
+    @Test func imageImportKeepsItsOwnCopyAndPropagatesReadErrors() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let source = root.appendingPathComponent("fixture.png")
+        let bytes = Data([1, 2, 3])
+        try bytes.write(to: source)
+        let images = Store(root: root).images
+        let stored = try await images.copy(from: source)
+        try FileManager.default.removeItem(at: source)
+        #expect(try Data(contentsOf: URL(fileURLWithPath: stored.path)) == bytes)
+        await #expect(throws: (any Error).self) { try await images.copy(from: source) }
+    }
+
     @Test func integersSurviveARoundTrip() throws {
         // Tool inputs go back to the CLI, and `120000.0` could fail its validation.
         let value = try JSONValue(parsing: Data(#"{"timeout":120000,"ratio":0.5,"on":true,"none":null}"#.utf8))

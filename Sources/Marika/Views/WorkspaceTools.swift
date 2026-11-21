@@ -132,7 +132,7 @@ struct CommandPaletteView: View {
             result += [
                 Action(id: "files", title: "Go to File…", symbol: "doc.text.magnifyingglass", shortcut: "⌘P", run: { model.showCode(quickOpen: true) }),
                 Action(id: "search", title: "Search Project…", symbol: "magnifyingglass", shortcut: "⇧⌘F", run: { model.showsProjectSearch = true }),
-                Action(id: "preview", title: model.previews[project.id]?.isActive == true ? "Stop Preview" : "Run Project Preview", symbol: "play.fill", shortcut: "⇧⌘R", run: {
+                Action(id: "preview", title: model.projectRuntimeTools[project.id]?.preview?.isActive == true ? "Stop Preview" : "Run Project Preview", symbol: "play.fill", shortcut: "⇧⌘R", run: {
                     let preview = model.preview(for: project)
                     if preview.isActive { preview.stop() } else { model.runPreview() }
                 }),

@@ -5,6 +5,8 @@ import SwiftUI
 struct ContainerMetricsView: View {
     @Bindable var workspace: ContainerWorkspace
     @Bindable var metrics: ContainerMetricsWorkspace
+    @State private var incidentTime: IncidentTime?
+    private struct IncidentTime: Identifiable { let id = UUID(); let date: Date }
     @State private var showsConnection = false
     private var ids: Set<String> {
         guard let selected = workspace.selected else { return Set(workspace.inventory.resources.map(\.id)).union(metrics.history.points.map(\.resourceID)) }
@@ -35,6 +37,10 @@ struct ContainerMetricsView: View {
                         Text("±2 minutes").foregroundStyle(.secondary)
                         Spacer()
                         Button("Open logs at this time") { correlate(date) }.disabled(workspace.selected == nil)
+                        if workspace.settings.provider == .kubernetes {
+                            Button("Save incident…") { incidentTime = IncidentTime(date: date) }
+                                .disabled(workspace.selected == nil || workspace.target == nil)
+                        }
                     }.font(.callout)
                 }
                 Text("Deployment and resource events").font(.headline)
@@ -59,6 +65,9 @@ struct ContainerMetricsView: View {
         }
         .onDisappear { metrics.pause() }
         .sheet(isPresented: $showsConnection) { ContainerMetricsConnectionView(workspace: workspace) }
+        .sheet(item: $incidentTime) { selection in
+            ContainerIncidentSheet(workspace: workspace, date: selection.date)
+        }
         #if DEBUG
         .background(DebugViewMarker(name: "container-metrics"))
         #endif

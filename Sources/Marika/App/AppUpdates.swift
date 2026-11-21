@@ -1,11 +1,13 @@
 import AppKit
 import MarikaCore
 import Observation
+#if !MARIKA_APP_STORE
 import Sparkle
+#endif
 
 @MainActor
 @Observable
-final class AppUpdates: NSObject, SPUUpdaterDelegate {
+final class AppUpdates: NSObject {
     enum Status: String { case idle, checking, current, available, noReleases, failed }
     let installedVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? marikaCoreVersion
     let installedBuild = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "Development"
@@ -14,19 +16,28 @@ final class AppUpdates: NSObject, SPUUpdaterDelegate {
     private(set) var lastChecked: Date?
     private(set) var errorMessage: String?
     @ObservationIgnored private let checker = ReleaseChecker()
+    #if !MARIKA_APP_STORE
     @ObservationIgnored private var sparkle: SPUStandardUpdaterController?
+    #endif
     @ObservationIgnored var allowRelaunch: () -> Bool = { false }
     #if DEBUG
         @ObservationIgnored var releaseOverride: (@Sendable () async throws -> PublishedRelease?)?
     #endif
 
     var supportsInstallation: Bool {
+        #if MARIKA_APP_STORE
+        false
+        #else
         Bundle.main.bundleURL.pathExtension == "app" && SignedUpdateConfiguration(
             feedURL: Bundle.main.object(forInfoDictionaryKey: "SUFeedURL") as? String,
             publicKey: Bundle.main.object(forInfoDictionaryKey: "SUPublicEDKey") as? String) != nil
+        #endif
     }
 
     func check() async {
+        #if MARIKA_APP_STORE
+        NSWorkspace.shared.open(URL(string: "macappstore://showUpdatesPage")!)
+        #else
         guard status != .checking else { return }
         status = .checking; errorMessage = nil
         do {
@@ -49,9 +60,11 @@ final class AppUpdates: NSObject, SPUUpdaterDelegate {
         } catch {
             status = .failed; errorMessage = error.localizedDescription
         }
+        #endif
     }
 
     func install() {
+        #if !MARIKA_APP_STORE
         guard status == .available, supportsInstallation else { return }
         guard allowRelaunch() else {
             errorMessage = "Finish active agents and save editor changes before installing an update."
@@ -65,7 +78,12 @@ final class AppUpdates: NSObject, SPUUpdaterDelegate {
         guard let sparkle, sparkle.updater.canCheckForUpdates else { return }
         // Sparkle downloads from the configured appcast and verifies the EdDSA signature.
         sparkle.checkForUpdates(nil)
+        #endif
     }
+}
+
+#if !MARIKA_APP_STORE
+extension AppUpdates: SPUUpdaterDelegate {
 
     func updaterShouldRelaunchApplication(_ updater: SPUUpdater) -> Bool {
         // Recheck immediately before relaunch: an agent may have started since the dialog opened.
@@ -74,6 +92,8 @@ final class AppUpdates: NSObject, SPUUpdaterDelegate {
         return allowed
     }
 }
+
+#endif
 
 extension AppModel {
     func configureUpdater() {

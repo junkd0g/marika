@@ -6,16 +6,13 @@ extension AppModel {
         guard let meta = selectedSession?.projectID == project.id ? selectedSession : workspace.conversation(for: project.id) else { return }
         await open(meta.id)
         guard let session = controllers[meta.id] else { return }
-        let directory = store.attachmentsDirectory
         do {
-            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-            let url = directory.appendingPathComponent(UUID().uuidString + ".png")
-            try image.write(to: url, options: .atomic)
+            let attachment = try await store.images.savePNG(image)
             session.draft += (session.draft.isEmpty ? "" : "\n\n") + text
-            session.draftImages.append(ImageAttachment(path: url.path, mediaType: "image/png"))
+            session.draftImages.append(attachment)
             selectedSessionID = session.id
             projectTabs[project.id] = .conversation
             composerFocusRequest = UUID()
-        } catch { browsers[project.id]?.errorMessage = "Couldn't attach screenshot: \(error.localizedDescription)" }
+        } catch { projectRuntimeTools[project.id]?.browser?.errorMessage = "Couldn't attach screenshot: \(error.localizedDescription)" }
     }
 }

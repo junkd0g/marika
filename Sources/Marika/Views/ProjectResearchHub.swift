@@ -73,7 +73,7 @@ struct ProjectComparisonView: View {
             for run in runs { for id in [run.claudeID, run.codexID, run.synthesisID].compactMap({ $0 }) where model.workspace.sessions.contains(where: { $0.id == id }) { await model.open(id) } }
         }
     }
-    private var controls: some View { Picker("Combine with", selection: $synthesizer) { ForEach(AgentKind.allCases) { Text($0.shortName).tag($0) } }.fixedSize().controlSize(.small) }
+    private var controls: some View { Picker("Combine with", selection: $synthesizer) { ForEach(AgentKind.availableProviders) { Text($0.shortName).tag($0) } }.fixedSize().controlSize(.small) }
     private var start: some View {
         Button(starting ? "Starting…" : "Compare Claude + Codex", systemImage: "arrow.triangle.branch") {
             starting = true; error = nil

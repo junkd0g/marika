@@ -1,10 +1,10 @@
 import Foundation
 
 public enum ProjectPanel: String, Codable, CaseIterable, Sendable {
-    case conversation = "Conversation", code = "Code", browser = "Browser", agents = "Agents", stats = "Stats", pipelines = "Pipelines", api = "API", changes = "Changes", terminal = "Terminal", research = "Research", design = "Design", containers = "Containers"
+    case conversation = "Conversation", code = "Code", browser = "Browser", agents = "Agents", stats = "Stats", pipelines = "Pipelines", api = "API", changes = "Changes", terminal = "Terminal", research = "Research", design = "Design", containers = "Containers", qa = "QA"
     public var title: String { self == .conversation ? "Chat" : rawValue }
     public var shortcut: String {
-        switch self { case .conversation: "1"; case .code: "2"; case .browser: "3"; case .agents: "4"; case .stats: "5"; case .pipelines: "6"; case .api: "7"; case .changes: "8"; case .terminal: "9"; case .research: "0"; case .design: "g"; case .containers: "e" }
+        switch self { case .conversation: "1"; case .code: "2"; case .browser: "3"; case .agents: "4"; case .stats: "5"; case .pipelines: "6"; case .api: "7"; case .changes: "8"; case .terminal: "9"; case .research: "0"; case .design: "g"; case .containers: "e"; case .qa: "j" }
     }
 }
 
@@ -40,11 +40,13 @@ public struct ProjectLayout: Codable, Equatable, Hashable, Sendable {
     public var browserIndex = 0
     public var browserViewport = "Desktop"
     public var browserLibrary = BrowserLibrary()
+    public var browserAgentAccessEnabled = false
     public init() {}
 
     private enum CodingKeys: String, CodingKey {
         case panel, secondary, openTabs, stacked, splitFraction, showsInspector, showsNavigator, navigatorWidth
         case files, selectedFile, browserURLs, browserIndex, browserViewport, browserLibrary
+        case browserAgentAccessEnabled = "browserAISharingConsent"
     }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -62,6 +64,7 @@ public struct ProjectLayout: Codable, Equatable, Hashable, Sendable {
         browserIndex = try c.decodeIfPresent(Int.self, forKey: .browserIndex) ?? 0
         browserViewport = try c.decodeIfPresent(String.self, forKey: .browserViewport) ?? "Desktop"
         browserLibrary = try c.decodeIfPresent(BrowserLibrary.self, forKey: .browserLibrary) ?? BrowserLibrary()
+        browserAgentAccessEnabled = try c.decodeIfPresent(Bool.self, forKey: .browserAgentAccessEnabled) ?? false
         if secondary == panel { secondary = nil }
         normalizeTabs()
     }

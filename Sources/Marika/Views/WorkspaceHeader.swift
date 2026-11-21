@@ -2,6 +2,7 @@ import MarikaCore
 import SwiftUI
 
 struct WorkspaceHeader: View {
+    static let height: CGFloat = 52
     @Environment(AppModel.self) private var model
     let project: Project
     let selection: AppModel.ProjectTab
@@ -52,7 +53,7 @@ struct WorkspaceHeader: View {
                         Button("Search Project…") { model.showsProjectSearch = true }
                         Button("Preview Settings and Logs…") { model.openPreviewSettings(for: project) }
                         Menu("Repositories") { repositoryActions }
-                        Button(model.previews[project.id]?.isActive == true ? "Stop Preview" : "Run Preview") {
+                        Button(model.projectRuntimeTools[project.id]?.preview?.isActive == true ? "Stop Preview" : "Run Preview") {
                             let preview = model.preview(for: project)
                             if preview.isActive { preview.stop() } else { model.runPreview(for: project) }
                         }
@@ -80,10 +81,10 @@ struct WorkspaceHeader: View {
                     .help("Launch an agent in \(project.name) (⇧⌘N)")
                 }
                 .padding(.horizontal, 16)
-                .frame(width: geometry.size.width, height: 52)
+                .frame(width: geometry.size.width, height: Self.height)
             }
         }
-        .frame(height: 52)
+        .frame(height: Self.height)
         .background(Theme.chrome)
         #if DEBUG
             .background(DebugViewMarker(name: "workspace-header"))
@@ -223,6 +224,7 @@ private extension AppModel.ProjectTab {
         case .pipelines: "point.3.connected.trianglepath.dotted"
         case .design: "square.on.circle"
         case .containers: "shippingbox"
+        case .qa: "checklist"
         }
     }
 }

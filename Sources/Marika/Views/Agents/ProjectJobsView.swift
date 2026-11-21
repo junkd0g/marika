@@ -222,7 +222,7 @@ private struct ProjectJobEditor: View {
                     .frame(height: 105).padding(10).surface()
             }
             HStack {
-                Picker("Agent", selection: $draft.agent) { ForEach(AgentKind.allCases) { Text($0.shortName).tag($0) } }
+                Picker("Agent", selection: $draft.agent) { ForEach(AgentKind.availableProviders) { Text($0.shortName).tag($0) } }
                 Picker("Model", selection: Binding(get: { draft.model ?? "" }, set: { draft.model = $0.isEmpty ? nil : $0 })) {
                     Text("Agent default").tag("")
                     ForEach(model.capabilities[draft.agent]?.models.filter { $0.id != "default" } ?? []) { Text($0.name).tag($0.id) }

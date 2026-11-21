@@ -39,10 +39,12 @@ Pages for unrelated ports or external websites retain the normal **Try Again** a
 
 Marika provides eight browser tools to newly started Claude and Codex agent processes through
 the bundled `MarikaBrowserMCP` helper. Agents can inspect, screenshot, navigate, click, fill, scroll,
-and switch tabs in the same browser you see. Local previews are enabled by default; other sites
-need access enabled from **••• → Agent Access**. Each project has a separate, persistent WebKit
+and switch tabs in the same browser you see. Agent access begins off and requires permission to share pages with OpenAI or Anthropic. Click
+**Agent access** in the bottom bar to turn it off or on for every tab in this project; the choice
+is saved across app restarts. The same switch is under **••• → Agent Access**. Each project has a separate, persistent WebKit
 profile: cookies and sign-ins survive restarts, along with open tabs, bookmarks and history.
-Site permissions for agents remain separate from signing in to a website.
+Agent access remains separate from signing in to a website. Turning it on does not resolve
+a website's password, passkey or account-verification errors.
 
 ## Research
 
@@ -238,6 +240,6 @@ reordering, and dragging tabs into splits continue to work.
 
 Choose **Containers → Metrics** to sample CPU cores, memory and Kubernetes restart counts. **Record metrics** samples every 15 seconds while the pane is visible; leaving it pauses recording. **Sample now** performs a single read. History is kept in memory for up to one hour, capped at 12,000 points, and cleared when the engine/context/namespace changes. Missing samples stay blank. Kubernetes CPU/memory requires an existing Metrics Server; Marika does not install one. Restart counts remain available from the resource inventory.
 
-Filter to a container, pod, workload or Service; Service selection follows its pod labels. Deployment events appear below the charts. Select a chart time or event and use **Open logs at this time** to load the retained runtime logs around ±2 minutes. Retention depends on Docker/Kubernetes. The log panel also connects to Loki for longer-term history.
+Filter to a container, pod, workload or Service; Service selection follows its pod labels. Deployment events appear below the charts. Select a chart time or event and use **Open logs at this time** to load the retained runtime logs around ±2 minutes. Retention depends on Docker/Kubernetes. The log panel also connects to Loki for longer-term history. For a Kubernetes workload, choose **Save incident…** at a chart timestamp or deployment event. Review the selected context, namespace, chart samples, events and available runtime log lines for the four-minute window. Saving creates a bug ticket with a snapshot in **Work → Incident evidence**.
 
 **Prometheus…** connects an existing Prometheus-compatible endpoint, including Grafana Cloud. Configure a latency query returning milliseconds and an error query returning percent. Each must return a single series and explicitly select the service/namespace you want. Resource selection does not rewrite PromQL. Credentials stay in Keychain, separately from Loki credentials; authenticated remote requests require HTTPS. Charts reflect the configured query's scope. No dashboard or monitoring server is provisioned.

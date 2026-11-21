@@ -19,6 +19,7 @@ final class BrowserPage: NSObject, Identifiable, WKNavigationDelegate, WKUIDeleg
     var canGoBack = false
     var canGoForward = false
     var navigationError: String?
+    var qaDiagnostics: [String] = []
     var isAnnotating = false
     var zoom = 1.0 {
         didSet { webView.pageZoom = zoom }
@@ -37,6 +38,9 @@ final class BrowserPage: NSObject, Identifiable, WKNavigationDelegate, WKUIDeleg
         configuration.userContentController.addUserScript(WKUserScript(
             source: BrowserScripts.bootstrap, injectionTime: .atDocumentEnd, forMainFrameOnly: true,
             in: .world(name: BrowserScripts.world)))
+        configuration.userContentController.addUserScript(WKUserScript(
+            source: QARecorderScript.source, injectionTime: .atDocumentEnd, forMainFrameOnly: true,
+            in: .world(name: BrowserScripts.world)))
         webView = WKWebView(frame: NSRect(x: 0, y: 0, width: 1000, height: 700), configuration: configuration)
         super.init()
         webView.navigationDelegate = self
@@ -45,6 +49,8 @@ final class BrowserPage: NSObject, Identifiable, WKNavigationDelegate, WKUIDeleg
         webView.allowsBackForwardNavigationGestures = true
         webView.allowsMagnification = true
         configuration.userContentController.add(self, contentWorld: .world(name: BrowserScripts.world), name: "marikaElement")
+        configuration.userContentController.add(self, contentWorld: .world(name: BrowserScripts.world), name: "marikaQA")
+        configuration.userContentController.add(self, contentWorld: .world(name: BrowserScripts.world), name: "marikaQADiagnostic")
         observations = [
             webView.observe(\.url, options: [.new]) { [weak self] view, _ in MainActor.assumeIsolated {
                 if let url = view.url { self?.url = url }
@@ -87,7 +93,23 @@ final class BrowserPage: NSObject, Identifiable, WKNavigationDelegate, WKUIDeleg
         }
     }
 
+    var isRecording: Bool { workspace?.recordingPage === self && workspace?.selectedPageID == id }
+
+    func syncRecording() {
+        webView.evaluateJavaScript("window.__marikaSetQARecording?.(" + (isRecording ? "true" : "false") + ")", in: nil,
+            in: .world(name: BrowserScripts.world), completionHandler: nil)
+    }
+
+    func stop() {
+        faviconTask?.cancel()
+        webView.stopLoading()
+        for name in ["marikaElement", "marikaQA", "marikaQADiagnostic"] {
+            webView.configuration.userContentController.removeScriptMessageHandler(forName: name, contentWorld: .world(name: BrowserScripts.world))
+        }
+    }
+
     func load(_ url: URL) {
+        workspace?.onQAAction?(id, QAAction(.navigate, value: url.absoluteString))
         navigationError = nil
         self.url = url
         isLoading = true
@@ -158,6 +180,7 @@ final class BrowserPage: NSObject, Identifiable, WKNavigationDelegate, WKUIDeleg
         isLoading = false
         if let loadedURL = webView.url { url = loadedURL }
         title = webView.title.flatMap { $0.isEmpty ? nil : $0 } ?? url?.host ?? "New tab"
+        syncRecording()
         workspace?.recordVisit(self)
         refreshFavicon()
         if workspace?.selectedPageID == id, let url = webView.url { workspace?.onNavigate?(url.absoluteString) }
@@ -168,6 +191,7 @@ final class BrowserPage: NSObject, Identifiable, WKNavigationDelegate, WKUIDeleg
     private func failed(_ error: Error) {
         if (error as NSError).code == NSURLErrorCancelled { return }
         navigationError = error.localizedDescription
+        qaDiagnostics = Array((qaDiagnostics + ["Navigation: " + error.localizedDescription]).suffix(100))
         isLoading = false
     }
 
@@ -203,6 +227,16 @@ final class BrowserPage: NSObject, Identifiable, WKNavigationDelegate, WKUIDeleg
     }
 
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+        if message.frameInfo.isMainFrame, message.name == "marikaQADiagnostic", let text = message.body as? String {
+            qaDiagnostics = Array((qaDiagnostics + [String(text.prefix(2000))]).suffix(100))
+            return
+        }
+        if isRecording, message.frameInfo.isMainFrame, message.name == "marikaQA",
+           let body = message.body as? [String: String], let kind = body["kind"].flatMap(QAAction.Kind.init(rawValue:)),
+           let selector = body["selector"], selector.count <= 4000 {
+            workspace?.onQAAction?(id, QAAction(kind, selector: selector, value: String((body["value"] ?? "").prefix(4000))))
+            return
+        }
         guard message.frameInfo.isMainFrame, message.name == "marikaElement",
             let body = try? JSONSerialization.data(withJSONObject: message.body), let selection = try? JSONValue(parsing: body)
         else { return }

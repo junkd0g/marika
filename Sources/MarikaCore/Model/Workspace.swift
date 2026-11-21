@@ -27,6 +27,7 @@ public struct Project: Codable, Equatable, Hashable, Sendable, Identifiable {
     public var layout: ProjectLayout?
     public var viewPresets: [WorkspaceViewPreset]?
     public var previewConfiguration: PreviewConfiguration?
+    public var folderBookmarks: [String: Data]?
     public var repositoryPaths: [String]?
     public var selectedRepositoryPath: String?
     public var repositoryLayouts: [String: ProjectLayout]?
@@ -43,6 +44,7 @@ public struct Project: Codable, Equatable, Hashable, Sendable, Identifiable {
     public var designImport: DesignImportRun?
     public var designImportBatches: [DesignImportBatch]?
     public var containerHub: ContainerHubSettings?
+    public var qa: QAProject?
 
     public init(id: UUID = UUID(), path: String, name: String? = nil) {
         self.id = id

@@ -146,7 +146,7 @@ private struct GeneralSettings: View {
                     get: { model.workspace.preferences.defaultAgent },
                     set: { value in model.setPreferences { $0.defaultAgent = value } })
             ) {
-                ForEach(AgentKind.allCases) { Text($0.displayName).tag($0) }
+                ForEach(AgentKind.availableProviders) { Text($0.displayName).tag($0) }
             }
             Picker(
                 "Approvals",

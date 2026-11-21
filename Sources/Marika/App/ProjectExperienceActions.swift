@@ -15,9 +15,15 @@ extension AppModel {
     func attachRepository(to project: Project) {
         let panel = NSOpenPanel(); panel.canChooseFiles = false; panel.canChooseDirectories = true
         panel.prompt = "Attach folder"
-        guard panel.runModal() == .OK, let url = panel.url?.standardizedFileURL.resolvingSymlinksInPath(),
-              !project.repositoryURLs.contains(url) else { return }
-        updateProject(project.id) { $0.repositoryPaths = ($0.repositoryPaths ?? []) + [url.path] }
+        guard panel.runModal() == .OK, let chosen = panel.url else { return }
+        let url = chosen.standardizedFileURL.resolvingSymlinksInPath()
+        do {
+            let bookmark = try folderAccess.authorize(chosen)
+            updateProject(project.id) {
+                if let bookmark { $0.rememberFolderBookmark(bookmark, path: url.path) }
+                if !$0.repositoryURLs.contains(url) { $0.repositoryPaths = ($0.repositoryPaths ?? []) + [url.path] }
+            }
+        } catch { NSAlert(error: error).runModal(); return }
         for session in controllers.values where session.meta.projectID == project.id { session.disconnectWhenIdle() }
         if let current = self.project(id: project.id) { selectRepository(url, project: current) }
     }
@@ -70,7 +76,7 @@ extension AppModel {
     }
     func restoreCheckpoint(_ record: CodeCheckpoint) async throws {
         guard !controllers.values.contains(where: { $0.meta.projectID == record.projectID && $0.isBusy }),
-              debugTasks[record.projectID] == nil else { throw AgentError.launchFailed("Stop running agents and debugging commands before rewinding.") }
+              projectRuntimeTools[record.projectID]?.debugTask == nil else { throw AgentError.launchFailed("Stop running agents and debugging commands before rewinding.") }
         guard !(repositoryEditors[record.projectID]?.values.contains(where: { !$0.modifiedDocuments.isEmpty }) ?? false) else {
             throw AgentError.launchFailed("Save or close your unsaved editor drafts before rewinding.")
         }
@@ -84,19 +90,22 @@ extension AppModel {
         await reloadCheckpoints(record.projectID)
     }
     func runDebug(_ command: String, project: Project) {
-        guard debugTasks[project.id] == nil, !command.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        guard projectRuntimeTools[project.id]?.debugTask == nil, !command.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         let environment = gitEnvironment
         debugErrors[project.id] = nil
-        debugTasks[project.id] = Task {
-            defer { debugTasks[project.id] = nil }
+        let tools = runtimeTools(for: project.id)
+        tools.debugTask = Task { [weak tools] in
+            defer { tools?.debugTask = nil }
             do {
                 let result = try await Command.run(URL(fileURLWithPath: "/bin/zsh"), ["-l", "-c", command],
                     workingDirectory: project.editorURL, environment: environment, timeout: 120, outputLimit: 64_000)
                 let run = DebugRun(command: command, directory: project.editorURL.path,
                     output: String((result.output + "\n" + result.errorOutput).suffix(64_000)), exitCode: result.status, timedOut: result.timedOut)
                 updateProject(project.id) { $0.debugRuns = Array((($0.debugRuns ?? []) + [run]).suffix(20)) }
-            } catch is CancellationError { debugErrors[project.id] = "Reproduction stopped." }
-            catch { debugErrors[project.id] = error.localizedDescription }
+            } catch {
+                guard self.project(id: project.id) != nil else { return }
+                debugErrors[project.id] = error is CancellationError ? "Reproduction stopped." : error.localizedDescription
+            }
         }
     }
     func debugWithAgent(_ run: DebugRun, project: Project) {
@@ -112,7 +121,7 @@ extension AppModel {
     func openRemote(_ machine: RemoteMachine, project: Project, agent: AgentKind? = nil) throws {
         let arguments = try machine.arguments(command: agent.map { $0.executableName })
         ensureTerminal(for: project)
-        terminals[project.id]?.addRemote(arguments: arguments, name: machine.name, directory: project.url, environment: gitEnvironment)
+        projectRuntimeTools[project.id]?.terminal?.addRemote(arguments: arguments, name: machine.name, directory: project.url, environment: gitEnvironment)
         projectSettingsID = nil
         switchPanel(.terminal)
     }

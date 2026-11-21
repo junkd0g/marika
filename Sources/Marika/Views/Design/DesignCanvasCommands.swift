@@ -170,6 +170,11 @@ extension DesignCanvasModel {
             if center == nil, !clip.nodes.contains(where: { visible.intersects($0.bounds.offsetBy(dx: 16, dy: 16)) }) { center = middle }
             var pasted: [UUID] = []
             edit { pasted = $0.paste(clip, centeredAt: center) }
+            guard !pasted.isEmpty else {
+                errorTitle = "Couldn’t paste layers"
+                errorMessage = "The copied design contains duplicate layer IDs."
+                return
+            }
             selection = Set(pasted); selectedConnection = nil
         } else if let text = board.string(forType: .string)?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty {
             var created: UUID?

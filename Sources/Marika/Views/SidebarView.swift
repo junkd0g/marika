@@ -311,7 +311,7 @@ private struct UsageFooter: View {
     @State private var showsUsage = false
 
     private var usage: [(id: String, agent: AgentKind, window: RateLimitWindow, isExhausted: Bool)] {
-        AgentKind.allCases.flatMap { agent -> [(id: String, agent: AgentKind, window: RateLimitWindow, isExhausted: Bool)] in
+        AgentKind.availableProviders.flatMap { agent -> [(id: String, agent: AgentKind, window: RateLimitWindow, isExhausted: Bool)] in
             guard let snapshot = model.rateLimits[agent] else { return [] }
             return snapshot.windows.map { ("\(agent.rawValue)-\($0.id)", agent, $0, snapshot.isExhausted) }
         }
@@ -350,7 +350,7 @@ private struct UsageFooter: View {
     }
 
     private var usageSummary: String {
-        AgentKind.allCases.compactMap { agent -> String? in
+        AgentKind.availableProviders.compactMap { agent -> String? in
             guard let highest = usage.filter({ $0.agent == agent }).map({ $0.window.utilization }).max() else { return nil }
             return "\(agent.shortName) \(Int((highest * 100).rounded()))%"
         }.joined(separator: " · ")

@@ -3,6 +3,16 @@ import Testing
 @testable import MarikaCore
 
 struct DesignDocumentTests {
+    @Test func malformedPasteLeavesDesignIntact() {
+        var doc = DesignDocument()
+        let id = doc.add(.rectangle, in: CGRect(x: 0, y: 0, width: 20, height: 20))
+        var clip = doc.clip([id])
+        clip.nodes.append(clip.nodes[0])
+        let before = doc
+        #expect(doc.paste(clip).isEmpty)
+        #expect(doc == before)
+    }
+
     @Test func HitTestPicksTopmostAndSkipsLockedOrHidden() {
         var doc = DesignDocument()
         let back = doc.add(.rectangle, in: CGRect(x: 0, y: 0, width: 100, height: 100))

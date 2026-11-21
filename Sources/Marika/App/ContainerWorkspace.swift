@@ -265,10 +265,10 @@ struct ContainerOperationPrompt: Identifiable {
 
 extension AppModel {
     func containers(for project: Project) -> ContainerWorkspace {
-        if let existing = containerWorkspaces[project.id] { return existing }
+        if let existing = projectRuntimeTools[project.id]?.containers { return existing }
         let workspace = ContainerWorkspace(project: project, environment: toolEnvironment, clusterDirectory: store.root.appendingPathComponent("local-clusters"))
         workspace.onSettings = { [weak self] settings in self?.updateProject(project.id) { $0.containerHub = settings } }
-        containerWorkspaces[project.id] = workspace
+        runtimeTools(for: project.id).containers = workspace
         return workspace
     }
 }

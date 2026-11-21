@@ -3,19 +3,19 @@ import MarikaCore
 
 extension AppModel {
     func ensureTerminal(for project: Project) {
-        guard terminals[project.id] == nil else { return }
+        guard projectRuntimeTools[project.id]?.terminal == nil else { return }
         let terminal = ProjectTerminal()
-        terminals[project.id] = terminal
+        runtimeTools(for: project.id).terminal = terminal
         terminal.add(at: project.url, name: project.name, environment: gitEnvironment)
     }
     func openTerminal(command: String? = nil) {
         guard let project = selectedProject else { return }
         ensureTerminal(for: project)
-        if terminals[project.id]?.current?.view.process.running != true {
-            terminals[project.id]?.add(at: project.url, name: project.name, environment: gitEnvironment)
+        if projectRuntimeTools[project.id]?.terminal?.current?.view.process.running != true {
+            projectRuntimeTools[project.id]?.terminal?.add(at: project.url, name: project.name, environment: gitEnvironment)
         }
         switchPanel(.terminal)
-        if let command { terminals[project.id]?.send(command) }
+        if let command { projectRuntimeTools[project.id]?.terminal?.send(command) }
     }
 
     func runChatCommand(_ command: ChatTerminalCommand, sessionID: UUID) throws {
@@ -28,8 +28,8 @@ extension AppModel {
         guard FileManager.default.fileExists(atPath: invocation.directory.path, isDirectory: &isDirectory), isDirectory.boolValue else {
             throw AgentError.launchFailed("The command's working folder no longer exists.")
         }
-        let terminal = terminals[project.id] ?? ProjectTerminal()
-        terminals[project.id] = terminal
+        let terminal = projectRuntimeTools[project.id]?.terminal ?? ProjectTerminal()
+        runtimeTools(for: project.id).terminal = terminal
         terminal.run(command, invocation: invocation, environment: toolEnvironment)
         if selectedProject?.id != project.id { openProject(project) }
         switchPanel(.terminal)
@@ -61,7 +61,9 @@ extension AppModel {
         let liveTools = self.project(id: project.id)?.tools
         let reconnect = liveTools?.instructions != saved.instructions || liveTools?.mcpConfig != saved.mcpConfig
         updateProject(project.id) { $0.tools = saved }
-        for (key, ide) in ideWorkspaces where key.hasPrefix(project.id.uuidString) { ide.configure(saved.ide ?? IDEPreferences()) }
+        if let tools = projectRuntimeTools[project.id] {
+            for ide in tools.ide.values { ide.configure(saved.ide ?? IDEPreferences()) }
+        }
         if reconnect {
             for controller in controllers.values where controller.meta.projectID == project.id { controller.disconnectWhenIdle() }
         }

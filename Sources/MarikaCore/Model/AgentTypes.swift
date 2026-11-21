@@ -5,6 +5,14 @@ public enum AgentKind: String, Codable, CaseIterable, Sendable, Identifiable {
     case claude
     case codex
 
+    public static var availableProviders: [Self] {
+        #if MARIKA_APP_STORE
+        [.codex]
+        #else
+        allCases
+        #endif
+    }
+
     public var id: String { rawValue }
 
     /// The label used in pickers.

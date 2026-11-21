@@ -16,7 +16,7 @@ extension AppModel {
         guard (self.project(id: project.id)?.comparisons?.count ?? 0) < 40 else { throw AgentError.launchFailed("This project has 40 comparisons. Remove an old comparison before starting another.") }
         updateProject(project.id) { $0.comparisons = ($0.comparisons ?? []) + [run] }
         guard await save() else { throw AgentError.launchFailed("Couldn't save the comparison. No agents started.") }
-        for agent in AgentKind.allCases { await startComparisonAnswer(run.id, agent: agent, project: project) }
+        for agent in AgentKind.availableProviders { await startComparisonAnswer(run.id, agent: agent, project: project) }
         return run.id
     }
     func startComparisonAnswer(_ id: UUID, agent: AgentKind, project: Project) async {

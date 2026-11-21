@@ -45,22 +45,29 @@ import MarikaCore
               controller?.draft == "Keep this unsent draft", model.project(id: project.id)?.viewPresets?.last?.name == "My " + name else { throw DesignToolError("Layout lost split or draft") }
         guard await model.save() else { throw DesignToolError("Preset did not save") }
     }
-    static func importReference(_ model: AppModel, source: String, agent: AgentKind) async throws {
+    static func importReference(_ model: AppModel, source: String, agent: AgentKind, screenshot: String? = nil, modelID: String? = nil) async throws {
         guard DebugFixtureSettings.value("MARIKA_DATA") != nil, let project = model.selectedProject else { throw DesignToolError("Isolated import fixture required") }
         let importer = DesignImportModel(projectID: project.id, app: model)
-        await importer.capturePreview()
+        if let screenshot { try await importer.loadReference(from: URL(fileURLWithPath: screenshot)) }
+        else { await importer.capturePreview() }
         guard let reference = importer.reference, let image = importer.referenceImage else { throw DesignToolError(importer.error ?? "Reference capture failed") }
-        try await model.startDesignImport(projectID: project.id, paths: [source], focus: "Reconstruct the reference welcome card at its measured viewport, with exact visible text and source links.", agent: agent, model: nil, reference: reference, referenceImage: image)
+        try await model.startDesignImport(projectID: project.id, paths: [source], focus: "Reconstruct the reference welcome card at its measured viewport, with exact visible text and source links.", agent: agent, model: modelID, reference: reference, referenceImage: image)
         model.openDesign(for: project.id)
     }
-    static func exportImport(_ model: AppModel, directory: String) throws {
+    static func exportImport(_ model: AppModel, directory: String) async throws {
         guard let run = model.selectedProject?.designImport, let proposal = run.proposal, let reference = run.reference else { throw DesignToolError("Ready reference import required") }
         let root = URL(fileURLWithPath: directory)
         try JSONEncoder().encode(proposal).write(to: root.appendingPathComponent("proposal.json"))
-        if let path = reference.imagePath { try Data(contentsOf: URL(fileURLWithPath: path)).write(to: root.appendingPathComponent("reference.png")) }
-        let comparison = DesignReferenceComparison(reference: reference, document: proposal.document)
-        let report: JSONValue = ["matched": .double(Double(comparison.matched)), "measured": .double(Double(comparison.measured)), "meanSizeError": comparison.meanSizeError.map(JSONValue.double) ?? .null]
-        try report.serialized().write(to: root.appendingPathComponent("measurements.json"))
+        let fidelity = try await DesignImportFidelity.compare(reference, with: proposal.document)
+        try fidelity.reference.write(to: root.appendingPathComponent("reference.png"))
+        try fidelity.render.write(to: root.appendingPathComponent("import.png"))
+        try fidelity.difference.png.write(to: root.appendingPathComponent("difference.png"))
+        let comparison = DesignReferenceComparison(reference: reference, document: proposal.document, sources: Set(run.files.map(\.path)))
+        let report = try JSONValue(parsing: JSONEncoder().encode(comparison))
+        var values = report.object ?? [:]
+        values["changedPixelFraction"] = .double(fidelity.difference.changedFraction)
+        values["reference"] = .string(reference.source)
+        try JSONValue.object(values).serialized().write(to: root.appendingPathComponent("measurements.json"))
     }
     static func metrics(_ model: AppModel) async throws {
         guard DebugFixtureSettings.value("MARIKA_DATA") != nil, let project = model.selectedProject else { throw ContainerHubError("Isolated fixture required") }
@@ -92,7 +99,7 @@ import MarikaCore
         workspace.metrics.history.append(samples)
         workspace.inventory.events = [ContainerEvent(id: "deploy", resourceUID: "api", reason: "Deployment restarted", message: "Sample rollout: API moved to release v2", warning: false, timestamp: now.addingTimeInterval(-300))]
         workspace.display = .metrics
-        model.containerWorkspaces[project.id] = workspace
+        model.runtimeTools(for: project.id).containers = workspace
         model.setSplit(nil)
         model.switchPanel(.containers)
         workspace.metrics.selectedDate = now.addingTimeInterval(-300)
